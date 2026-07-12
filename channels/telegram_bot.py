@@ -217,6 +217,10 @@ async def _handle_callback(client: httpx.AsyncClient, callback: dict) -> None:
 
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    # Telegram embeds the bot token in every API URL. httpx logs request URLs
+    # at INFO, which would write the credential to service logs.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     if not BOT_TOKEN:
         raise SystemExit("TELEGRAM_BOT_TOKEN (or APPRISE_TELEGRAM_TOKEN) is required")
     if not ALLOWED_CHAT_ID:
