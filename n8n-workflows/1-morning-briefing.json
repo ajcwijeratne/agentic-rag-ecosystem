@@ -1,0 +1,57 @@
+{
+  "name": "WijerCo — Morning Briefing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "30 6 * * 1-5" }
+          ]
+        }
+      },
+      "id": "trigger-briefing",
+      "name": "Every weekday 06:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"query\": \"Give me my morning briefing as WijerCo's orchestrator. Cover: today's priorities, any hot prospects or client follow-ups that need action, and one Australian higher-education development worth knowing. Lead with the point, be specific, no preamble.\",\n  \"session_id\": \"n8n-morning-briefing\"\n}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "call-orchestrator",
+      "name": "Ask the orchestrator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "a.j.c.wijeratne@gmail.com",
+        "toEmail": "a.j.c.wijeratne@gmail.com",
+        "subject": "=WijerCo Morning Briefing — {{ $now.format('cccc d LLL') }}",
+        "emailFormat": "text",
+        "text": "={{ $json.answer }}",
+        "options": {}
+      },
+      "id": "send-briefing",
+      "name": "Email the briefing",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [780, 300]
+    }
+  ],
+  "connections": {
+    "Every weekday 06:30": { "main": [[{ "node": "Ask the orchestrator", "type": "main", "index": 0 }]] },
+    "Ask the orchestrator": { "main": [[{ "node": "Email the briefing", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

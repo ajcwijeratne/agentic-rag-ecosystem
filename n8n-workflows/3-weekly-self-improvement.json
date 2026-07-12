@@ -1,0 +1,57 @@
+{
+  "name": "WijerCo — Weekly Self-Improvement",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 6 * * 1" }
+          ]
+        }
+      },
+      "id": "trigger-harness",
+      "name": "Monday 06:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/harness/run",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": { "timeout": 900000 }
+      },
+      "id": "run-harness",
+      "name": "Run self-harness loop",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "a.j.c.wijeratne@gmail.com",
+        "toEmail": "a.j.c.wijeratne@gmail.com",
+        "subject": "=WijerCo — {{ $json.proposals_queued }} self-improvement proposal(s) to review",
+        "emailFormat": "text",
+        "text": "=The weekly self-harness loop ran across {{ $json.departments }} departments and queued {{ $json.proposals_queued }} proposal(s).\n\nReview and approve them in the Command Centre under the Self-Improve tab. Nothing changes until you accept.\n\nPer-department result:\n{{ $json.results.map(r => '- ' + r.department + ': ' + (r.status === 'clean' ? 'no weaknesses' : r.queued ? ('proposal queued (' + r.failure_pattern + ', +' + r.heldin_gain + ')') : (r.failure_pattern || r.status || 'no change'))).join('\\n') }}",
+        "options": {}
+      },
+      "id": "email-proposals",
+      "name": "Email proposal summary",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [760, 300]
+    }
+  ],
+  "connections": {
+    "Monday 06:00": { "main": [[{ "node": "Run self-harness loop", "type": "main", "index": 0 }]] },
+    "Run self-harness loop": { "main": [[{ "node": "Email proposal summary", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

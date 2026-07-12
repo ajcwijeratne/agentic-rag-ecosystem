@@ -1,0 +1,87 @@
+{
+  "name": "WijerCo — Prospect Intake & Outreach",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wijerco-prospect",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-prospect",
+      "name": "Webhook (prospect details)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'Research this prospect and brief me: institution, likely needs, who to approach, and the strongest WijerCo entry point. Prospect details:\\n' + ($json.body.prospect || JSON.stringify($json.body)), session_id: 'n8n-prospect', force_route: 'marketing_sales', subagent: 'business-development-rep' }) }}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "n-bdr",
+      "name": "Reni: research & brief",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'Qualify this prospect and set the approach: fit, priority, the offer to lead with, and next step. Brief:\\n' + $json.answer, session_id: 'n8n-prospect', force_route: 'marketing_sales', subagent: 'sales-manager' }) }}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "n-sales",
+      "name": "Sol: qualify & approach",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'Draft a 2-email outreach sequence for Aaron to send, based on this approach. Collegial, specific, no marketing voice. Approach:\\n' + $json.answer, session_id: 'n8n-prospect', force_route: 'marketing_sales', subagent: 'email-marketer' }) }}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "n-email-marketer",
+      "name": "Esme: draft outreach",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 320]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ outreach: $json.answer }) }}",
+        "options": {}
+      },
+      "id": "resp-prospect",
+      "name": "Return outreach",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1160, 320]
+    }
+  ],
+  "connections": {
+    "Webhook (prospect details)": { "main": [[{ "node": "Reni: research & brief", "type": "main", "index": 0 }]] },
+    "Reni: research & brief": { "main": [[{ "node": "Sol: qualify & approach", "type": "main", "index": 0 }]] },
+    "Sol: qualify & approach": { "main": [[{ "node": "Esme: draft outreach", "type": "main", "index": 0 }]] },
+    "Esme: draft outreach": { "main": [[{ "node": "Return outreach", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

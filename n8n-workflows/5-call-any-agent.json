@@ -1,0 +1,53 @@
+{
+  "name": "WijerCo — Call Any Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wijerco-agent",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-agent",
+      "name": "Webhook (department, subagent, query)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: $json.body.query, department: $json.body.department || null, subagent: $json.body.subagent || null, force_route: $json.body.department || null, session_id: 'n8n-ondemand-' + (($json.body.subagent) || 'auto') }) }}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "call-agent",
+      "name": "Route to the agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ answer: $json.answer, department: $json.department, model: $json.model, cost_usd: $json.cost_usd }) }}",
+        "options": {}
+      },
+      "id": "respond-agent",
+      "name": "Return the answer",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [800, 300]
+    }
+  ],
+  "connections": {
+    "Webhook (department, subagent, query)": { "main": [[{ "node": "Route to the agent", "type": "main", "index": 0 }]] },
+    "Route to the agent": { "main": [[{ "node": "Return the answer", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

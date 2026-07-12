@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: my-video/package-lock.json
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Python compile sweep
+        run: python -m compileall common orchestrator media memory rag agents channels mcp_server
+
+      - name: Unit tests
+        env:
+          API_KEY: ci-api-key
+          ADMIN_API_KEY: ci-admin-key
+          MEDIA_DB_PATH: data/ci-media.db
+        run: python -m pytest tests/unit -q
+
+      - name: Install Remotion dependencies
+        working-directory: my-video
+        run: npm ci
+
+      - name: Remotion lint and TypeScript
+        working-directory: my-video
+        run: npm run lint
+
+  deploy-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax check
+        run: bash -n deploy/install.sh deploy/watchdog.sh deploy/rehearsal.sh
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

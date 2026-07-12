@@ -1,0 +1,153 @@
+{
+  "name": "WijerCo \u2014 Weekly Knowledge Refresh",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 5 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "trigger-refresh",
+      "name": "Monday 05:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8005/index",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"vault_path\": \"C:/Users/ajwij/OneDrive/Documents/Obsidian Vault\"\n}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "index-vault",
+      "name": "Re-index Obsidian vault",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8005/index/wijerco",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"wijerco_path\": \"C:/Users/ajwij/Claude Cowork/WijerCo\"\n}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "index-wijerco",
+      "name": "Re-index WijerCo KB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        760,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:8000/kb/overview",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "kb-overview",
+      "name": "Fetch KB overview",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1020,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "a.j.c.wijeratne@gmail.com",
+        "toEmail": "a.j.c.wijeratne@gmail.com",
+        "subject": "WijerCo \u2014 Knowledge base refreshed",
+        "emailFormat": "text",
+        "text": "=Vault re-index: {{ $('Re-index Obsidian vault').item.json.chunks_total }} chunks from {{ $('Re-index Obsidian vault').item.json.notes_indexed }} notes.\nWijerCo KB: {{ $('Re-index WijerCo KB').item.json.chunks_total }} chunks from {{ $('Re-index WijerCo KB').item.json.files_indexed }} files.\n\nCorpus now: {{ $json.stats.docs }} documents, {{ $json.stats.chunks }} chunks. Last indexed {{ $json.stats.updated }}.\nNeeds attention: {{ $json.sources.filter(s => s.st !== 'st-good').map(s => s.name + ' (' + s.fresh + ')').join('; ') || 'nothing \u2014 all sources current' }}",
+        "options": {}
+      },
+      "id": "confirm-refresh",
+      "name": "Email confirmation",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1280,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Monday 05:00": {
+      "main": [
+        [
+          {
+            "node": "Re-index Obsidian vault",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Re-index Obsidian vault": {
+      "main": [
+        [
+          {
+            "node": "Re-index WijerCo KB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Re-index WijerCo KB": {
+      "main": [
+        [
+          {
+            "node": "Fetch KB overview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch KB overview": {
+      "main": [
+        [
+          {
+            "node": "Email confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

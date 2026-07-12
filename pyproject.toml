@@ -1,0 +1,14 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "live: requires live services (Qdrant, Ollama, agents, real model calls); skipped by default unless the service is reachable",
+    "perf: cost/latency regression checks; record a baseline on first run",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["orchestrator", "rag", "common", "memory", "harness"]
+omit = ["*/tests/*"]

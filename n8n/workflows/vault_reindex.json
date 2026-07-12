@@ -1,0 +1,72 @@
+{
+  "name": "Agentic RAG — Vault Re-Index (Weekly)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "cron-weekly",
+      "name": "Every Sunday 2am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8005/index",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "vault_path": "={{ $env.OBSIDIAN_VAULT_PATH }}"
+        },
+        "options": { "timeout": 300000 }
+      },
+      "id": "reindex",
+      "name": "Re-Index Vault",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8004/notify",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "title": "Vault Re-Index Complete",
+          "body": "={{ 'Indexed ' + $json.chunks_total + ' chunks from ' + $json.notes_indexed + ' notes.' }}",
+          "tags": ["index", "maintenance"]
+        }
+      },
+      "id": "notify-reindex",
+      "name": "Notify Completion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 300]
+    }
+  ],
+  "connections": {
+    "Every Sunday 2am": {
+      "main": [
+        [{ "node": "Re-Index Vault", "type": "main", "index": 0 }]
+      ]
+    },
+    "Re-Index Vault": {
+      "main": [
+        [{ "node": "Notify Completion", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

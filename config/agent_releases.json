@@ -1,0 +1,31 @@
+{
+  "release": "2026.07-phase5-product",
+  "created_at": "2026-07-01",
+  "agents": {
+    "content_studio": {
+      "version": "1.0.0",
+      "slugs": [
+        "brief-builder",
+        "research-producer",
+        "scriptwriter",
+        "storyboarder",
+        "visual-director",
+        "editor",
+        "qa-brand-reviewer"
+      ]
+    },
+    "operating_layer": {
+      "version": "1.0.0",
+      "tools": [
+        "create_operating_plan",
+        "add_operating_task",
+        "get_operating_daily_brief",
+        "remember_project_fact"
+      ]
+    }
+  },
+  "rollback": {
+    "strategy": "restore previous config/agent_releases.json and database backup",
+    "backup_command": "POST /ops/backup"
+  }
+}

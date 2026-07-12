@@ -1,0 +1,53 @@
+{
+  "name": "WijerCo — Policy & Regulatory Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "cronExpression", "expression": "0 8 * * 1" } ] }
+      },
+      "id": "trig-policy",
+      "name": "Monday 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"query\": \"Scan for Australian higher-education regulatory and policy changes that affect WijerCo or its clients: TEQSA conditions and decisions, AQF revisions, teaching-qualification requirements, ESOS/international settings, and funding policy. For each, state what changed, who it affects, and the action it implies. Flag anything time-sensitive.\",\n  \"session_id\": \"n8n-policy\",\n  \"force_route\": \"operations\",\n  \"subagent\": \"policy-regulatory-advisor\"\n}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "n-policy",
+      "name": "Mira: regulatory scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "a.j.c.wijeratne@gmail.com",
+        "toEmail": "a.j.c.wijeratne@gmail.com",
+        "subject": "WijerCo — Policy & Regulatory Monitor",
+        "emailFormat": "text",
+        "text": "={{ $json.answer }}",
+        "options": {}
+      },
+      "id": "n-email-policy",
+      "name": "Email the scan",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [760, 300]
+    }
+  ],
+  "connections": {
+    "Monday 08:00": { "main": [[{ "node": "Mira: regulatory scan", "type": "main", "index": 0 }]] },
+    "Mira: regulatory scan": { "main": [[{ "node": "Email the scan", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

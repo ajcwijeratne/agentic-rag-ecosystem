@@ -1,0 +1,20 @@
+# Pre-commit hooks. Install once:
+#   pip install pre-commit
+#   pre-commit install
+# Then every `git commit` is scanned for secrets before it lands.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        name: Detect hardcoded secrets (gitleaks)
+        args: ["protect", "--staged", "--config", ".gitleaks.toml"]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace

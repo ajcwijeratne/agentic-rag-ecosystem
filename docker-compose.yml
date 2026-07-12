@@ -1,0 +1,128 @@
+version: "3.9"
+
+# =============================================================================
+# AGENTIC RAG ECOSYSTEM — Docker Compose Stack
+# Services: Qdrant · Ollama · n8n · SearXNG
+# =============================================================================
+
+networks:
+  rag-net:
+    driver: bridge
+
+volumes:
+  qdrant_storage:
+  ollama_models:
+  n8n_data:
+  searxng_config:
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # QDRANT — Vector Store
+  # UI:  http://localhost:6333/dashboard
+  # API: http://localhost:6333
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"      # gRPC
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    networks:
+      - rag-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # OLLAMA — Local LLM Inference
+  # API: http://localhost:11434
+  # After first start, pull models with:
+  #   docker exec ollama ollama pull llama3
+  #   docker exec ollama ollama pull phi3
+  #   docker exec ollama ollama pull nomic-embed-text
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - rag-net
+    # Uncomment if you have an NVIDIA GPU:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # N8N — Workflow Automation Engine
+  # UI: http://localhost:5678
+  # ---------------------------------------------------------------------------
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/home/node/.n8n/workflows
+    environment:
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - NODE_ENV=production
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:?N8N_BASIC_AUTH_PASSWORD must be set in .env (no default)}
+      - EXECUTIONS_PROCESS=main
+      - N8N_LOG_LEVEL=info
+    networks:
+      - rag-net
+    depends_on:
+      - qdrant
+
+  # ---------------------------------------------------------------------------
+  # SEARXNG — Self-Hosted Metasearch Engine
+  # UI: http://localhost:8080
+  # ---------------------------------------------------------------------------
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - searxng_config:/etc/searxng
+      - ./config/searxng-settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - SEARXNG_BASE_URL=${SEARXNG_BASE_URL:-http://localhost:8080}
+      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:?SEARXNG_SECRET_KEY must be set in .env (no default)}
+    networks:
+      - rag-net
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID

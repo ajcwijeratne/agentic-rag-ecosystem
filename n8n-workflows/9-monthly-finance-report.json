@@ -1,0 +1,53 @@
+{
+  "name": "WijerCo — Monthly Finance Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "cronExpression", "expression": "0 8 1 * *" } ] }
+      },
+      "id": "trig-finance",
+      "name": "1st of month 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"query\": \"Produce the monthly WijerCo finance summary: income and expenses for the month, engagement margins, anything that needs attention, and the position heading into next month. If you lack figures, state exactly what data you need and from where.\",\n  \"session_id\": \"n8n-finance\",\n  \"force_route\": \"operations\",\n  \"subagent\": \"finance-reporter\"\n}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "n-finance",
+      "name": "Fenn: monthly report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "a.j.c.wijeratne@gmail.com",
+        "toEmail": "a.j.c.wijeratne@gmail.com",
+        "subject": "=WijerCo Finance Report — {{ $now.minus({ days: 1 }).format('LLLL yyyy') }}",
+        "emailFormat": "text",
+        "text": "={{ $json.answer }}",
+        "options": {}
+      },
+      "id": "n-email-finance",
+      "name": "Email the report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [760, 300]
+    }
+  ],
+  "connections": {
+    "1st of month 08:00": { "main": [[{ "node": "Fenn: monthly report", "type": "main", "index": 0 }]] },
+    "Fenn: monthly report": { "main": [[{ "node": "Email the report", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

@@ -1,0 +1,96 @@
+# =============================================================================
+# Agentic RAG Ecosystem — Python Dependencies
+# Install: pip install -r requirements.txt
+# Python >= 3.11 recommended
+#
+# Versions are pinned with ~= (compatible release) to the tested floors. This
+# allows patch updates within a minor series while keeping installs reproducible.
+# To refresh against what actually runs on your machine:
+#   pip freeze > requirements.lock.txt
+# and reconcile any drift back into this file.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Core orchestration
+# ---------------------------------------------------------------------------
+langgraph~=0.2.0
+langchain~=0.2.0
+langchain-community~=0.2.0
+langchain-openai~=0.1.0
+fastapi~=0.111.0
+uvicorn[standard]~=0.30.0
+httpx~=0.27.0
+pydantic~=2.7.0
+
+# ---------------------------------------------------------------------------
+# MCP / Agent servers
+# ---------------------------------------------------------------------------
+fastmcp~=3.4.0
+
+# ---------------------------------------------------------------------------
+# Embeddings & Vector store client
+# ---------------------------------------------------------------------------
+qdrant-client~=1.9.0
+
+# ---------------------------------------------------------------------------
+# Web scraping / search
+# ---------------------------------------------------------------------------
+beautifulsoup4~=4.12.0
+lxml~=5.2.0
+
+# ---------------------------------------------------------------------------
+# Media processing
+# ---------------------------------------------------------------------------
+faster-whisper~=1.0.0
+moviepy~=1.0.3
+
+# ---------------------------------------------------------------------------
+# Multimodal expansion (Phase 2) — image ingestion + visual search
+#   torch + open_clip back the self-hosted visual embedder (media_visual).
+#   Pillow reads image dimensions; pytesseract does OCR (needs the system
+#   `tesseract` binary: apt/brew/choco install tesseract). All degrade
+#   gracefully if absent — visual search and OCR simply switch off.
+# ---------------------------------------------------------------------------
+torch~=2.3.0
+open_clip_torch~=2.24.0
+Pillow~=10.3.0
+pytesseract~=0.3.10
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+apprise~=1.9.0
+
+# ---------------------------------------------------------------------------
+# Cloud storage (optional — install as needed)
+# ---------------------------------------------------------------------------
+google-cloud-storage~=2.16.0
+# boto3~=1.34.0
+
+# ---------------------------------------------------------------------------
+# Multi-LLM providers
+# ---------------------------------------------------------------------------
+anthropic~=0.28.0          # Claude (Haiku, Sonnet, Opus, Fable)
+openai~=1.35.0             # GPT-4o, GPT-4o-mini, o1, plus DeepSeek compat
+google-generativeai~=0.7.0 # Gemini 1.5 Flash/Pro, 2.0 Flash
+
+# ---------------------------------------------------------------------------
+# Hybrid RAG search
+# ---------------------------------------------------------------------------
+sentence-transformers~=2.7.0   # cross-encoder reranker
+rank-bm25~=0.2.2               # BM25 sparse retrieval
+
+# ---------------------------------------------------------------------------
+# File upload + text extraction
+# ---------------------------------------------------------------------------
+python-multipart~=0.0.9        # FastAPI form/file uploads
+pypdf~=4.2.0                   # PDF text extraction
+python-docx~=1.1.0             # DOCX text extraction
+
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+python-dotenv~=1.0.0
+tenacity~=8.3.0          # retry logic
+rich~=13.7.0             # pretty CLI output
+typer~=0.12.0            # CLI framework

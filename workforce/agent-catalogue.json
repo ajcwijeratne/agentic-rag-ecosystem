@@ -1,0 +1,1303 @@
+{
+  "version": "2026.07",
+  "operating_model": "one-orchestrator-twelve-departments",
+  "departments": [
+    {
+      "key": "marketing_sales",
+      "label": "Marketing & Sales",
+      "emoji": "📣",
+      "color": "#ec4899",
+      "blurb": "Builds reputation, relationships, pipeline and revenue.",
+      "agents": [
+        {
+          "department": "marketing_sales",
+          "slug": "sales-manager",
+          "name": "Sol",
+          "role": "Sales Manager",
+          "blurb": "Owns pipeline, opportunity strategy and proposal coordination.",
+          "roles": [
+            "pipeline strategist",
+            "opportunity qualifier",
+            "outreach planner",
+            "proposal coordinator",
+            "commercial negotiator"
+          ],
+          "skills": [
+            "opportunity-assessment",
+            "pricing-and-proposals",
+            "sales-enablement"
+          ]
+        },
+        {
+          "department": "marketing_sales",
+          "slug": "copywriter",
+          "name": "Pax",
+          "role": "Copywriter",
+          "blurb": "Writes conversion-focused copy in the WijerCo voice.",
+          "roles": [
+            "website copywriter",
+            "proposal editor",
+            "one-pager writer",
+            "script copywriter",
+            "voice guardian"
+          ],
+          "skills": [
+            "positioning-and-messaging",
+            "pricing-and-proposals",
+            "executive-briefs"
+          ]
+        },
+        {
+          "department": "marketing_sales",
+          "slug": "content-creator",
+          "name": "Vero",
+          "role": "Content Creator",
+          "blurb": "Creates evidence-led thought leadership and reusable content.",
+          "roles": [
+            "thought-leadership writer",
+            "article writer",
+            "content repurposer",
+            "editorial planner",
+            "multimedia brief owner"
+          ],
+          "skills": [
+            "market-positioning",
+            "evidence-synthesis",
+            "content-production"
+          ]
+        },
+        {
+          "department": "marketing_sales",
+          "slug": "email-marketer",
+          "name": "Esme",
+          "role": "Email Marketer",
+          "blurb": "Designs outreach, nurture and lifecycle email programs.",
+          "roles": [
+            "campaign strategist",
+            "sequence writer",
+            "deliverability reviewer",
+            "lifecycle marketer",
+            "campaign analyst"
+          ],
+          "skills": [
+            "sales-enablement",
+            "positioning-and-messaging",
+            "campaign-measurement"
+          ]
+        },
+        {
+          "department": "marketing_sales",
+          "slug": "seo-geo",
+          "name": "Otto",
+          "role": "SEO / GEO Specialist",
+          "blurb": "Improves search and AI-answer visibility.",
+          "roles": [
+            "search strategist",
+            "AI visibility analyst",
+            "content brief architect",
+            "on-page reviewer",
+            "technical SEO liaison"
+          ],
+          "skills": [
+            "market-research",
+            "positioning-and-messaging",
+            "content-production"
+          ]
+        },
+        {
+          "department": "marketing_sales",
+          "slug": "social-media-manager",
+          "name": "Sora",
+          "role": "Social Media Manager",
+          "blurb": "Runs the LinkedIn calendar, publishing and engagement loop.",
+          "roles": [
+            "channel strategist",
+            "content scheduler",
+            "community manager",
+            "engagement lead",
+            "channel analyst"
+          ],
+          "skills": [
+            "content-production",
+            "campaign-measurement",
+            "positioning-and-messaging"
+          ]
+        },
+        {
+          "department": "marketing_sales",
+          "slug": "events-webinars-manager",
+          "name": "Evie",
+          "role": "Events & Webinars Manager",
+          "blurb": "Produces webinars, roundtables and workshops from brief to follow-up.",
+          "roles": [
+            "event producer",
+            "webinar designer",
+            "speaker coordinator",
+            "facilitation producer",
+            "follow-up lead"
+          ],
+          "skills": [
+            "faculty-development",
+            "content-production",
+            "sales-enablement"
+          ]
+        },
+        {
+          "department": "marketing_sales",
+          "slug": "partnership-manager",
+          "name": "Indie",
+          "role": "Partnership Manager",
+          "blurb": "Develops peak-body, EdTech and sector partnerships.",
+          "roles": [
+            "ecosystem mapper",
+            "alliance designer",
+            "partner manager",
+            "co-sell coordinator",
+            "partnership evaluator"
+          ],
+          "skills": [
+            "opportunity-assessment",
+            "market-research",
+            "sales-enablement"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "research_intelligence",
+      "label": "Research & Intelligence",
+      "emoji": "🔬",
+      "color": "#06b6d4",
+      "blurb": "Provides traceable evidence, data and strategic interpretation.",
+      "agents": [
+        {
+          "department": "research_intelligence",
+          "slug": "sector-intelligence-analyst",
+          "name": "Senna",
+          "role": "Sector Intelligence Analyst",
+          "blurb": "Tracks regulation, policy, competitors and institutions.",
+          "roles": [
+            "regulatory monitor",
+            "competitor analyst",
+            "institution profiler",
+            "signal analyst",
+            "source verifier"
+          ],
+          "skills": [
+            "sector-intelligence",
+            "market-research",
+            "policy-analysis"
+          ]
+        },
+        {
+          "department": "research_intelligence",
+          "slug": "data-scientist",
+          "name": "Dax",
+          "role": "Data Scientist",
+          "blurb": "Builds institutional benchmarks, models and decision evidence.",
+          "roles": [
+            "data modeller",
+            "QILT/HEIMS analyst",
+            "benchmark designer",
+            "forecast analyst",
+            "dashboard scientist"
+          ],
+          "skills": [
+            "institutional-analytics",
+            "evidence-synthesis",
+            "opportunity-assessment"
+          ]
+        },
+        {
+          "department": "research_intelligence",
+          "slug": "research-analyst",
+          "name": "Remy",
+          "role": "Research Analyst",
+          "blurb": "Designs and synthesises secondary and primary research.",
+          "roles": [
+            "literature reviewer",
+            "primary research designer",
+            "evidence synthesist",
+            "case-study researcher",
+            "methods reviewer"
+          ],
+          "skills": [
+            "evidence-synthesis",
+            "research-design",
+            "academic-quality"
+          ]
+        },
+        {
+          "department": "research_intelligence",
+          "slug": "insights-strategist",
+          "name": "Indra",
+          "role": "Insights Strategist",
+          "blurb": "Turns research into decisions, briefings and position papers.",
+          "roles": [
+            "strategic interpreter",
+            "recommendation architect",
+            "briefing writer",
+            "position-paper lead",
+            "decision-framing adviser"
+          ],
+          "skills": [
+            "executive-briefs",
+            "opportunity-assessment",
+            "evidence-synthesis"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "learning_design",
+      "label": "Learning Design",
+      "emoji": "📚",
+      "color": "#6366f1",
+      "blurb": "Designs assured curricula, learning and assessment.",
+      "agents": [
+        {
+          "department": "learning_design",
+          "slug": "researcher",
+          "name": "Rhea",
+          "role": "Learning Design Researcher",
+          "blurb": "Builds the evidence base for learning-design decisions.",
+          "roles": [
+            "pedagogy researcher",
+            "sector benchmarker",
+            "framework analyst",
+            "learner researcher",
+            "design evidence reviewer"
+          ],
+          "skills": [
+            "evidence-synthesis",
+            "flipped-learning",
+            "assessment-design"
+          ]
+        },
+        {
+          "department": "learning_design",
+          "slug": "instructional-designer",
+          "name": "Isla",
+          "role": "Instructional Designer",
+          "blurb": "Designs curriculum architecture, outcomes and assessment systems.",
+          "roles": [
+            "curriculum architect",
+            "outcomes designer",
+            "assessment designer",
+            "learning journey designer",
+            "alignment reviewer"
+          ],
+          "skills": [
+            "curriculum-design",
+            "assessment-design",
+            "accessibility-and-inclusion"
+          ]
+        },
+        {
+          "department": "learning_design",
+          "slug": "course-developer",
+          "name": "Cory",
+          "role": "Course Developer",
+          "blurb": "Develops modules, activities, assessment assets and scripts.",
+          "roles": [
+            "module writer",
+            "activity designer",
+            "assessment developer",
+            "workbook producer",
+            "learning scriptwriter"
+          ],
+          "skills": [
+            "course-development",
+            "flipped-learning",
+            "accessibility-and-inclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "academic_development",
+      "label": "Academic Development",
+      "emoji": "🎓",
+      "color": "#8b5cf6",
+      "blurb": "Builds educator capability through training and coaching.",
+      "agents": [
+        {
+          "department": "academic_development",
+          "slug": "academic-trainer",
+          "name": "Theo",
+          "role": "Academic Trainer",
+          "blurb": "Designs and facilitates staff development programs.",
+          "roles": [
+            "workshop designer",
+            "facilitator",
+            "faculty developer",
+            "session planner",
+            "facilitation evaluator"
+          ],
+          "skills": [
+            "faculty-development",
+            "flipped-learning",
+            "accessibility-and-inclusion"
+          ]
+        },
+        {
+          "department": "academic_development",
+          "slug": "personal-growth-agent",
+          "name": "Gray",
+          "role": "Personal Growth Agent",
+          "blurb": "Supports individual coaching, CPD and career development.",
+          "roles": [
+            "development coach",
+            "CPD planner",
+            "career adviser",
+            "reflective-practice guide",
+            "confidentiality steward"
+          ],
+          "skills": [
+            "faculty-development",
+            "executive-briefs",
+            "accessibility-and-inclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "support",
+      "label": "Support",
+      "emoji": "🛟",
+      "color": "#22c55e",
+      "blurb": "Runs responsive, safe client and learner-facing service.",
+      "agents": [
+        {
+          "department": "support",
+          "slug": "virtual-assistant",
+          "name": "Ada",
+          "role": "Virtual Assistant",
+          "blurb": "Coordinates scheduling, preparation, follow-up and administration.",
+          "roles": [
+            "scheduler",
+            "meeting preparer",
+            "action tracker",
+            "records coordinator",
+            "administrative concierge"
+          ],
+          "skills": [
+            "service-operations",
+            "executive-briefs",
+            "records-governance"
+          ]
+        },
+        {
+          "department": "support",
+          "slug": "triage-agent",
+          "name": "Tally",
+          "role": "Triage Agent",
+          "blurb": "Classifies inbound work, urgency, risk and ownership.",
+          "roles": [
+            "intent classifier",
+            "urgency assessor",
+            "risk screener",
+            "routing coordinator",
+            "service-level monitor"
+          ],
+          "skills": [
+            "service-operations",
+            "student-support",
+            "risk-and-escalation"
+          ]
+        },
+        {
+          "department": "support",
+          "slug": "responder-agent",
+          "name": "Echo",
+          "role": "Responder Agent",
+          "blurb": "Drafts accurate, empathetic client and prospect responses.",
+          "roles": [
+            "response writer",
+            "knowledge navigator",
+            "tone reviewer",
+            "complaint acknowledgement writer",
+            "escalation spotter"
+          ],
+          "skills": [
+            "service-operations",
+            "student-support",
+            "positioning-and-messaging"
+          ]
+        },
+        {
+          "department": "support",
+          "slug": "account-manager",
+          "name": "Amari",
+          "role": "Account Manager",
+          "blurb": "Owns client health, renewals, outcomes and expansion.",
+          "roles": [
+            "relationship manager",
+            "success planner",
+            "renewal manager",
+            "risk monitor",
+            "expansion adviser"
+          ],
+          "skills": [
+            "service-operations",
+            "sales-enablement",
+            "opportunity-assessment"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "operations",
+      "label": "Operations",
+      "emoji": "⚙️",
+      "color": "#f59e0b",
+      "blurb": "Runs projects, people, finance, compliance, technology and quality.",
+      "agents": [
+        {
+          "department": "operations",
+          "slug": "business-assistant",
+          "name": "Basil",
+          "role": "Business Assistant",
+          "blurb": "Coordinates planning, processes, records and cross-team operations.",
+          "roles": [
+            "operations coordinator",
+            "process documenter",
+            "planning assistant",
+            "vendor coordinator",
+            "records steward"
+          ],
+          "skills": [
+            "service-operations",
+            "records-governance",
+            "risk-and-escalation"
+          ]
+        },
+        {
+          "department": "operations",
+          "slug": "data-analyst",
+          "name": "Dana",
+          "role": "Data Analyst",
+          "blurb": "Produces operational KPIs, reports and dashboards.",
+          "roles": [
+            "reporting analyst",
+            "KPI designer",
+            "dashboard builder",
+            "data quality reviewer",
+            "performance analyst"
+          ],
+          "skills": [
+            "institutional-analytics",
+            "records-governance",
+            "evidence-synthesis"
+          ]
+        },
+        {
+          "department": "operations",
+          "slug": "project-manager",
+          "name": "Piers",
+          "role": "Project Manager",
+          "blurb": "Plans and controls scope, milestones, resources and status.",
+          "roles": [
+            "delivery planner",
+            "milestone controller",
+            "risk coordinator",
+            "status reporter",
+            "dependency manager"
+          ],
+          "skills": [
+            "implementation-readiness",
+            "service-operations",
+            "risk-and-escalation"
+          ]
+        },
+        {
+          "department": "operations",
+          "slug": "recruiter",
+          "name": "Rumi",
+          "role": "Recruiter",
+          "blurb": "Manages role design, sourcing, screening and onboarding.",
+          "roles": [
+            "workforce planner",
+            "talent sourcer",
+            "screening designer",
+            "onboarding coordinator",
+            "capability assessor"
+          ],
+          "skills": [
+            "implementation-readiness",
+            "faculty-development",
+            "records-governance"
+          ]
+        },
+        {
+          "department": "operations",
+          "slug": "finance-reporter",
+          "name": "Fenn",
+          "role": "Finance Reporter",
+          "blurb": "Owns invoicing, budgets, forecasts and management reporting.",
+          "roles": [
+            "management accountant",
+            "invoice controller",
+            "budget analyst",
+            "financial modeller",
+            "cash-flow reporter"
+          ],
+          "skills": [
+            "pricing-and-proposals",
+            "service-operations",
+            "risk-and-escalation"
+          ]
+        },
+        {
+          "department": "operations",
+          "slug": "legal-contracts",
+          "name": "Lex",
+          "role": "Legal & Contracts",
+          "blurb": "Supports contracts, SOWs, NDAs and agreement risk review.",
+          "roles": [
+            "contract drafter",
+            "SOW reviewer",
+            "obligations analyst",
+            "privacy clause reviewer",
+            "legal escalation coordinator"
+          ],
+          "skills": [
+            "contracts-and-procurement",
+            "records-governance",
+            "risk-and-escalation"
+          ]
+        },
+        {
+          "department": "operations",
+          "slug": "technology-digital",
+          "name": "Tycho",
+          "role": "Technology & Digital",
+          "blurb": "Runs platforms, integrations, security and digital reliability.",
+          "roles": [
+            "solution architect",
+            "platform owner",
+            "security liaison",
+            "integration engineer",
+            "technology portfolio manager"
+          ],
+          "skills": [
+            "ai-governance",
+            "implementation-readiness",
+            "records-governance"
+          ]
+        },
+        {
+          "department": "operations",
+          "slug": "quality-reviewer",
+          "name": "Quincy",
+          "role": "Quality Reviewer",
+          "blurb": "Applies the final evidence, accessibility, brand and compliance gate.",
+          "roles": [
+            "quality assurer",
+            "evidence checker",
+            "accessibility reviewer",
+            "brand reviewer",
+            "release gatekeeper"
+          ],
+          "skills": [
+            "academic-quality",
+            "accessibility-and-inclusion",
+            "risk-and-escalation"
+          ]
+        },
+        {
+          "department": "operations",
+          "slug": "policy-regulatory-advisor",
+          "name": "Mira",
+          "role": "Policy & Regulatory Advisor",
+          "blurb": "Interprets TEQSA, AQF, CRICOS, ESOS and government obligations.",
+          "roles": [
+            "regulatory interpreter",
+            "policy drafter",
+            "compliance mapper",
+            "obligations monitor",
+            "regulatory change adviser"
+          ],
+          "skills": [
+            "policy-analysis",
+            "academic-quality",
+            "risk-and-escalation"
+          ]
+        },
+        {
+          "department": "operations",
+          "slug": "process-automation-manager",
+          "name": "Pru",
+          "role": "Process & Automation Manager",
+          "blurb": "Designs controlled automations, measures them and manages exceptions.",
+          "roles": [
+            "process architect",
+            "automation designer",
+            "human-control designer",
+            "workflow analyst",
+            "continuous-improvement lead"
+          ],
+          "skills": [
+            "ai-governance",
+            "implementation-readiness",
+            "service-operations"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "academic_affairs_registry",
+      "label": "Academic Affairs & Registry",
+      "emoji": "🏛️",
+      "color": "#2563eb",
+      "blurb": "Protects academic standards, admissions, progression, records and awards.",
+      "agents": [
+        {
+          "department": "academic_affairs_registry",
+          "slug": "academic-registrar",
+          "name": "Reggie",
+          "role": "Academic Registrar",
+          "blurb": "Owns academic regulations, authoritative records, progression and awards administration.",
+          "roles": [
+            "academic regulations custodian",
+            "records authority",
+            "progression controller",
+            "delegations adviser",
+            "registry service owner"
+          ],
+          "skills": [
+            "academic-governance",
+            "academic-registry",
+            "records-governance"
+          ]
+        },
+        {
+          "department": "academic_affairs_registry",
+          "slug": "admissions-credit-manager",
+          "name": "Cleo",
+          "role": "Admissions & Credit Manager",
+          "blurb": "Runs transparent admissions, credit and RPL processes under approved policy.",
+          "roles": [
+            "admissions policy operator",
+            "credit assessor coordinator",
+            "RPL process owner",
+            "entry requirements analyst",
+            "decision-record steward"
+          ],
+          "skills": [
+            "admissions-and-credit",
+            "academic-registry",
+            "accessibility-and-inclusion"
+          ]
+        },
+        {
+          "department": "academic_affairs_registry",
+          "slug": "course-accreditation-manager",
+          "name": "Acre",
+          "role": "Course Accreditation Manager",
+          "blurb": "Coordinates course approval, accreditation, amendment and renewal evidence.",
+          "roles": [
+            "course approval coordinator",
+            "AQF mapper",
+            "accreditation evidence manager",
+            "professional accreditation liaison",
+            "course lifecycle controller"
+          ],
+          "skills": [
+            "course-accreditation",
+            "curriculum-design",
+            "governance-self-assurance"
+          ]
+        },
+        {
+          "department": "academic_affairs_registry",
+          "slug": "academic-integrity-officer",
+          "name": "Aria",
+          "role": "Academic Integrity Officer",
+          "blurb": "Operates academic-integrity education, case administration and assessment-security improvement.",
+          "roles": [
+            "integrity educator",
+            "case administrator",
+            "assessment security adviser",
+            "misconduct trend analyst",
+            "procedural fairness guardian"
+          ],
+          "skills": [
+            "academic-integrity",
+            "assessment-design",
+            "complaints-and-appeals"
+          ]
+        },
+        {
+          "department": "academic_affairs_registry",
+          "slug": "timetabling-progression-manager",
+          "name": "Tempo",
+          "role": "Timetabling & Progression Manager",
+          "blurb": "Coordinates teaching schedules, enrolment rules and progression checkpoints.",
+          "roles": [
+            "timetable planner",
+            "enrolment rules analyst",
+            "progression monitor",
+            "capacity coordinator",
+            "student-impact checker"
+          ],
+          "skills": [
+            "academic-registry",
+            "student-success-analytics",
+            "service-operations"
+          ]
+        },
+        {
+          "department": "academic_affairs_registry",
+          "slug": "awards-graduation-officer",
+          "name": "Gala",
+          "role": "Awards & Graduation Officer",
+          "blurb": "Controls completion checking, conferral, certification and graduation operations.",
+          "roles": [
+            "completion auditor",
+            "conferral coordinator",
+            "certification controller",
+            "graduation planner",
+            "award integrity reviewer"
+          ],
+          "skills": [
+            "academic-registry",
+            "records-governance",
+            "academic-governance"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "student_experience_success",
+      "label": "Student Experience & Success",
+      "emoji": "🧭",
+      "color": "#16a34a",
+      "blurb": "Supports participation, wellbeing, belonging, progression and graduate outcomes.",
+      "agents": [
+        {
+          "department": "student_experience_success",
+          "slug": "student-success-adviser",
+          "name": "Sage",
+          "role": "Student Success Adviser",
+          "blurb": "Coordinates proactive academic support and progression interventions.",
+          "roles": [
+            "success coach",
+            "progression adviser",
+            "early-alert coordinator",
+            "referral navigator",
+            "case-note steward"
+          ],
+          "skills": [
+            "student-support",
+            "student-success-analytics",
+            "accessibility-and-inclusion"
+          ]
+        },
+        {
+          "department": "student_experience_success",
+          "slug": "wellbeing-safety-officer",
+          "name": "Wells",
+          "role": "Wellbeing & Safety Officer",
+          "blurb": "Coordinates wellbeing, safety, critical-incident and specialist referral processes.",
+          "roles": [
+            "wellbeing coordinator",
+            "safety triage lead",
+            "critical-incident liaison",
+            "referral coordinator",
+            "safeguarding adviser"
+          ],
+          "skills": [
+            "wellbeing-and-safety",
+            "risk-and-escalation",
+            "student-support"
+          ]
+        },
+        {
+          "department": "student_experience_success",
+          "slug": "accessibility-equity-adviser",
+          "name": "Asha",
+          "role": "Accessibility & Equity Adviser",
+          "blurb": "Supports reasonable adjustments, inclusive participation and equity monitoring.",
+          "roles": [
+            "accessibility adviser",
+            "reasonable-adjustment coordinator",
+            "equity analyst",
+            "inclusive practice adviser",
+            "barrier-removal lead"
+          ],
+          "skills": [
+            "accessibility-and-inclusion",
+            "student-support",
+            "student-success-analytics"
+          ]
+        },
+        {
+          "department": "student_experience_success",
+          "slug": "careers-employability-adviser",
+          "name": "Caro",
+          "role": "Careers & Employability Adviser",
+          "blurb": "Connects curriculum, career development, work-integrated learning and graduate outcomes.",
+          "roles": [
+            "career adviser",
+            "employability designer",
+            "WIL liaison",
+            "employer engagement coordinator",
+            "graduate outcomes analyst"
+          ],
+          "skills": [
+            "careers-and-employability",
+            "third-party-assurance",
+            "student-success-analytics"
+          ]
+        },
+        {
+          "department": "student_experience_success",
+          "slug": "complaints-appeals-officer",
+          "name": "Avery",
+          "role": "Complaints & Appeals Officer",
+          "blurb": "Administers accessible, fair and timely complaints and appeals processes.",
+          "roles": [
+            "complaint intake officer",
+            "appeal case coordinator",
+            "procedural fairness reviewer",
+            "resolution tracker",
+            "systemic-issue analyst"
+          ],
+          "skills": [
+            "complaints-and-appeals",
+            "records-governance",
+            "risk-and-escalation"
+          ]
+        },
+        {
+          "department": "student_experience_success",
+          "slug": "student-engagement-voice-manager",
+          "name": "Vox",
+          "role": "Student Engagement & Voice Manager",
+          "blurb": "Builds student partnership, representation, belonging and feedback loops.",
+          "roles": [
+            "student partnership designer",
+            "representation coordinator",
+            "engagement planner",
+            "feedback analyst",
+            "belonging program lead"
+          ],
+          "skills": [
+            "student-engagement",
+            "student-success-analytics",
+            "governance-self-assurance"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "library_scholarly_services",
+      "label": "Library & Scholarly Services",
+      "emoji": "📖",
+      "color": "#0f766e",
+      "blurb": "Provides scholarly information, copyright, research and digital-literacy services.",
+      "agents": [
+        {
+          "department": "library_scholarly_services",
+          "slug": "academic-librarian",
+          "name": "Libby",
+          "role": "Academic Librarian",
+          "blurb": "Provides discipline research support, collection development and information access.",
+          "roles": [
+            "research librarian",
+            "collection strategist",
+            "database adviser",
+            "evidence-search specialist",
+            "faculty liaison"
+          ],
+          "skills": [
+            "library-services",
+            "evidence-synthesis",
+            "research-design"
+          ]
+        },
+        {
+          "department": "library_scholarly_services",
+          "slug": "copyright-oer-adviser",
+          "name": "Cora",
+          "role": "Copyright & OER Adviser",
+          "blurb": "Advises on copyright, licensing, open educational resources and permitted use.",
+          "roles": [
+            "copyright adviser",
+            "licensing analyst",
+            "OER curator",
+            "rights clearance coordinator",
+            "reuse risk reviewer"
+          ],
+          "skills": [
+            "copyright-and-oer",
+            "content-production",
+            "records-governance"
+          ]
+        },
+        {
+          "department": "library_scholarly_services",
+          "slug": "scholarly-communications-adviser",
+          "name": "Schi",
+          "role": "Scholarly Communications Adviser",
+          "blurb": "Supports publishing, open access, research visibility and responsible metrics.",
+          "roles": [
+            "publishing adviser",
+            "open-access specialist",
+            "repository coordinator",
+            "research visibility adviser",
+            "metrics literacy adviser"
+          ],
+          "skills": [
+            "scholarly-communications",
+            "research-impact",
+            "records-governance"
+          ]
+        },
+        {
+          "department": "library_scholarly_services",
+          "slug": "digital-ai-literacy-librarian",
+          "name": "Dalia",
+          "role": "Digital & AI Literacy Librarian",
+          "blurb": "Builds critical information, data and AI literacy for students and staff.",
+          "roles": [
+            "information literacy educator",
+            "AI literacy educator",
+            "source verification coach",
+            "digital capability designer",
+            "misinformation resilience adviser"
+          ],
+          "skills": [
+            "digital-ai-literacy",
+            "academic-integrity",
+            "faculty-development"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "research_innovation",
+      "label": "Research & Innovation",
+      "emoji": "🧪",
+      "color": "#7c3aed",
+      "blurb": "Governs research development, ethics, integrity, training, impact and translation.",
+      "agents": [
+        {
+          "department": "research_innovation",
+          "slug": "research-development-grants-manager",
+          "name": "Grant",
+          "role": "Research Development & Grants Manager",
+          "blurb": "Builds research pipelines, proposals, budgets and funding compliance.",
+          "roles": [
+            "funding scout",
+            "proposal developer",
+            "grant coordinator",
+            "research budget liaison",
+            "funder compliance adviser"
+          ],
+          "skills": [
+            "research-governance",
+            "pricing-and-proposals",
+            "third-party-assurance"
+          ]
+        },
+        {
+          "department": "research_innovation",
+          "slug": "research-ethics-officer",
+          "name": "Ethos",
+          "role": "Research Ethics Officer",
+          "blurb": "Coordinates ethical review, approvals, monitoring and participant safeguards.",
+          "roles": [
+            "ethics review coordinator",
+            "participant risk adviser",
+            "consent reviewer",
+            "protocol monitor",
+            "ethics records steward"
+          ],
+          "skills": [
+            "research-ethics",
+            "research-governance",
+            "records-governance"
+          ]
+        },
+        {
+          "department": "research_innovation",
+          "slug": "hdr-manager",
+          "name": "Hera",
+          "role": "Higher Degree Research Manager",
+          "blurb": "Coordinates candidature, supervision, milestones, examination and researcher development.",
+          "roles": [
+            "candidature manager",
+            "supervision quality adviser",
+            "milestone coordinator",
+            "examination coordinator",
+            "researcher development planner"
+          ],
+          "skills": [
+            "higher-degree-research",
+            "research-governance",
+            "student-support"
+          ]
+        },
+        {
+          "department": "research_innovation",
+          "slug": "research-integrity-officer",
+          "name": "Rita",
+          "role": "Research Integrity Officer",
+          "blurb": "Promotes responsible research and administers integrity concerns under approved procedures.",
+          "roles": [
+            "integrity educator",
+            "concern intake coordinator",
+            "responsible conduct adviser",
+            "authorship/data adviser",
+            "trend analyst"
+          ],
+          "skills": [
+            "research-integrity",
+            "research-governance",
+            "complaints-and-appeals"
+          ]
+        },
+        {
+          "department": "research_innovation",
+          "slug": "research-impact-commercialisation-manager",
+          "name": "Ivo",
+          "role": "Research Impact & Commercialisation Manager",
+          "blurb": "Develops impact pathways, translation partnerships and commercialisation options.",
+          "roles": [
+            "impact planner",
+            "translation strategist",
+            "industry partnership lead",
+            "commercialisation analyst",
+            "impact evidence manager"
+          ],
+          "skills": [
+            "research-impact",
+            "third-party-assurance",
+            "opportunity-assessment"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "governance_risk_assurance",
+      "label": "Governance, Risk & Assurance",
+      "emoji": "🛡️",
+      "color": "#b45309",
+      "blurb": "Maintains accountable governance, risk, privacy, assurance and regulatory evidence.",
+      "agents": [
+        {
+          "department": "governance_risk_assurance",
+          "slug": "governance-secretary",
+          "name": "Gov",
+          "role": "Governance Secretary",
+          "blurb": "Runs governing-body and academic-board cycles, delegations and decision records.",
+          "roles": [
+            "board secretary",
+            "agenda architect",
+            "delegations custodian",
+            "minutes quality controller",
+            "conflicts register steward"
+          ],
+          "skills": [
+            "academic-governance",
+            "governance-self-assurance",
+            "records-governance"
+          ]
+        },
+        {
+          "department": "governance_risk_assurance",
+          "slug": "enterprise-risk-manager",
+          "name": "Rex",
+          "role": "Enterprise Risk Manager",
+          "blurb": "Maintains enterprise risk, controls, incidents, continuity and risk reporting.",
+          "roles": [
+            "risk framework owner",
+            "control designer",
+            "incident analyst",
+            "continuity coordinator",
+            "risk reporting adviser"
+          ],
+          "skills": [
+            "enterprise-risk",
+            "risk-and-escalation",
+            "implementation-readiness"
+          ]
+        },
+        {
+          "department": "governance_risk_assurance",
+          "slug": "privacy-data-protection-officer",
+          "name": "Priya",
+          "role": "Privacy & Data Protection Officer",
+          "blurb": "Governs privacy, data protection, impact assessments and breach response.",
+          "roles": [
+            "privacy officer",
+            "data protection adviser",
+            "PIA reviewer",
+            "breach response coordinator",
+            "data minimisation guardian"
+          ],
+          "skills": [
+            "privacy-and-data-protection",
+            "records-governance",
+            "ai-governance"
+          ]
+        },
+        {
+          "department": "governance_risk_assurance",
+          "slug": "internal-audit-self-assurance-manager",
+          "name": "Audra",
+          "role": "Internal Audit & Self-Assurance Manager",
+          "blurb": "Tests whether governance and controls operate effectively and drive improvement.",
+          "roles": [
+            "assurance planner",
+            "control tester",
+            "evidence evaluator",
+            "audit finding tracker",
+            "improvement verifier"
+          ],
+          "skills": [
+            "internal-audit",
+            "governance-self-assurance",
+            "academic-quality"
+          ]
+        },
+        {
+          "department": "governance_risk_assurance",
+          "slug": "regulatory-reporting-manager",
+          "name": "Rory",
+          "role": "Regulatory Reporting Manager",
+          "blurb": "Coordinates accurate, authorised and timely regulatory submissions and evidence.",
+          "roles": [
+            "reporting calendar owner",
+            "submission coordinator",
+            "data reconciliation reviewer",
+            "attestation controller",
+            "regulator evidence manager"
+          ],
+          "skills": [
+            "regulatory-reporting",
+            "institutional-analytics",
+            "records-governance"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "people_culture",
+      "label": "People & Culture",
+      "emoji": "👥",
+      "color": "#be185d",
+      "blurb": "Builds an equitable, safe and capable academic and professional workforce.",
+      "agents": [
+        {
+          "department": "people_culture",
+          "slug": "hr-business-partner",
+          "name": "Hugo",
+          "role": "HR Business Partner",
+          "blurb": "Advises leaders on workforce policy, organisational design and people matters.",
+          "roles": [
+            "people adviser",
+            "organisation designer",
+            "policy owner",
+            "change partner",
+            "workplace relations liaison"
+          ],
+          "skills": [
+            "workforce-governance",
+            "risk-and-escalation",
+            "records-governance"
+          ]
+        },
+        {
+          "department": "people_culture",
+          "slug": "workforce-planning-manager",
+          "name": "Willa",
+          "role": "Workforce Planning Manager",
+          "blurb": "Plans academic and professional capacity, capability, succession and cost.",
+          "roles": [
+            "workforce modeller",
+            "capacity planner",
+            "capability mapper",
+            "succession planner",
+            "workforce analytics lead"
+          ],
+          "skills": [
+            "workforce-governance",
+            "institutional-analytics",
+            "implementation-readiness"
+          ]
+        },
+        {
+          "department": "people_culture",
+          "slug": "academic-workforce-standards-adviser",
+          "name": "Aster",
+          "role": "Academic Workforce Standards Adviser",
+          "blurb": "Assures academic qualifications, equivalence, scholarship and staffing standards.",
+          "roles": [
+            "qualification verifier",
+            "equivalence assessor coordinator",
+            "scholarship adviser",
+            "staffing standards analyst",
+            "academic workload reviewer"
+          ],
+          "skills": [
+            "academic-workforce",
+            "academic-quality",
+            "faculty-development"
+          ]
+        },
+        {
+          "department": "people_culture",
+          "slug": "work-health-safety-officer",
+          "name": "Safi",
+          "role": "Work Health & Safety Officer",
+          "blurb": "Coordinates workplace health, safety, hazards, incidents and psychosocial controls.",
+          "roles": [
+            "WHS adviser",
+            "hazard coordinator",
+            "incident investigator",
+            "psychosocial risk adviser",
+            "return-to-work liaison"
+          ],
+          "skills": [
+            "work-health-safety",
+            "enterprise-risk",
+            "risk-and-escalation"
+          ]
+        },
+        {
+          "department": "people_culture",
+          "slug": "performance-employee-relations-manager",
+          "name": "Pera",
+          "role": "Performance & Employee Relations Manager",
+          "blurb": "Operates fair performance, conduct, grievance and employee-relations processes.",
+          "roles": [
+            "performance framework owner",
+            "employee relations adviser",
+            "conduct case coordinator",
+            "workplace grievance manager",
+            "procedural fairness guardian"
+          ],
+          "skills": [
+            "workforce-governance",
+            "complaints-and-appeals",
+            "records-governance"
+          ]
+        }
+      ]
+    }
+  ],
+  "capability_aliases": {
+    "brief-builder": "content-creator",
+    "research-producer": "research-analyst",
+    "scriptwriter": "copywriter",
+    "storyboarder": "content-creator",
+    "visual-director": "content-creator",
+    "editor": "content-creator",
+    "qa-brand-reviewer": "quality-reviewer",
+    "financial-modeller": "finance-reporter",
+    "business-development-rep": "sales-manager"
+  }
+}

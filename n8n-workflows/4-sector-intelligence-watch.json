@@ -1,0 +1,57 @@
+{
+  "name": "WijerCo — Sector Intelligence Watch",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 7 * * 5" }
+          ]
+        }
+      },
+      "id": "trigger-sector",
+      "name": "Friday 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"query\": \"As the Research & Intelligence department, summarise the most important Australian higher-education sector developments from the past week: TEQSA decisions, AQF or policy changes, QILT or HEIMS data, funding, and notable institutional moves. For each, state the implication for WijerCo's clients. Be specific with names, numbers, and dates. End with the single development Aaron should act on.\",\n  \"session_id\": \"n8n-sector-watch\",\n  \"force_route\": \"research_intelligence\"\n}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "sector-query",
+      "name": "Research the sector",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "a.j.c.wijeratne@gmail.com",
+        "toEmail": "a.j.c.wijeratne@gmail.com",
+        "subject": "=WijerCo Sector Watch — week of {{ $now.format('d LLL') }}",
+        "emailFormat": "text",
+        "text": "={{ $json.answer }}",
+        "options": {}
+      },
+      "id": "email-sector",
+      "name": "Email the brief",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [760, 300]
+    }
+  ],
+  "connections": {
+    "Friday 07:00": { "main": [[{ "node": "Research the sector", "type": "main", "index": 0 }]] },
+    "Research the sector": { "main": [[{ "node": "Email the brief", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

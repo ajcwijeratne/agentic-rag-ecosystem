@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WijerCo Command Centre</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.js"></script>
+  <style>
+    :root {
+      --bg:#0f1117; --bg2:#161b27; --bg3:#1e2535;
+      --border:#2a3348; --text:#e2e8f0; --muted:#64748b;
+      --accent:#6366f1; --green:#22c55e; --red:#ef4444; --yellow:#eab308;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;height:100vh;overflow:hidden}
+    ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg2)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+    .typing-cursor::after{content:'▋';animation:blink .7s infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+    .pill{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;font-size:11px;font-weight:600}
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:100}
+    .session-item{cursor:pointer;padding:10px 12px;border-bottom:1px solid var(--border);border-left:2px solid transparent;transition:background .15s}
+    .session-item:hover{background:var(--bg3)}
+    .session-item.active{border-left-color:var(--accent);background:var(--bg3)}
+    textarea:focus{outline:none;border-color:var(--accent)!important}
+    button:focus{outline:none}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback} = React;
+const API = "http://localhost:8000";
+
+const PROVIDER_COLORS = {anthropic:"#c084fc",openai:"#34d399",google:"#60a5fa",ollama:"#fb923c",deepseek:"#f472b6",none:"#6b7280"};
+const DEPT_EMOJI = {learning_design:"📚",academic_development:"🎓",marketing_sales:"📣",operations:"⚙️",research_intelligence:"🔬",support:"🛟",rag:"🔍",hybrid:"🔀"};
+
+const fmtCost = v => v >= 0.001 ? `$${v.toFixed(4)}` : v > 0 ? "<$0.001" : "$0.00";
+const fmtMs   = ms => ms >= 1000 ? `${(ms/1000).toFixed(1)}s` : `${ms}ms`;
+const fmtDate = ts => new Date(ts*1000).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+
+// ── Service dot ────────────────────────────────────────────────────────────
+function ServiceDot({port, label, url}) {
+  const [ok,setOk] = useState(null);
+  const target = url || `http://localhost:${port}/health`;
+  useEffect(() => {
+    const check = () => fetch(target,{signal:AbortSignal.timeout(2500)})
+      .then(r=>setOk(r.ok)).catch(()=>setOk(false));
+    check(); const t=setInterval(check,20000); return()=>clearInterval(t);
+  },[target]);
+  return (
+    <span title={label} style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11,color:'var(--muted)'}}>
+      <span style={{width:7,height:7,borderRadius:'50%',background:ok===null?'#555':ok?'var(--green)':'var(--red)',display:'inline-block'}}/>
+      {label}
+    </span>
+  );
+}
+
+// ── Session list ───────────────────────────────────────────────────────────
+function SessionSidebar({currentId, onSelect, onNew, tick}) {
+  const [sessions,setSessions]=useState([]);
+  const load = useCallback(()=>{
+    fetch(`${API}/sessions`).then(r=>r.json()).then(setSessions).catch(()=>{});
+  },[]);
+  useEffect(()=>{load();},[tick]);
+
+  const del=(id,e)=>{
+    e.stopPropagation();
+    fetch(`${API}/sessions/${id}`,{method:'DELETE'}).then(load);
+    if(id===currentId) onNew();
+  };
+
+  return (
+    <div style={{width:220,minWidth:220,background:'var(--bg2)',borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      <div style={{padding:'12px 10px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span style={{fontSize:12,fontWeight:600,color:'var(--muted)',letterSpacing:1}}>CONVERSATIONS</span>
+        <button onClick={onNew} style={{background:'var(--accent)',border:'none',color:'#fff',borderRadius:6,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>+ New</button>
+      </div>
+      <div style={{overflowY:'auto',flex:1}}>
+        {sessions.length===0&&<div style={{padding:20,fontSize:12,color:'var(--muted)',textAlign:'center'}}>No conversations yet</div>}
+        {sessions.map(s=>(
+          <div key={s.id} className={`session-item${s.id===currentId?' active':''}`} onClick={()=>onSelect(s.id)}>
+            <div style={{fontSize:12,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.title}</div>
+            <div style={{fontSize:10,color:'var(--muted)',marginTop:3,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span>{fmtDate(s.updated_at)}</span>
+              <button onClick={e=>del(s.id,e)} style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:11,padding:0,lineHeight:1}}>✕</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Message bubble ─────────────────────────────────────────────────────────
+function Bubble({msg}) {
+  const isUser = msg.role==='user';
+  const pColor = PROVIDER_COLORS[msg.provider]||'#aaa';
+  return (
+    <div style={{display:'flex',flexDirection:'column',alignItems:isUser?'flex-end':'flex-start',marginBottom:18}}>
+      {!isUser&&(
+        <div style={{display:'flex',gap:7,marginBottom:6,alignItems:'center',flexWrap:'wrap'}}>
+          {msg.dept&&<span>{DEPT_EMOJI[msg.dept]||'🤖'}</span>}
+          {msg.provider&&(
+            <span className="pill" style={{background:pColor+'22',color:pColor,border:`1px solid ${pColor}44`}}>
+              {msg.modelLabel||msg.provider}
+            </span>
+          )}
+          {msg.cost_usd>0&&<span className="pill" style={{background:'#22c55e22',color:'var(--green)',border:'1px solid #22c55e44'}}>{fmtCost(msg.cost_usd)}</span>}
+          {msg.latency_ms>0&&<span style={{fontSize:10,color:'var(--muted)'}}>{fmtMs(msg.latency_ms)}</span>}
+          {msg.memory&&<span className="pill" style={{background:'#a78bfa22',color:'#a78bfa',border:'1px solid #a78bfa44'}}>🧠 memory</span>}
+        </div>
+      )}
+      {!isUser&&msg.tools&&msg.tools.length>0&&(
+        <div style={{display:'flex',gap:6,marginBottom:6,flexWrap:'wrap'}}>
+          {msg.tools.map((t,i)=>(
+            <span key={i} className="pill" style={{background:'#0ea5e922',color:'#38bdf8',border:'1px solid #0ea5e944'}}>
+              {t.status==='running'?'⚙ running':t.status==='done'?'✓ ran':'✕ failed'} · {t.name}
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{
+        maxWidth:'80%',padding:'10px 14px',fontSize:14,lineHeight:1.65,whiteSpace:'pre-wrap',wordBreak:'break-word',
+        borderRadius:isUser?'16px 16px 4px 16px':'16px 16px 16px 4px',
+        background:isUser?'var(--accent)':'var(--bg3)',
+        border:isUser?'none':'1px solid var(--border)',
+      }}>
+        {msg.content}
+        {msg.streaming&&<span className="typing-cursor"/>}
+      </div>
+    </div>
+  );
+}
+
+// ── Cost modal ─────────────────────────────────────────────────────────────
+function CostModal({onClose}) {
+  const [data,setData]=useState(null);
+  useEffect(()=>{fetch(`${API}/cost`).then(r=>r.json()).then(setData).catch(()=>{});},[]);
+  if(!data) return <div className="modal-bg" onClick={onClose}><div style={{background:'var(--bg2)',padding:32,borderRadius:12}}>Loading…</div></div>;
+  const providers = Object.entries(data.by_provider||{});
+  const maxCost = Math.max(...providers.map(([,v])=>v.cost_usd),.0001);
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg2)',borderRadius:14,border:'1px solid var(--border)',width:600,maxHeight:'80vh',overflow:'auto',padding:24}}>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:20}}>
+          <h2 style={{fontSize:18,fontWeight:700}}>💰 Session Cost</h2>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--muted)',fontSize:20,cursor:'pointer'}}>✕</button>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
+          {[['Total',fmtCost(data.total_cost_usd||0)],['Calls',data.total_calls||0],['Tokens',((data.total_tokens||0)/1000).toFixed(1)+'k']].map(([k,v])=>(
+            <div key={k} style={{background:'var(--bg3)',padding:14,borderRadius:10,border:'1px solid var(--border)',textAlign:'center'}}>
+              <div style={{fontSize:22,fontWeight:700,color:'var(--accent)'}}>{v}</div>
+              <div style={{fontSize:11,color:'var(--muted)'}}>{k}</div>
+            </div>
+          ))}
+        </div>
+        {providers.map(([prov,info])=>(
+          <div key={prov} style={{marginBottom:10}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,fontSize:13}}>
+              <span style={{color:PROVIDER_COLORS[prov]||'var(--text)'}}>{prov}</span>
+              <span style={{color:'var(--muted)'}}>{info.calls} calls · {fmtCost(info.cost_usd)}</span>
+            </div>
+            <div style={{height:6,background:'var(--bg3)',borderRadius:3}}>
+              <div style={{height:'100%',background:PROVIDER_COLORS[prov]||'var(--accent)',borderRadius:3,width:`${(info.cost_usd/maxCost)*100}%`,transition:'width .4s'}}/>
+            </div>
+          </div>
+        ))}
+        {(data.recent||[]).slice(0,8).map((c,i)=>(
+          <div key={i} style={{display:'flex',gap:8,fontSize:11,padding:'4px 0',borderBottom:'1px solid var(--border)',alignItems:'center'}}>
+            <span className="pill" style={{background:(PROVIDER_COLORS[c.provider]||'#555')+'22',color:PROVIDER_COLORS[c.provider]||'#aaa'}}>{c.model_label}</span>
+            <span style={{color:'var(--muted)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(c.query||'').slice(0,50)}</span>
+            <span style={{color:'var(--green)'}}>{fmtCost(c.cost_usd)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Admin / Usage view ─────────────────────────────────────────────────────
+function AdminView() {
+  const [data,setData]=useState(null);
+  useEffect(()=>{fetch(`${API}/usage/monthly?months=12`).then(r=>r.json()).then(setData).catch(()=>{});},[]);
+  if(!data) return <div style={{padding:40,color:'var(--muted)'}}>Loading usage…</div>;
+  const months = data.months||[];
+  const maxMonthCost = Math.max(...months.map(m=>m.cost_usd),.0001);
+
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:'24px 28px'}}>
+      <div style={{maxWidth:900,margin:'0 auto'}}>
+        <h2 style={{fontSize:20,fontWeight:700,marginBottom:4}}>📊 Usage & Cost</h2>
+        <div style={{fontSize:13,color:'var(--muted)',marginBottom:20}}>
+          Lifetime: {fmtCost(data.lifetime_cost||0)} across {data.lifetime_calls||0} calls
+        </div>
+
+        {months.length===0&&<div style={{color:'var(--muted)'}}>No usage recorded yet. Send a few queries and come back.</div>}
+
+        {/* Monthly cost bars */}
+        {months.length>0&&(
+          <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:18,marginBottom:18}}>
+            <div style={{fontSize:13,fontWeight:600,color:'var(--muted)',marginBottom:14}}>MONTHLY SPEND</div>
+            {months.map(m=>(
+              <div key={m.month} style={{marginBottom:10}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:4}}>
+                  <span>{m.month}</span>
+                  <span style={{color:'var(--muted)'}}>{m.calls} calls · {(m.total_tokens/1000).toFixed(1)}k tok · {fmtCost(m.cost_usd)}</span>
+                </div>
+                <div style={{height:8,background:'var(--bg3)',borderRadius:4}}>
+                  <div style={{height:'100%',background:'var(--accent)',borderRadius:4,width:`${(m.cost_usd/maxMonthCost)*100}%`,transition:'width .4s'}}/>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Latest month breakdowns */}
+        {months[0]&&(
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+            <Breakdown title={`BY PROVIDER · ${months[0].month}`} obj={months[0].by_provider} colorMap={PROVIDER_COLORS}/>
+            <Breakdown title={`BY DEPARTMENT · ${months[0].month}`} obj={months[0].by_department}/>
+            <div style={{gridColumn:'1 / span 2'}}>
+              <Breakdown title={`BY MODEL · ${months[0].month}`} obj={months[0].by_model}/>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Breakdown({title, obj, colorMap}) {
+  const entries = Object.entries(obj||{}).sort((a,b)=>b[1].cost_usd-a[1].cost_usd);
+  const max = Math.max(...entries.map(([,v])=>v.cost_usd),.0001);
+  return (
+    <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:16}}>
+      <div style={{fontSize:12,fontWeight:600,color:'var(--muted)',marginBottom:12,letterSpacing:.5}}>{title}</div>
+      {entries.length===0&&<div style={{fontSize:12,color:'var(--muted)'}}>None</div>}
+      {entries.map(([k,v])=>{
+        const c = colorMap?.[k]||'var(--accent)';
+        return (
+          <div key={k} style={{marginBottom:9}}>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
+              <span style={{color:colorMap?c:'var(--text)'}}>{k}</span>
+              <span style={{color:'var(--muted)'}}>{v.calls} · {fmtCost(v.cost_usd)}</span>
+            </div>
+            <div style={{height:5,background:'var(--bg3)',borderRadius:3}}>
+              <div style={{height:'100%',background:c,borderRadius:3,width:`${(v.cost_usd/max)*100}%`}}/>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── n8n automations view ───────────────────────────────────────────────────
+function N8nView() {
+  const [health,setHealth]=useState(null);
+  const [tools,setTools]=useState(null);
+  const [err,setErr]=useState(null);
+  const [args,setArgs]=useState({});
+  const [running,setRunning]=useState(null);
+  const [results,setResults]=useState({});
+
+  const load=()=>{
+    fetch(`${API}/n8n/health`).then(r=>r.json()).then(setHealth).catch(()=>setHealth({status:'down'}));
+    fetch(`${API}/n8n/tools`).then(r=>r.ok?r.json():r.json().then(e=>Promise.reject(e)))
+      .then(d=>{setTools(d.tools||[]);setErr(null);})
+      .catch(e=>setErr(e.detail||'Could not reach n8n'));
+  };
+  useEffect(()=>{load();},[]);
+
+  const run=async(name)=>{
+    setRunning(name);
+    let parsed={};
+    try{ if(args[name]&&args[name].trim()) parsed=JSON.parse(args[name]); }
+    catch{ setResults(r=>({...r,[name]:'⚠ Arguments must be valid JSON'})); setRunning(null); return; }
+    try{
+      const resp=await fetch(`${API}/n8n/call`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,arguments:parsed})});
+      const d=await resp.json();
+      setResults(r=>({...r,[name]: typeof d.content==='string'?d.content:JSON.stringify(d.content,null,2)}));
+    }catch{ setResults(r=>({...r,[name]:'Call failed'})); }
+    finally{ setRunning(null); }
+  };
+
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:'24px 28px'}}>
+      <div style={{maxWidth:860,margin:'0 auto'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+          <h2 style={{fontSize:20,fontWeight:700}}>🔌 n8n Automations</h2>
+          <button onClick={load} style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:8,padding:'5px 12px',fontSize:12,cursor:'pointer'}}>Refresh</button>
+        </div>
+        <div style={{fontSize:13,marginBottom:18}}>
+          {health&&<span style={{color:health.status==='ok'?'var(--green)':'var(--red)'}}>
+            {health.status==='ok'?'● Connected':'● Not connected'} </span>}
+          <span style={{color:'var(--muted)'}}>{health?.url}</span>
+          {health?.auth&&<span style={{color:'var(--muted)'}}> · authed</span>}
+        </div>
+
+        {err&&<div style={{background:'#ef444422',border:'1px solid #ef444444',color:'#fca5a5',borderRadius:10,padding:14,fontSize:13,lineHeight:1.5}}>
+          {err}<br/><span style={{color:'var(--muted)'}}>Check that n8n is running, the MCP Server Trigger workflow is active, and N8N_MCP_TOKEN in .env matches.</span>
+        </div>}
+
+        {tools&&tools.length===0&&!err&&<div style={{color:'var(--muted)',fontSize:13}}>Connected, but no workflow tools are exposed. Activate a workflow with an MCP Server Trigger node.</div>}
+
+        {(tools||[]).map(t=>(
+          <div key={t.name} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:16,marginBottom:12}}>
+            <div style={{fontSize:15,fontWeight:700}}>{t.name}</div>
+            {t.description&&<div style={{fontSize:13,color:'var(--muted)',marginTop:4,lineHeight:1.5}}>{t.description}</div>}
+            <textarea value={args[t.name]||''} onChange={e=>setArgs(a=>({...a,[t.name]:e.target.value}))}
+              placeholder='Arguments as JSON, e.g. {"name":"value"} — leave blank if none'
+              rows={2}
+              style={{width:'100%',marginTop:10,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 10px',color:'var(--text)',fontSize:12,fontFamily:'monospace',resize:'vertical'}}/>
+            <div style={{display:'flex',gap:10,alignItems:'center',marginTop:8}}>
+              <button onClick={()=>run(t.name)} disabled={running===t.name} style={{background:'var(--accent)',border:'none',color:'#fff',borderRadius:8,padding:'6px 16px',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                {running===t.name?'Running…':'▶ Run'}
+              </button>
+            </div>
+            {results[t.name]&&(
+              <pre style={{marginTop:10,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 12px',fontSize:12,maxHeight:240,overflow:'auto',whiteSpace:'pre-wrap'}}>{results[t.name]}</pre>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Self-Improve (Self-Harness) view ───────────────────────────────────────
+function HarnessView() {
+  const [proposals,setProposals]=useState([]);
+  const [running,setRunning]=useState(false);
+  const [lastRun,setLastRun]=useState(null);
+  const [busy,setBusy]=useState(null);
+
+  const load=()=>fetch(`${API}/harness/proposals?status=pending`).then(r=>r.json()).then(setProposals).catch(()=>{});
+  useEffect(()=>{load();},[]);
+
+  const run=async()=>{
+    setRunning(true); setLastRun(null);
+    try{
+      const r=await fetch(`${API}/harness/run`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      const d=await r.json();
+      setLastRun(d);
+      load();
+    }catch{ setLastRun({error:'Run failed — is the orchestrator up?'}); }
+    finally{ setRunning(false); }
+  };
+
+  const decide=async(pid,action)=>{
+    setBusy(pid);
+    try{ await fetch(`${API}/harness/proposals/${pid}/${action}`,{method:'POST'}); }catch{}
+    setBusy(null); load();
+  };
+
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:'24px 28px'}}>
+      <div style={{maxWidth:860,margin:'0 auto'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+          <h2 style={{fontSize:20,fontWeight:700}}>🧬 Self-Improve</h2>
+          <button onClick={run} disabled={running} style={{background:running?'var(--bg3)':'var(--accent)',border:'none',color:'#fff',borderRadius:10,padding:'8px 16px',fontSize:13,fontWeight:600,cursor:running?'default':'pointer'}}>
+            {running?'Running loop…':'Run optimization loop'}
+          </button>
+        </div>
+        <div style={{fontSize:13,color:'var(--muted)',marginBottom:18,lineHeight:1.5}}>
+          The loop runs your agents on a held-out task set, finds recurring weaknesses against your style rules, drafts a fix, and regression-tests it. Winners appear below for your approval — nothing changes until you accept.
+        </div>
+
+        {running&&<div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:16,marginBottom:16,fontSize:13,color:'var(--muted)'}}>Running mining → proposal → validation across departments. This makes several model calls and can take a minute or two…</div>}
+
+        {lastRun&&!lastRun.error&&(
+          <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:16,marginBottom:16}}>
+            <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Last run: {lastRun.proposals_queued} proposal(s) queued across {lastRun.departments} departments</div>
+            {(lastRun.results||[]).map((r,i)=>(
+              <div key={i} style={{fontSize:12,color:'var(--muted)',padding:'3px 0'}}>
+                {r.department}: {r.status==='clean'?'✓ no weaknesses':r.queued?`⬆ ${r.failure_pattern} → +${r.heldin_gain}`:r.failure_pattern?`tested, not queued (gain ${r.heldin_gain})`:r.status||'—'}
+              </div>
+            ))}
+          </div>
+        )}
+        {lastRun&&lastRun.error&&<div style={{color:'var(--red)',marginBottom:16}}>{lastRun.error}</div>}
+
+        <h3 style={{fontSize:13,fontWeight:600,color:'var(--muted)',marginBottom:10,letterSpacing:.5}}>PENDING PROPOSALS</h3>
+        {proposals.length===0&&<div style={{fontSize:13,color:'var(--muted)'}}>No proposals waiting. Run the loop to generate some.</div>}
+        {proposals.map(p=>(
+          <div key={p.id} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:16,marginBottom:12}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <span className="pill" style={{background:'var(--accent)22',color:'#a5b4fc',border:'1px solid var(--accent)44'}}>{p.department}</span>
+              <span style={{fontSize:12,color:'var(--muted)'}}>weakness: {p.failure_pattern}</span>
+            </div>
+            <div style={{background:'var(--bg3)',borderLeft:'3px solid var(--green)',borderRadius:6,padding:'10px 12px',fontSize:13,marginBottom:10}}>
+              <span style={{color:'var(--muted)',fontSize:11}}>Proposed rule to add to <code>{p.target_file}</code>:</span><br/>
+              <span style={{fontWeight:500}}>{p.rule}</span>
+            </div>
+            <div style={{display:'flex',gap:16,fontSize:12,color:'var(--muted)',marginBottom:12}}>
+              <span>held-in: {p.baseline_score} → <span style={{color:'var(--green)'}}>{p.candidate_score}</span></span>
+              <span>held-out Δ: {p.heldout_delta>=0?'+':''}{p.heldout_delta}</span>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>decide(p.id,'accept')} disabled={busy===p.id} style={{background:'var(--green)',border:'none',color:'#fff',borderRadius:8,padding:'6px 16px',fontSize:13,fontWeight:600,cursor:'pointer'}}>✓ Accept & apply</button>
+              <button onClick={()=>decide(p.id,'reject')} disabled={busy===p.id} style={{background:'none',border:'1px solid var(--border)',color:'var(--muted)',borderRadius:8,padding:'6px 16px',fontSize:13,cursor:'pointer'}}>Reject</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── WijerCo team gallery ───────────────────────────────────────────────────
+function Avatar({agent, size=72}) {
+  return (
+    <div style={{
+      width:size,height:size,borderRadius:'50%',flexShrink:0,
+      background:`linear-gradient(135deg, ${agent.color}, ${agent.color}99)`,
+      display:'flex',alignItems:'center',justifyContent:'center',
+      color:'#fff',fontWeight:700,fontSize:size*0.4,
+      boxShadow:`0 4px 14px ${agent.color}55`,
+    }}>{agent.initial}</div>
+  );
+}
+
+function WijercoGallery({roster, dept, onDept, onAgent, onBack}) {
+  if(!roster) return <div style={{padding:40,color:'var(--muted)'}}>Loading team…</div>;
+
+  // Department grid
+  if(!dept) return (
+    <div style={{flex:1,overflowY:'auto',padding:'28px 32px'}}>
+      <div style={{maxWidth:1000,margin:'0 auto'}}>
+        <h2 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Your WijerCo team</h2>
+        <div style={{fontSize:13,color:'var(--muted)',marginBottom:24}}>Pick a department, then choose who to work with.</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:16}}>
+          {roster.departments.map(d=>(
+            <div key={d.key} onClick={()=>onDept(d)} style={{
+              background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:20,cursor:'pointer',
+              transition:'transform .15s, border-color .15s',
+            }}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=d.color;e.currentTarget.style.transform='translateY(-2px)';}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.transform='none';}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                <div style={{width:40,height:40,borderRadius:10,background:d.color+'22',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>{d.emoji}</div>
+                <div>
+                  <div style={{fontSize:15,fontWeight:700}}>{d.label}</div>
+                  <div style={{fontSize:11,color:'var(--muted)'}}>{d.count} {d.count===1?'agent':'agents'}</div>
+                </div>
+              </div>
+              <div style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginBottom:12}}>{d.blurb}</div>
+              <div style={{display:'flex',gap:-8}}>
+                {d.agents.slice(0,6).map((a,i)=>(
+                  <div key={a.slug} style={{marginLeft:i?-8:0}}><Avatar agent={a} size={30}/></div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Employees of a department
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:'24px 32px'}}>
+      <div style={{maxWidth:1000,margin:'0 auto'}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:13,marginBottom:12}}>← All departments</button>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+          <span style={{fontSize:24}}>{dept.emoji}</span>
+          <h2 style={{fontSize:22,fontWeight:700}}>{dept.label}</h2>
+        </div>
+        <div style={{fontSize:13,color:'var(--muted)',marginBottom:22}}>{dept.blurb}</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:16}}>
+          {dept.agents.map(a=>(
+            <div key={a.slug} onClick={()=>onAgent(a)} style={{
+              background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:20,cursor:'pointer',
+              display:'flex',flexDirection:'column',alignItems:'center',textAlign:'center',
+              transition:'transform .15s, border-color .15s',
+            }}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=a.color;e.currentTarget.style.transform='translateY(-2px)';}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.transform='none';}}>
+              <Avatar agent={a} size={72}/>
+              <div style={{fontSize:11,color:a.color,marginTop:12,fontWeight:600,letterSpacing:.5}}>{a.role.toUpperCase()}</div>
+              <div style={{fontSize:18,fontWeight:700,marginTop:2}}>{a.name}</div>
+              <div style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginTop:8}}>{a.blurb}</div>
+              <button style={{marginTop:14,background:a.color,border:'none',color:'#fff',borderRadius:10,padding:'7px 18px',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                Work with {a.name}
+              </button>
+            </div>
+     

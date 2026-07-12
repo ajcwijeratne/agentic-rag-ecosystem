@@ -1,0 +1,87 @@
+{
+  "name": "WijerCo — LinkedIn Content Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "cronExpression", "expression": "0 7 * * 2" } ] }
+      },
+      "id": "trig-content",
+      "name": "Tuesday 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"query\": \"Propose ONE timely LinkedIn thought-leadership angle for Aaron on Australian higher education, tied to a current development. Give the angle in one line, then 3 specific supporting evidence points with names, numbers, or dates.\",\n  \"session_id\": \"n8n-content\",\n  \"force_route\": \"research_intelligence\",\n  \"subagent\": \"research-analyst\"\n}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "n-research",
+      "name": "Remy: angle + evidence",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'Draft a LinkedIn post in Aaron\\'s voice using this angle and evidence. 150-220 words, lead with the point, specific, no buzzwords, no hashtags.\\n\\n' + $json.answer, session_id: 'n8n-content', force_route: 'marketing_sales', subagent: 'content-creator' }) }}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "n-content",
+      "name": "Vero: draft post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'Edit this LinkedIn post to Aaron\\'s anti-AI style. Cut filler, remove any banned words or em-dashes, tighten. Return only the final post.\\n\\n' + $json.answer, session_id: 'n8n-content', force_route: 'marketing_sales', subagent: 'copywriter' }) }}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "n-copy",
+      "name": "Pax: edit to voice",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 320]
+    },
+    {
+      "parameters": {
+        "fromEmail": "a.j.c.wijeratne@gmail.com",
+        "toEmail": "a.j.c.wijeratne@gmail.com",
+        "subject": "WijerCo — LinkedIn draft ready for review",
+        "emailFormat": "text",
+        "text": "={{ $json.answer }}\n\n— Drafted by Remy (evidence) → Vero (draft) → Pax (edit). Review before posting.",
+        "options": {}
+      },
+      "id": "n-email-content",
+      "name": "Email the draft",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1160, 320]
+    }
+  ],
+  "connections": {
+    "Tuesday 07:00": { "main": [[{ "node": "Remy: angle + evidence", "type": "main", "index": 0 }]] },
+    "Remy: angle + evidence": { "main": [[{ "node": "Vero: draft post", "type": "main", "index": 0 }]] },
+    "Vero: draft post": { "main": [[{ "node": "Pax: edit to voice", "type": "main", "index": 0 }]] },
+    "Pax: edit to voice": { "main": [[{ "node": "Email the draft", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

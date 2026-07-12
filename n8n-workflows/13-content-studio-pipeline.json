@@ -1,0 +1,234 @@
+{
+  "name": "13 - Content Studio production pipeline",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:8000/production/{{$json.production_id}}/advance",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "actor",
+              "value": "n8n-content-studio"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "advance-production",
+      "name": "Advance production",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.blocked === true}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "blocked",
+      "name": "Blocked?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [500, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8004/notify",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "Production gate needs approval"
+            },
+            {
+              "name": "body",
+              "value": "=Gate {{$json.gate}} is blocking {{$json.production.production_id}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "notify-blocked",
+      "name": "Notify blocked gate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [760, -160]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.production.state}}",
+              "operation": "equal",
+              "value2": "asset_plan"
+            }
+          ]
+        }
+      },
+      "id": "asset-plan-ready",
+      "name": "Asset plan ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [760, 120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:8000/production/{{$json.production.production_id}}/generate-plan",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"capabilities\": [\"image\", \"voice\", \"avatar\", \"animation\"],\n  \"include_video\": false,\n  \"max_jobs\": 20,\n  \"dry_run\": false,\n  \"actor\": \"n8n-content-studio\"\n}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "generate-planned-media",
+      "name": "Generate planned media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1020, 20]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "id": "pace-after-generation",
+      "name": "Pace after generation",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1260, 20]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "id": "pace-next-advance",
+      "name": "Pace next advance",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1020, 220]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Advance production",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Advance production": {
+      "main": [
+        [
+          {
+            "node": "Blocked?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Blocked?": {
+      "main": [
+        [
+          {
+            "node": "Notify blocked gate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Asset plan ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Asset plan ready?": {
+      "main": [
+        [
+          {
+            "node": "Generate planned media",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pace next advance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate planned media": {
+      "main": [
+        [
+          {
+            "node": "Pace after generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pace after generation": {
+      "main": [
+        [
+          {
+            "node": "Advance production",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pace next advance": {
+      "main": [
+        [
+          {
+            "node": "Advance production",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionTimeout": 180
+  }
+}

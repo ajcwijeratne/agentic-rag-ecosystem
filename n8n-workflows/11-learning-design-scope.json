@@ -1,0 +1,70 @@
+{
+  "name": "WijerCo — Learning Design Scoping",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wijerco-course",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-course",
+      "name": "Webhook (course brief)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'Design the architecture for this program: measurable learning outcomes, module sequence, and assessment plan that prioritises feedback and authentic tasks. Andragogy, not pedagogy. Brief:\\n' + ($json.body.brief || JSON.stringify($json.body)), session_id: 'n8n-course', force_route: 'learning_design', subagent: 'instructional-designer' }) }}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "n-id",
+      "name": "Isla: architecture",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'Develop the content outline for module 1 of this design: activities, materials, and a worked example. Architecture:\\n' + $json.answer, session_id: 'n8n-course', force_route: 'learning_design', subagent: 'course-developer' }) }}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "n-cd",
+      "name": "Cory: module 1 content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 320]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ architecture: $('Isla: architecture').item.json.answer, module_1: $json.answer }) }}",
+        "options": {}
+      },
+      "id": "resp-course",
+      "name": "Return design",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [920, 320]
+    }
+  ],
+  "connections": {
+    "Webhook (course brief)": { "main": [[{ "node": "Isla: architecture", "type": "main", "index": 0 }]] },
+    "Isla: architecture": { "main": [[{ "node": "Cory: module 1 content", "type": "main", "index": 0 }]] },
+    "Cory: module 1 content": { "main": [[{ "node": "Return design", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

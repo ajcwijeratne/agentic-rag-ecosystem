@@ -1,0 +1,77 @@
+{
+  "name": "Agentic RAG — Scheduled Query Trigger",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Every Weekday 8am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/webhook",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "event": "query",
+          "data": {
+            "query": "Summarise my Obsidian notes updated in the last 24 hours and search the web for relevant developments."
+          }
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "http-request",
+      "name": "Trigger Orchestrator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8004/notify",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "title": "Morning RAG Briefing Triggered",
+          "body": "={{ $json.answer }}",
+          "tags": ["morning", "rag"]
+        }
+      },
+      "id": "notify",
+      "name": "Send Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 300]
+    }
+  ],
+  "connections": {
+    "Every Weekday 8am": {
+      "main": [
+        [{ "node": "Trigger Orchestrator", "type": "main", "index": 0 }]
+      ]
+    },
+    "Trigger Orchestrator": {
+      "main": [
+        [{ "node": "Send Notification", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

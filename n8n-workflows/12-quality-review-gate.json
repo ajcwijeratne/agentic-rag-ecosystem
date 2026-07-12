@@ -1,0 +1,53 @@
+{
+  "name": "WijerCo — Quality Review Gate",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wijerco-qa",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-qa",
+      "name": "Webhook (draft to review)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'Quality-review this draft against Aaron\\'s standards: leads with the point, specific (numbers/names/dates), clean style with no banned words or em-dashes, fully answers the task. Give a verdict (SEND / REVISE / DO-NOT-SEND), a list of concrete issues, and the corrected version if revisions are minor.\\n\\nDRAFT:\\n' + ($json.body.draft || JSON.stringify($json.body)), session_id: 'n8n-qa', force_route: 'operations', subagent: 'quality-reviewer' }) }}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "n-qa",
+      "name": "Quincy: review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ review: $json.answer }) }}",
+        "options": {}
+      },
+      "id": "resp-qa",
+      "name": "Return verdict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [740, 300]
+    }
+  ],
+  "connections": {
+    "Webhook (draft to review)": { "main": [[{ "node": "Quincy: review", "type": "main", "index": 0 }]] },
+    "Quincy: review": { "main": [[{ "node": "Return verdict", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

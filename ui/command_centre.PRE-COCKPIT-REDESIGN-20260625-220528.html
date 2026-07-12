@@ -1,0 +1,1572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WijerCo Command Centre</title>
+  <!-- Installable PWA (served same-origin by the orchestrator at /app) -->
+  <link rel="manifest" href="/app/manifest.webmanifest" />
+  <meta name="theme-color" content="#1f4d3f" />
+  <meta name="application-name" content="Command Centre" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/app/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/app/icons/icon-192.png" />
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/app/sw.js", { scope: "/app/" }).catch(function () {});
+      });
+    }
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* WijerCo palette */
+      --ink:#14231f; --pine:#1f4d3f; --pine-deep:#163b30;
+      --gold:#c28f1e; --gold-soft:#e7c873; --gold-tint:#f6eed8;
+      --paper:#eef0ea; --surface:#fbfbf8; --surface-2:#f4f5f0;
+      --line:#dadfd5; --line-soft:#e6e9e1; --pine-tint:#e4ece6;
+      /* compatibility aliases used across existing markup */
+      --bg:#eef0ea; --bg2:#fbfbf8; --bg3:#f4f5f0;
+      --border:#dadfd5; --border-strong:#cfd6ca;
+      --text:#14231f; --muted:#5c665e; --muted-2:#838d84;
+      --accent:#1f4d3f; --accent-strong:#163b30; --accent-weak:#e4ece6;
+      --green:#1f7a52; --red:#bb4a3f; --yellow:#b07d16;
+      --shadow-sm:0 1px 2px rgba(20,35,31,.05);
+      --shadow-md:0 8px 28px rgba(20,35,31,.08);
+      --shadow-lg:0 18px 44px rgba(20,35,31,.14);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--paper);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;line-height:1.5}
+    h1,h2,h3,.display,.serif{font-family:'Fraunces',Georgia,serif;font-weight:500;letter-spacing:-.012em}
+    ::selection{background:var(--pine-tint);color:var(--pine)}
+    ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#cbd2c7;border-radius:8px;border:2px solid var(--surface)}::-webkit-scrollbar-thumb:hover{background:#b5beb1}
+    .typing-cursor::after{content:'▋';animation:blink .7s infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+    .pill{display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.2px}
+    .modal-bg{position:fixed;inset:0;background:rgba(20,35,31,.45);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100}
+    .session-item{cursor:pointer;padding:10px 12px;border-bottom:1px solid var(--line);border-left:2px solid transparent;transition:background .15s}
+    .session-item:hover{background:var(--surface-2)}
+    .session-item.active{border-left-color:var(--gold);background:var(--pine-tint)}
+    textarea:focus{outline:none;border-color:var(--pine)!important;box-shadow:0 0 0 3px var(--pine-tint)}
+    select:focus,input:focus{outline:none;border-color:var(--pine)!important}
+    button:focus{outline:none}
+    button{transition:background .15s ease,color .15s ease,box-shadow .15s ease,transform .1s ease,border-color .15s ease}
+    /* ---- Left rail ---- */
+    .rail{width:236px;min-width:236px;background:var(--pine-deep);color:#dfe7e1;display:flex;flex-direction:column;padding:24px 16px 18px;flex-shrink:0}
+    .rail-brand{display:flex;flex-direction:column;gap:2px;padding:0 8px 2px}
+    .rail-mark{font-family:'Fraunces',serif;font-weight:600;font-size:23px;letter-spacing:-.01em;color:#fff;line-height:1}
+    .rail-mark span{color:var(--gold-soft)}
+    .rail-tag{font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:#8fa89b;font-weight:600}
+    .rail-divider{height:1px;background:rgba(255,255,255,.09);margin:20px 8px}
+    .nav-label{font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:#7f988b;font-weight:600;padding:0 10px 9px}
+    .rail-nav{display:flex;flex-direction:column;gap:2px;flex:1 1 auto;min-height:0;overflow-y:auto;margin:0 -4px;padding:0 4px}
+    .rail-nav::-webkit-scrollbar{width:0}
+    .nav-item{display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:9px;color:#c4d2c9;font-size:14px;font-weight:500;background:none;border:none;width:100%;text-align:left;cursor:pointer;font-family:inherit;transition:background .16s,color .16s}
+    .nav-item svg{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;opacity:.85}
+    .nav-item:hover{background:rgba(255,255,255,.06);color:#eef4f0}
+    .nav-item.active{background:var(--pine);color:#fff}
+    .nav-item.active svg{opacity:1;color:var(--gold-soft)}
+    .rail-foot{flex:none;padding-top:12px;display:flex;flex-direction:column;gap:8px}
+    .rail-card{display:flex;align-items:center;gap:10px;padding:10px;border-radius:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07)}
+    .rail-av{width:32px;height:32px;border-radius:8px;flex:none;background:linear-gradient(135deg,var(--gold) 0%,#9d7016 100%);color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif}
+    /* ---- Topbar ---- */
+    .topbar{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line);background:var(--surface);flex-shrink:0}
+    .crumb{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-2,#838d84);font-weight:600}
+    .crumb b{color:var(--pine);font-weight:600}
+    .icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:4px 6px;border-radius:8px;line-height:1}
+    .icon-btn:hover{background:var(--surface-2);color:var(--pine)}
+    /* ---- Shared view scaffolding ---- */
+    .view-wrap{flex:1;overflow-y:auto;padding:34px 34px 60px;min-width:0}
+    .view-inner{max-width:1000px;margin:0 auto}
+    .eyebrow{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:10px}
+    .eyebrow::before{content:"";width:22px;height:1.5px;background:var(--gold)}
+    .view-title{font-family:'Fraunces',serif;font-weight:500;font-size:clamp(24px,3vw,34px);line-height:1.1;letter-spacing:-.015em;color:var(--ink)}
+    .view-lede{font-size:15px;color:var(--muted);margin-top:12px;max-width:62ch;line-height:1.55}
+    .row-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:26px 0 14px}
+    .row-head h3{font-family:'Fraunces',serif;font-weight:500;font-size:19px;color:var(--ink)}
+    .grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+    .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+    .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow-sm)}
+    .card-i{transition:box-shadow .16s,transform .12s,border-color .16s}
+    .card-i:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);border-color:var(--line-soft)}
+    .stat .k{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-2);font-weight:600}
+    .stat .v{font-family:'Fraunces',serif;font-size:32px;font-weight:500;color:var(--pine);margin-top:8px;line-height:1}
+    .stat .s{font-size:12.5px;color:var(--muted);margin-top:8px}
+    .cap-tag{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);font-weight:600}
+    .tagx{font-size:11px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line-soft);padding:4px 9px;border-radius:6px}
+    .stag{font-size:11px;font-weight:600;padding:4px 10px;border-radius:999px;white-space:nowrap;display:inline-block}
+    .st-good{background:var(--pine-tint);color:var(--pine)}
+    .st-warn{background:var(--gold-tint);color:#8a630f}
+    .st-mute{background:#e9ebe6;color:var(--muted)}
+    .st-fail{background:#f6e3e0;color:#a23b2f}
+    .bar{height:5px;background:var(--line-soft);border-radius:3px;overflow:hidden}
+    .bar i{display:block;height:100%;background:var(--pine);border-radius:3px}
+    .doc-ico{width:40px;height:40px;border-radius:9px;flex:none;background:var(--pine-tint);display:flex;align-items:center;justify-content:center;font-size:18px}
+    .kv{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:9px 0;border-bottom:1px solid var(--line-soft)}
+    .kv:last-child{border-bottom:none}
+    .kan{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .kan-col{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px;min-height:120px}
+    .kan-h{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-2);font-weight:600;margin-bottom:10px;display:flex;justify-content:space-between}
+    .kan-card{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:11px 12px;box-shadow:var(--shadow-sm);margin-bottom:9px}
+    .mini{font-size:11.5px;color:var(--muted-2)}
+    @media(max-width:1160px){.grid-3{grid-template-columns:repeat(2,1fr)}.kan{grid-template-columns:repeat(2,1fr)}}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback} = React;
+const API = "http://localhost:8000";
+
+const PROVIDER_COLORS = {anthropic:"#7c3aed",openai:"#059669",google:"#2563eb",ollama:"#ea580c",deepseek:"#db2777",none:"#64748b"};
+const DEPT_EMOJI = {learning_design:"📚",academic_development:"🎓",marketing_sales:"📣",operations:"⚙️",research_intelligence:"🔬",support:"🛟",rag:"🔍",hybrid:"🔀"};
+
+const fmtCost = v => v >= 0.001 ? `$${v.toFixed(4)}` : v > 0 ? "<$0.001" : "$0.00";
+const fmtMs   = ms => ms >= 1000 ? `${(ms/1000).toFixed(1)}s` : `${ms}ms`;
+const fmtDate = ts => new Date(ts*1000).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+
+// ── Service dot ────────────────────────────────────────────────────────────
+function ServiceDot({port, label, url}) {
+  const [ok,setOk] = useState(null);
+  const target = url || `http://localhost:${port}/health`;
+  useEffect(() => {
+    const check = () => fetch(target,{signal:AbortSignal.timeout(2500)})
+      .then(r=>setOk(r.ok)).catch(()=>setOk(false));
+    check(); const t=setInterval(check,20000); return()=>clearInterval(t);
+  },[target]);
+  return (
+    <span title={label} style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11,color:'var(--muted)'}}>
+      <span style={{width:7,height:7,borderRadius:'50%',background:ok===null?'#555':ok?'var(--green)':'var(--red)',display:'inline-block'}}/>
+      {label}
+    </span>
+  );
+}
+
+// ── Session list ───────────────────────────────────────────────────────────
+function SessionSidebar({currentId, onSelect, onNew, tick}) {
+  const [sessions,setSessions]=useState([]);
+  const load = useCallback(()=>{
+    fetch(`${API}/sessions`).then(r=>r.json()).then(setSessions).catch(()=>{});
+  },[]);
+  useEffect(()=>{load();},[tick]);
+
+  const del=(id,e)=>{
+    e.stopPropagation();
+    fetch(`${API}/sessions/${id}`,{method:'DELETE'}).then(load);
+    if(id===currentId) onNew();
+  };
+
+  return (
+    <div style={{width:220,minWidth:220,background:'var(--bg2)',borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      <div style={{padding:'12px 10px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span style={{fontSize:12,fontWeight:600,color:'var(--muted)',letterSpacing:1}}>CONVERSATIONS</span>
+        <button onClick={onNew} style={{background:'var(--accent)',border:'none',color:'#fff',borderRadius:6,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>+ New</button>
+      </div>
+      <div style={{overflowY:'auto',flex:1}}>
+        {sessions.length===0&&<div style={{padding:20,fontSize:12,color:'var(--muted)',textAlign:'center'}}>No conversations yet</div>}
+        {sessions.map(s=>(
+          <div key={s.id} className={`session-item${s.id===currentId?' active':''}`} onClick={()=>onSelect(s.id)}>
+            <div style={{fontSize:12,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.title}</div>
+            <div style={{fontSize:10,color:'var(--muted)',marginTop:3,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span>{fmtDate(s.updated_at)}</span>
+              <button onClick={e=>del(s.id,e)} style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:11,padding:0,lineHeight:1}}>✕</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Message bubble ─────────────────────────────────────────────────────────
+function Bubble({msg}) {
+  const isUser = msg.role==='user';
+  const pColor = PROVIDER_COLORS[msg.provider]||'#aaa';
+  return (
+    <div style={{display:'flex',flexDirection:'column',alignItems:isUser?'flex-end':'flex-start',marginBottom:18}}>
+      {!isUser&&(
+        <div style={{display:'flex',gap:7,marginBottom:6,alignItems:'center',flexWrap:'wrap'}}>
+          {msg.dept&&<span>{DEPT_EMOJI[msg.dept]||'🤖'}</span>}
+          {msg.provider&&(
+            <span className="pill" style={{background:pColor+'22',color:pColor,border:`1px solid ${pColor}44`}}>
+              {msg.modelLabel||msg.provider}
+            </span>
+          )}
+          {msg.cost_usd>0&&<span className="pill" style={{background:'rgba(31,122,82,.12)',color:'var(--green)',border:'1px solid rgba(31,122,82,.28)'}}>{fmtCost(msg.cost_usd)}</span>}
+          {msg.latency_ms>0&&<span style={{fontSize:10,color:'var(--muted)'}}>{fmtMs(msg.latency_ms)}</span>}
+          {msg.memory&&<span className="pill" style={{background:'#7c3aed14',color:'#7c3aed',border:'1px solid #7c3aed33'}}>🧠 memory</span>}
+        </div>
+      )}
+      {!isUser&&msg.tools&&msg.tools.length>0&&(
+        <div style={{display:'flex',gap:6,marginBottom:6,flexWrap:'wrap'}}>
+          {msg.tools.map((t,i)=>(
+            <span key={i} className="pill" style={{background:'#0284c714',color:'#0284c7',border:'1px solid #0284c733'}}>
+              {t.status==='running'?'⚙ running':t.status==='done'?'✓ ran':'✕ failed'} · {t.name}
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{
+        maxWidth:'80%',padding:'11px 15px',fontSize:14,lineHeight:1.65,whiteSpace:'pre-wrap',wordBreak:'break-word',
+        borderRadius:isUser?'16px 16px 4px 16px':'16px 16px 16px 4px',
+        background:isUser?'var(--pine)':'var(--bg2)',
+        color:isUser?'#f3f7f4':'var(--text)',
+        border:isUser?'none':'1px solid var(--line)',
+        boxShadow:isUser?'0 4px 14px rgba(20,35,31,.22)':'var(--shadow-sm)',
+      }}>
+        {msg.content}
+        {msg.streaming&&<span className="typing-cursor"/>}
+      </div>
+    </div>
+  );
+}
+
+// ── Cost modal ─────────────────────────────────────────────────────────────
+function CostModal({onClose}) {
+  const [data,setData]=useState(null);
+  useEffect(()=>{fetch(`${API}/cost`).then(r=>r.json()).then(setData).catch(()=>{});},[]);
+  if(!data) return <div className="modal-bg" onClick={onClose}><div style={{background:'var(--bg2)',padding:32,borderRadius:16,boxShadow:'var(--shadow-lg)'}}>Loading…</div></div>;
+  const providers = Object.entries(data.by_provider||{});
+  const maxCost = Math.max(...providers.map(([,v])=>v.cost_usd),.0001);
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg2)',borderRadius:16,border:'1px solid var(--border)',width:600,maxHeight:'80vh',overflow:'auto',padding:24,boxShadow:'var(--shadow-lg)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:20}}>
+          <h2 style={{fontSize:18,fontWeight:700}}>💰 Session Cost</h2>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--muted)',fontSize:20,cursor:'pointer'}}>✕</button>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
+          {[['Total',fmtCost(data.total_cost_usd||0)],['Calls',data.total_calls||0],['Tokens',((data.total_tokens||0)/1000).toFixed(1)+'k']].map(([k,v])=>(
+            <div key={k} style={{background:'var(--bg3)',padding:14,borderRadius:10,border:'1px solid var(--border)',textAlign:'center'}}>
+              <div style={{fontSize:22,fontWeight:700,color:'var(--accent)'}}>{v}</div>
+              <div style={{fontSize:11,color:'var(--muted)'}}>{k}</div>
+            </div>
+          ))}
+        </div>
+        {providers.map(([prov,info])=>(
+          <div key={prov} style={{marginBottom:10}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,fontSize:13}}>
+              <span style={{color:PROVIDER_COLORS[prov]||'var(--text)'}}>{prov}</span>
+              <span style={{color:'var(--muted)'}}>{info.calls} calls · {fmtCost(info.cost_usd)}</span>
+            </div>
+            <div style={{height:6,background:'var(--bg3)',borderRadius:3}}>
+              <div style={{height:'100%',background:PROVIDER_COLORS[prov]||'var(--accent)',borderRadius:3,width:`${(info.cost_usd/maxCost)*100}%`,transition:'width .4s'}}/>
+            </div>
+          </div>
+        ))}
+        {(data.recent||[]).slice(0,8).map((c,i)=>(
+          <div key={i} style={{display:'flex',gap:8,fontSize:11,padding:'4px 0',borderBottom:'1px solid var(--border)',alignItems:'center'}}>
+            <span className="pill" style={{background:(PROVIDER_COLORS[c.provider]||'#555')+'22',color:PROVIDER_COLORS[c.provider]||'#aaa'}}>{c.model_label}</span>
+            <span style={{color:'var(--muted)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(c.query||'').slice(0,50)}</span>
+            <span style={{color:'var(--green)'}}>{fmtCost(c.cost_usd)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Admin / Usage view ─────────────────────────────────────────────────────
+function AdminView() {
+  const [data,setData]=useState(null);
+  useEffect(()=>{fetch(`${API}/usage/monthly?months=12`).then(r=>r.json()).then(setData).catch(()=>{});},[]);
+  if(!data) return <div style={{padding:40,color:'var(--muted)'}}>Loading usage…</div>;
+  const months = data.months||[];
+  const maxMonthCost = Math.max(...months.map(m=>m.cost_usd),.0001);
+
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:'24px 28px'}}>
+      <div style={{maxWidth:900,margin:'0 auto'}}>
+        <h2 style={{fontSize:20,fontWeight:700,marginBottom:4}}>📊 Usage & Cost</h2>
+        <div style={{fontSize:13,color:'var(--muted)',marginBottom:20}}>
+          Lifetime: {fmtCost(data.lifetime_cost||0)} across {data.lifetime_calls||0} calls
+        </div>
+
+        {months.length===0&&<div style={{color:'var(--muted)'}}>No usage recorded yet. Send a few queries and come back.</div>}
+
+        {/* Monthly cost bars */}
+        {months.length>0&&(
+          <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:18,marginBottom:18,boxShadow:'var(--shadow-sm)'}}>
+            <div style={{fontSize:13,fontWeight:600,color:'var(--muted)',marginBottom:14}}>MONTHLY SPEND</div>
+            {months.map(m=>(
+              <div key={m.month} style={{marginBottom:10}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:4}}>
+                  <span>{m.month}</span>
+                  <span style={{color:'var(--muted)'}}>{m.calls} calls · {(m.total_tokens/1000).toFixed(1)}k tok · {fmtCost(m.cost_usd)}</span>
+                </div>
+                <div style={{height:8,background:'var(--bg3)',borderRadius:4}}>
+                  <div style={{height:'100%',background:'var(--accent)',borderRadius:4,width:`${(m.cost_usd/maxMonthCost)*100}%`,transition:'width .4s'}}/>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Latest month breakdowns */}
+        {months[0]&&(
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+            <Breakdown title={`BY PROVIDER · ${months[0].month}`} obj={months[0].by_provider} colorMap={PROVIDER_COLORS}/>
+            <Breakdown title={`BY DEPARTMENT · ${months[0].month}`} obj={months[0].by_department}/>
+            <div style={{gridColumn:'1 / span 2'}}>
+              <Breakdown title={`BY MODEL · ${months[0].month}`} obj={months[0].by_model}/>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Breakdown({title, obj, colorMap}) {
+  const entries = Object.entries(obj||{}).sort((a,b)=>b[1].cost_usd-a[1].cost_usd);
+  const max = Math.max(...entries.map(([,v])=>v.cost_usd),.0001);
+  return (
+    <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:16,boxShadow:'var(--shadow-sm)'}}>
+      <div style={{fontSize:12,fontWeight:600,color:'var(--muted)',marginBottom:12,letterSpacing:.5}}>{title}</div>
+      {entries.length===0&&<div style={{fontSize:12,color:'var(--muted)'}}>None</div>}
+      {entries.map(([k,v])=>{
+        const c = colorMap?.[k]||'var(--accent)';
+        return (
+          <div key={k} style={{marginBottom:9}}>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
+              <span style={{color:colorMap?c:'var(--text)'}}>{k}</span>
+              <span style={{color:'var(--muted)'}}>{v.calls} · {fmtCost(v.cost_usd)}</span>
+            </div>
+            <div style={{height:5,background:'var(--bg3)',borderRadius:3}}>
+              <div style={{height:'100%',background:c,borderRadius:3,width:`${(v.cost_usd/max)*100}%`}}/>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── n8n automations view ───────────────────────────────────────────────────
+function N8nView() {
+  const [health,setHealth]=useState(null);
+  const [tools,setTools]=useState(null);
+  const [err,setErr]=useState(null);
+  const [args,setArgs]=useState({});
+  const [running,setRunning]=useState(null);
+  const [results,setResults]=useState({});
+
+  const load=()=>{
+    fetch(`${API}/n8n/health`).then(r=>r.json()).then(setHealth).catch(()=>setHealth({status:'down'}));
+    fetch(`${API}/n8n/tools`).then(r=>r.ok?r.json():r.json().then(e=>Promise.reject(e)))
+      .then(d=>{setTools(d.tools||[]);setErr(null);})
+      .catch(e=>setErr(e.detail||'Could not reach n8n'));
+  };
+  useEffect(()=>{load();},[]);
+
+  const run=async(name)=>{
+    setRunning(name);
+    let parsed={};
+    try{ if(args[name]&&args[name].trim()) parsed=JSON.parse(args[name]); }
+    catch{ setResults(r=>({...r,[name]:'⚠ Arguments must be valid JSON'})); setRunning(null); return; }
+    try{
+      const resp=await fetch(`${API}/n8n/call`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,arguments:parsed})});
+      const d=await resp.json();
+      setResults(r=>({...r,[name]: typeof d.content==='string'?d.content:JSON.stringify(d.content,null,2)}));
+    }catch{ setResults(r=>({...r,[name]:'Call failed'})); }
+    finally{ setRunning(null); }
+  };
+
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:'24px 28px'}}>
+      <div style={{maxWidth:860,margin:'0 auto'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+          <h2 style={{fontSize:20,fontWeight:700}}>🔌 n8n Automations</h2>
+          <button onClick={load} style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:8,padding:'5px 12px',fontSize:12,cursor:'pointer'}}>Refresh</button>
+        </div>
+        <div style={{fontSize:13,marginBottom:18}}>
+          {health&&<span style={{color:health.status==='ok'?'var(--green)':'var(--red)'}}>
+            {health.status==='ok'?'● Connected':'● Not connected'} </span>}
+          <span style={{color:'var(--muted)'}}>{health?.url}</span>
+          {health?.auth&&<span style={{color:'var(--muted)'}}> · authed</span>}
+        </div>
+
+        {err&&<div style={{background:'#ef444422',border:'1px solid #ef444444',color:'#fca5a5',borderRadius:10,padding:14,fontSize:13,lineHeight:1.5}}>
+          {err}<br/><span style={{color:'var(--muted)'}}>Check that n8n is running, the MCP Server Trigger workflow is active, and N8N_MCP_TOKEN in .env matches.</span>
+        </div>}
+
+        {tools&&tools.length===0&&!err&&<div style={{color:'var(--muted)',fontSize:13}}>Connected, but no workflow tools are exposed. Activate a workflow with an MCP Server Trigger node.</div>}
+
+        {(tools||[]).map(t=>(
+          <div key={t.name} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:16,marginBottom:12,boxShadow:'var(--shadow-sm)'}}>
+            <div style={{fontSize:15,fontWeight:700}}>{t.name}</div>
+            {t.description&&<div style={{fontSize:13,color:'var(--muted)',marginTop:4,lineHeight:1.5}}>{t.description}</div>}
+            <textarea value={args[t.name]||''} onChange={e=>setArgs(a=>({...a,[t.name]:e.target.value}))}
+              placeholder='Arguments as JSON, e.g. {"name":"value"} — leave blank if none'
+              rows={2}
+              style={{width:'100%',marginTop:10,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 10px',color:'var(--text)',fontSize:12,fontFamily:'monospace',resize:'vertical'}}/>
+            <div style={{display:'flex',gap:10,alignItems:'center',marginTop:8}}>
+              <button onClick={()=>run(t.name)} disabled={running===t.name} style={{background:'var(--accent)',border:'none',color:'#fff',borderRadius:8,padding:'6px 16px',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                {running===t.name?'Running…':'▶ Run'}
+              </button>
+            </div>
+            {results[t.name]&&(
+              <pre style={{marginTop:10,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 12px',fontSize:12,maxHeight:240,overflow:'auto',whiteSpace:'pre-wrap'}}>{results[t.name]}</pre>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Self-Improve (Self-Harness) view ───────────────────────────────────────
+function HarnessView() {
+  const [proposals,setProposals]=useState([]);
+  const [running,setRunning]=useState(false);
+  const [lastRun,setLastRun]=useState(null);
+  const [busy,setBusy]=useState(null);
+
+  const load=()=>fetch(`${API}/harness/proposals?status=pending`).then(r=>r.json()).then(setProposals).catch(()=>{});
+  useEffect(()=>{load();},[]);
+
+  const run=async()=>{
+    setRunning(true); setLastRun(null);
+    try{
+      const r=await fetch(`${API}/harness/run`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      const d=await r.json();
+      setLastRun(d);
+      load();
+    }catch{ setLastRun({error:'Run failed — is the orchestrator up?'}); }
+    finally{ setRunning(false); }
+  };
+
+  const decide=async(pid,action)=>{
+    setBusy(pid);
+    try{ await fetch(`${API}/harness/proposals/${pid}/${action}`,{method:'POST'}); }catch{}
+    setBusy(null); load();
+  };
+
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:'24px 28px'}}>
+      <div style={{maxWidth:860,margin:'0 auto'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+          <h2 style={{fontSize:20,fontWeight:700}}>🧬 Self-Improve</h2>
+          <button onClick={run} disabled={running} style={{background:running?'var(--bg3)':'var(--accent)',border:'none',color:'#fff',borderRadius:10,padding:'8px 16px',fontSize:13,fontWeight:600,cursor:running?'default':'pointer'}}>
+            {running?'Running loop…':'Run optimization loop'}
+          </button>
+        </div>
+        <div style={{fontSize:13,color:'var(--muted)',marginBottom:18,lineHeight:1.5}}>
+          The loop runs your agents on a held-out task set, finds recurring weaknesses against your style rules, drafts a fix, and regression-tests it. Winners appear below for your approval — nothing changes until you accept.
+        </div>
+
+        {running&&<div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:16,marginBottom:16,fontSize:13,color:'var(--muted)'}}>Running mining → proposal → validation across departments. This makes several model calls and can take a minute or two…</div>}
+
+        {lastRun&&!lastRun.error&&(
+          <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:16,marginBottom:16}}>
+            <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Last run: {lastRun.proposals_queued} proposal(s) queued across {lastRun.departments} departments</div>
+            {(lastRun.results||[]).map((r,i)=>(
+              <div key={i} style={{fontSize:12,color:'var(--muted)',padding:'3px 0'}}>
+                {r.department}: {r.status==='clean'?'✓ no weaknesses':r.queued?`⬆ ${r.failure_pattern} → +${r.heldin_gain}`:r.failure_pattern?`tested, not queued (gain ${r.heldin_gain})`:r.status||'—'}
+              </div>
+            ))}
+          </div>
+        )}
+        {lastRun&&lastRun.error&&<div style={{color:'var(--red)',marginBottom:16}}>{lastRun.error}</div>}
+
+        <h3 style={{fontSize:13,fontWeight:600,color:'var(--muted)',marginBottom:10,letterSpacing:.5}}>PENDING PROPOSALS</h3>
+        {proposals.length===0&&<div style={{fontSize:13,color:'var(--muted)'}}>No proposals waiting. Run the loop to generate some.</div>}
+        {proposals.map(p=>(
+          <div key={p.id} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:16,marginBottom:12,boxShadow:'var(--shadow-sm)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <span className="pill" style={{background:'var(--accent-weak)',color:'var(--accent-strong)',border:'1px solid #cdd6f5'}}>{p.department}</span>
+              <span style={{fontSize:12,color:'var(--muted)'}}>weakness: {p.failure_pattern}</span>
+            </div>
+            <div style={{background:'var(--bg3)',borderLeft:'3px solid var(--green)',borderRadius:6,padding:'10px 12px',fontSize:13,marginBottom:10}}>
+              <span style={{color:'var(--muted)',fontSize:11}}>Proposed rule to add to <code>{p.target_file}</code>:</span><br/>
+              <span style={{fontWeight:500}}>{p.rule}</span>
+            </div>
+            <div style={{display:'flex',gap:16,fontSize:12,color:'var(--muted)',marginBottom:12}}>
+              <span>held-in: {p.baseline_score} → <span style={{color:'var(--green)'}}>{p.candidate_score}</span></span>
+              <span>held-out Δ: {p.heldout_delta>=0?'+':''}{p.heldout_delta}</span>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>decide(p.id,'accept')} disabled={busy===p.id} style={{background:'var(--green)',border:'none',color:'#fff',borderRadius:8,padding:'6px 16px',fontSize:13,fontWeight:600,cursor:'pointer'}}>✓ Accept & apply</button>
+              <button onClick={()=>decide(p.id,'reject')} disabled={busy===p.id} style={{background:'none',border:'1px solid var(--border)',color:'var(--muted)',borderRadius:8,padding:'6px 16px',fontSize:13,cursor:'pointer'}}>Reject</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── WijerCo team gallery ───────────────────────────────────────────────────
+function Avatar({agent, size=72}) {
+  return (
+    <div style={{
+      width:size,height:size,borderRadius:'50%',flexShrink:0,
+      background:`linear-gradient(135deg, ${agent.color}, ${agent.color}99)`,
+      display:'flex',alignItems:'center',justifyContent:'center',
+      color:'#fff',fontWeight:700,fontSize:size*0.4,
+      boxShadow:`0 4px 14px ${agent.color}55`,
+    }}>{agent.initial}</div>
+  );
+}
+
+function WijercoGallery({roster, dept, onDept, onAgent, onBack}) {
+  if(!roster) return <div style={{padding:40,color:'var(--muted)'}}>Loading team…</div>;
+
+  // Department grid
+  if(!dept) return (
+    <div style={{flex:1,overflowY:'auto',padding:'28px 32px'}}>
+      <div style={{maxWidth:1000,margin:'0 auto'}}>
+        <h2 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Your WijerCo team</h2>
+        <div style={{fontSize:13,color:'var(--muted)',marginBottom:24}}>Pick a department, then choose who to work with.</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:16}}>
+          {roster.departments.map(d=>(
+            <div key={d.key} onClick={()=>onDept(d)} style={{
+              background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:20,cursor:'pointer',
+              boxShadow:'var(--shadow-sm)',transition:'transform .15s, border-color .15s, box-shadow .15s',
+            }}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=d.color;e.currentTarget.style.transform='translateY(-3px)';e.currentTarget.style.boxShadow='var(--shadow-md)';}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.transform='none';e.currentTarget.style.boxShadow='var(--shadow-sm)';}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                <div style={{width:40,height:40,borderRadius:10,background:d.color+'22',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>{d.emoji}</div>
+                <div>
+                  <div style={{fontSize:15,fontWeight:700}}>{d.label}</div>
+                  <div style={{fontSize:11,color:'var(--muted)'}}>{d.count} {d.count===1?'agent':'agents'}</div>
+                </div>
+              </div>
+              <div style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginBottom:12}}>{d.blurb}</div>
+              <div style={{display:'flex',gap:-8}}>
+                {d.agents.slice(0,6).map((a,i)=>(
+                  <div key={a.slug} style={{marginLeft:i?-8:0}}><Avatar agent={a} size={30}/></div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Employees of a department
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:'24px 32px'}}>
+      <div style={{maxWidth:1000,margin:'0 auto'}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:13,marginBottom:12}}>← All departments</button>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+          <span style={{fontSize:24}}>{dept.emoji}</span>
+          <h2 style={{fontSize:22,fontWeight:700}}>{dept.label}</h2>
+        </div>
+        <div style={{fontSize:13,color:'var(--muted)',marginBottom:22}}>{dept.blurb}</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:16}}>
+          {dept.agents.map(a=>(
+            <div key={a.slug} onClick={()=>onAgent(a)} style={{
+              background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:20,cursor:'pointer',
+              display:'flex',flexDirection:'column',alignItems:'center',textAlign:'center',
+              boxShadow:'var(--shadow-sm)',transition:'transform .15s, border-color .15s, box-shadow .15s',
+            }}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=a.color;e.currentTarget.style.transform='translateY(-3px)';e.currentTarget.style.boxShadow='var(--shadow-md)';}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.transform='none';e.currentTarget.style.boxShadow='var(--shadow-sm)';}}>
+              <Avatar agent={a} size={72}/>
+              <div style={{fontSize:11,color:a.color,marginTop:12,fontWeight:600,letterSpacing:.5}}>{a.role.toUpperCase()}</div>
+              <div style={{fontSize:18,fontWeight:700,marginTop:2}}>{a.name}</div>
+              <div style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginTop:8}}>{a.blurb}</div>
+              <button style={{marginTop:14,background:a.color,border:'none',color:'#fff',borderRadius:10,padding:'7px 18px',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                Work with {a.name}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── New views: each fetches a sensible endpoint, falls back to seed data ────
+function ViewHead({eyebrow, title, lede}) {
+  return (<>
+    <div className="eyebrow">{eyebrow}</div>
+    <h1 className="view-title">{title}</h1>
+    {lede&&<p className="view-lede">{lede}</p>}
+  </>);
+}
+
+// Deliverables Library
+const SEED_DELIVERABLES = [
+  {title:"Online retention: sector benchmark and drivers", cap:"Sector Intelligence & Evidence", type:"PDF briefing", status:"Reviewed", st:"st-good", meta:"18 pages · 12 Jun"},
+  {title:"MPH curriculum map and outcomes alignment", cap:"Learning & Curriculum Design", type:"Curriculum map", status:"Draft for review", st:"st-warn", meta:"9 Jun"},
+  {title:"Academic operations: options analysis for council", cap:"Strategy & Change Advisory", type:"Decision paper", status:"Reviewed", st:"st-good", meta:"11 pages · 5 Jun"},
+  {title:"Online teaching capability, facilitation guide", cap:"Academic Capability & Leadership", type:"Facilitation guide", status:"Reviewed", st:"st-good", meta:"24 pages · 1 Jun"},
+];
+function DeliverablesLibrary(){
+  const [items,setItems]=useState(null);
+  useEffect(()=>{fetch(`${API}/deliverables`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setItems(d.items||d)).catch(()=>setItems(SEED_DELIVERABLES));},[]);
+  return (
+    <div className="view-wrap"><div className="view-inner">
+      <ViewHead eyebrow="Deliverables and evidence" title="Library." lede="Finished work, reviewed and signed off. Briefings, designs, and plans ready to take into the institution."/>
+      <div className="grid-2" style={{marginTop:26}}>
+        {(items||[]).map((d,i)=>(
+          <div key={i} className="card card-i" style={{display:'flex',gap:14,alignItems:'flex-start'}}>
+            <div className="doc-ico">📄</div>
+            <div style={{minWidth:0,flex:1}}>
+              <div className="cap-tag">{d.cap}</div>
+              <div className="serif" style={{fontSize:16,fontWeight:500,margin:'4px 0 8px',color:'var(--ink)',lineHeight:1.3}}>{d.title}</div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+                <span className="mini">{d.type} · {d.meta}</span>
+                <span className={"stag "+d.st}>{d.status}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div></div>
+  );
+}
+
+// Content pipeline
+const SEED_CONTENT = {
+  Ideas:[{t:"Why TEQSA's teaching-qualification signal reshapes academic hiring", p:"LinkedIn"},{t:"The micro-credential demand gap nobody costs", p:"Article"}],
+  Drafting:[{t:"Adaptive versus technical: where education leaders misread the problem", p:"LinkedIn", m:"draft 2"}],
+  Scheduled:[{t:"What AI agents already do in academic operations", p:"LinkedIn", m:"Tue 8:00am"}],
+  Published:[{t:"The university teaching deficit is an operating-model problem", p:"LinkedIn", m:"3.1k views"},{t:"Andragogy is not a footnote", p:"Article", m:"1.2k reads"}],
+};
+function ContentPipeline(){
+  const [cols,setCols]=useState(null);
+  useEffect(()=>{fetch(`${API}/content/pipeline`).then(r=>r.ok?r.json():Promise.reject()).then(setCols).catch(()=>setCols(SEED_CONTENT));},[]);
+  const order=["Ideas","Drafting","Scheduled","Published"];
+  return (
+    <div className="view-wrap"><div className="view-inner" style={{maxWidth:1120}}>
+      <ViewHead eyebrow="Thought leadership" title="Content pipeline." lede="Drafts, scheduled posts, and what has gone out. Built to keep the published-profile work moving."/>
+      <div className="kan" style={{marginTop:26}}>
+        {order.map(k=>(
+          <div key={k} className="kan-col">
+            <div className="kan-h"><span>{k}</span><span>{(((cols||{})[k])||[]).length}</span></div>
+            {(((cols||{})[k])||[]).map((c,i)=>(
+              <div key={i} className="kan-card">
+                <div style={{fontSize:13,fontWeight:500,color:'var(--ink)',lineHeight:1.4}}>{c.t}</div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:9}}>
+                  <span className="tagx">{c.p}</span>
+                  {c.m&&<span className="mini">{c.m}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div></div>
+  );
+}
+
+// Engagements
+const SEED_ENG = [
+  {cap:"Sector Intelligence & Evidence", title:"First-year online retention, read and recommendation", lead:"Insights Strategist", milestone:"Recommendation ready for sign-off", st:"st-warn", stl:"Awaiting review", pct:90},
+  {cap:"Learning & Curriculum Design", title:"Master of Public Health, rebuilt for online delivery", lead:"Instructional Designer", milestone:"Curriculum architecture, draft in 6 days", st:"st-good", stl:"In delivery", pct:55},
+  {cap:"Academic Capability & Leadership", title:"Course coordinator capability program", lead:"Academic Trainer", milestone:"Design workshop, scheduled 28 Jul", st:"st-mute", stl:"Scheduled", pct:20},
+];
+function EngagementsView(){
+  const [rows,setRows]=useState(null);
+  useEffect(()=>{fetch(`${API}/engagements`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setRows(d.items||d)).catch(()=>setRows(SEED_ENG));},[]);
+  return (
+    <div className="view-wrap"><div className="view-inner">
+      <ViewHead eyebrow="Live work" title="Engagements in progress." lede="Every engagement shows the capability behind it, the lead, the next milestone, and where it sits today."/>
+      <div style={{marginTop:24,display:'flex',flexDirection:'column',gap:12}}>
+        {(rows||[]).map((e,i)=>(
+          <div key={i} className="card card-i" style={{display:'grid',gridTemplateColumns:'1fr auto',gap:16,alignItems:'center'}}>
+            <div style={{minWidth:0}}>
+              <div className="cap-tag">{e.cap}</div>
+              <div className="serif" style={{fontSize:17,fontWeight:500,color:'var(--ink)',margin:'5px 0 7px'}}>{e.title}</div>
+              <div className="mini">{e.lead} · {e.milestone}</div>
+            </div>
+            <div style={{textAlign:'right',minWidth:168}}>
+              <span className={"stag "+e.st}>{e.stl}</span>
+              <div className="bar" style={{marginTop:10}}><i style={{width:e.pct+'%'}}/></div>
+              <div className="mini" style={{marginTop:5}}>{e.pct}% complete</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div></div>
+  );
+}
+
+// Knowledge base
+const SEED_KB = {stats:{docs:42,chunks:1180,updated:"12 Jun"}, sources:[
+  {name:"WijerCo capability briefs", chunks:210, fresh:"Current", st:"st-good"},
+  {name:"TEQSA & AQF reference set", chunks:340, fresh:"Current", st:"st-good"},
+  {name:"QILT / HEIMS extracts", chunks:180, fresh:"Stale · 90 days", st:"st-warn"},
+  {name:"Client institutional data", chunks:260, fresh:"Current", st:"st-good"},
+  {name:"Sector literature", chunks:190, fresh:"Gap · no 2026 sources", st:"st-warn"},
+]};
+function KnowledgeBaseView(){
+  const [d,setD]=useState(null);
+  useEffect(()=>{fetch(`${API}/kb/overview`).then(r=>r.ok?r.json():Promise.reject()).then(setD).catch(()=>setD(SEED_KB));},[]);
+  const s=(d||{}).stats||{}; const sources=(d||{}).sources||[];
+  return (
+    <div className="view-wrap"><div className="view-inner">
+      <ViewHead eyebrow="Retrieval corpus" title="Knowledge base." lede="What the agents draw on. Watch coverage and freshness, and find the gaps before they reach a deliverable."/>
+      <div className="grid-3" style={{marginTop:24}}>
+        <div className="card stat"><div className="k">Documents</div><div className="v">{s.docs!=null?s.docs:"—"}</div><div className="s">Indexed and searchable</div></div>
+        <div className="card stat"><div className="k">Chunks</div><div className="v">{s.chunks!=null?s.chunks:"—"}</div><div className="s">Across all sources</div></div>
+        <div className="card stat"><div className="k">Last indexed</div><div className="v" style={{fontSize:24}}>{s.updated||"—"}</div><div className="s">Most recent ingest</div></div>
+      </div>
+      <div className="row-head"><h3>Sources</h3><span className="mini">{sources.length} indexed</span></div>
+      <div className="card" style={{padding:'4px 20px'}}>
+        {sources.map((x,i)=>(
+          <div key={i} className="kv" style={{alignItems:'center'}}>
+            <span style={{color:'var(--ink)',fontWeight:500}}>{x.name}</span>
+            <span style={{display:'flex',gap:14,alignItems:'center'}}><span className="mini">{x.chunks} chunks</span><span className={"stag "+x.st}>{x.fresh}</span></span>
+          </div>
+        ))}
+      </div>
+    </div></div>
+  );
+}
+
+// Memory
+const SEED_MEMORY = [
+  {g:"Identity", items:["Aaron Wijeratne, Academic Director at OES, Swinburne Online","Positioning for PVC or Academic Dean on a 12-month horizon","PhD Organisational Behaviour; Business and Commerce (Hons)"]},
+  {g:"Preferences", items:["Lead with the point; no preamble or filler","Banned buzzwords enforced; no em dashes","Claims backed by names, numbers, and dates"]},
+  {g:"Projects", items:["WijerCo brand on hold while at OES (conflict of interest)","Ship an adopted product or capability at OES this year","Build a published thought-leadership profile"]},
+  {g:"Decisions", items:["Routing ambiguity defaults to Strategy & Change","Client work paused; internal Command Centre is the focus"]},
+];
+function MemoryView(){
+  const [groups,setGroups]=useState(null);
+  useEffect(()=>{fetch(`${API}/memory/overview`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setGroups(d.groups||d)).catch(()=>setGroups(SEED_MEMORY));},[]);
+  return (
+    <div className="view-wrap"><div className="view-inner">
+      <ViewHead eyebrow="Long-term memory" title="What the system remembers." lede="The facts and preferences carried between conversations. Correct anything it gets wrong before it shapes the next answer."/>
+      <div className="grid-2" style={{marginTop:24}}>
+        {(groups||[]).map((g,i)=>(
+          <div key={i} className="card">
+            <div className="cap-tag" style={{color:'var(--pine)'}}>{g.g}</div>
+            <div style={{marginTop:11,display:'flex',flexDirection:'column',gap:10}}>
+              {(g.items||[]).map((it,j)=>(
+                <div key={j} style={{display:'flex',gap:10,fontSize:13.5,color:'var(--ink)',lineHeight:1.5}}>
+                  <span style={{width:6,height:6,borderRadius:'50%',background:'var(--gold)',flex:'none',marginTop:6}}/>
+                  <span>{it}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div></div>
+  );
+}
+
+// Sector intelligence
+const SEED_INTEL = [
+  {src:"TEQSA", date:"11 Jun", head:"Consultation opens on teaching-qualification expectations for academic staff", so:"The forcing function you have been writing about. Institutions that move first will set the benchmark."},
+  {src:"AQF", date:"6 Jun", head:"Review signals tighter alignment between micro-credentials and full qualifications", so:"Reinforces the demand-gap read. Full qualifications stay the unit of trust."},
+  {src:"QILT", date:"3 Jun", head:"2025 Student Experience Survey shows online satisfaction lagging on-campus by 9 points", so:"Direct evidence for the retention and experience engagements."},
+  {src:"Sector", date:"1 Jun", head:"Two Go8 universities announce academic-operations restructures", so:"Watch the adaptive-versus-technical pattern. Likely technical fixes for adaptive problems."},
+];
+function SectorIntelView(){
+  const [items,setItems]=useState(null);
+  useEffect(()=>{fetch(`${API}/intel/feed`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setItems(d.items||d)).catch(()=>setItems(SEED_INTEL));},[]);
+  return (
+    <div className="view-wrap"><div className="view-inner">
+      <ViewHead eyebrow="Sector intelligence" title="What moved this week." lede="TEQSA, AQF, and QILT movements from your research agent, each with the so-what for client work and your writing."/>
+      <div style={{marginTop:24,display:'flex',flexDirection:'column',gap:12}}>
+        {(items||[]).map((x,i)=>(
+          <div key={i} className="card card-i" style={{display:'grid',gridTemplateColumns:'68px 1fr',gap:16}}>
+            <div style={{textAlign:'center'}}>
+              <div className="serif" style={{fontSize:15,fontWeight:600,color:'var(--pine)'}}>{x.src}</div>
+              <div className="mini" style={{marginTop:2}}>{x.date}</div>
+            </div>
+            <div>
+              <div className="serif" style={{fontSize:16,fontWeight:500,color:'var(--ink)',lineHeight:1.3}}>{x.head}</div>
+              <div style={{fontSize:13.5,color:'var(--muted)',marginTop:7,lineHeight:1.5}}>{x.so}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div></div>
+  );
+}
+
+// Routing inspector
+const SEED_TRACE = [
+  {q:"Draft a proposal for a micro-credential in data literacy", dept:"Learning & Curriculum Design", model:"claude-opus-4.8", conf:91, sources:6, ms:4200, cost:0.021},
+  {q:"What is driving first-year online attrition?", dept:"Sector Intelligence & Evidence", model:"gpt-5", conf:88, sources:9, ms:5100, cost:0.034},
+  {q:"Workshop plan for course coordinator capability", dept:"Academic Capability & Leadership", model:"claude-opus-4.8", conf:84, sources:3, ms:3800, cost:0.018},
+  {q:"Restructure academic operations ahead of council", dept:"Strategy & Change Advisory", model:"claude-opus-4.8", conf:72, sources:5, ms:6400, cost:0.041},
+];
+function RoutingInspector(){
+  const [rows,setRows]=useState(null);
+  useEffect(()=>{fetch(`${API}/trace/recent`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setRows(d.items||d)).catch(()=>setRows(SEED_TRACE));},[]);
+  return (
+    <div className="view-wrap"><div className="view-inner">
+      <ViewHead eyebrow="Observability" title="Routing inspector." lede="Why each query went where it did. The agent and model chosen, the confidence, and how much it drew on retrieval."/>
+      <div style={{marginTop:24,display:'flex',flexDirection:'column',gap:10}}>
+        {(rows||[]).map((r,i)=>(
+          <div key={i} className="card card-i">
+            <div style={{fontSize:14,fontWeight:500,color:'var(--ink)'}}>{r.q}</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10,alignItems:'center'}}>
+              <span className="stag st-good">{r.dept}</span>
+              {r.model&&<span className="tagx">{r.model}</span>}
+              {r.conf!=null&&<span className="tagx">{r.conf}% match</span>}
+              {r.sources!=null&&<span className="tagx">{r.sources} sources</span>}
+              <span style={{flex:1}}/>
+              <span className="mini">{fmtMs(r.ms)} · {fmtCost(r.cost)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div></div>
+  );
+}
+
+// Scheduled runs
+const SEED_SCHED = [
+  {name:"Morning email triage", when:"Daily · 7:00am", next:"Tomorrow 7:00am", st:"st-good", stl:"OK"},
+  {name:"Teams catch-up summary", when:"Weekdays · 8:30am", next:"Tomorrow 8:30am", st:"st-good", stl:"OK"},
+  {name:"Sector intel sweep", when:"Mon · 6:00am", next:"Mon 6:00am", st:"st-good", stl:"OK"},
+  {name:"Self-improve loop", when:"Fri · 5:00pm", next:"Fri 5:00pm", st:"st-warn", stl:"1 proposal queued"},
+  {name:"KB freshness check", when:"Daily · 11:00pm", next:"Tonight 11:00pm", st:"st-fail", stl:"Failed"},
+];
+function ScheduledRunsView(){
+  const [rows,setRows]=useState(null);
+  useEffect(()=>{fetch(`${API}/schedule/list`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setRows(d.items||d)).catch(()=>setRows(SEED_SCHED));},[]);
+  return (
+    <div className="view-wrap"><div className="view-inner">
+      <ViewHead eyebrow="Automation" title="Scheduled runs." lede="Everything that runs on its own. Last result, next run, and anything that needs a look."/>
+      <div className="card" style={{marginTop:24,padding:'4px 20px'}}>
+        {(rows||[]).map((r,i)=>(
+          <div key={i} className="kv" style={{alignItems:'center'}}>
+            <span style={{minWidth:0}}>
+              <span style={{color:'var(--ink)',fontWeight:500}}>{r.name}</span>
+              <span className="mini" style={{marginLeft:10}}>{r.when}</span>
+            </span>
+            <span style={{display:'flex',gap:14,alignItems:'center'}}>
+              <span className="mini">next {r.next}</span>
+              <span className={"stag "+r.st}>{r.stl}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div></div>
+  );
+}
+
+// ── Productivity cockpit ───────────────────────────────────────────────────
+const SEED_PROD = {
+  tasks:{
+    overdue:[{text:"Send Monash follow-up", src:"2026-06-11", due:"2026-06-13", prio:"High"}],
+    today:[{text:"Draft weekly scorecard", src:"Week 23 - 2026", due:null, prio:"Medium"}],
+    priority:[{text:"Submit Masters of Education application", src:"05_Growth", due:null, prio:"Highest"}],
+    week:[{text:"1-on-1 prep for staff reviews", src:"Staff", due:"2026-06-18", prio:""}],
+  },
+  metrics:[
+    {key:"weight",label:"Weight",value:98,unit:"kg",target:"Target 85kg",st:"st-warn",spark:[101,100,99,98]},
+    {key:"protein",label:"Protein (latest)",value:120,unit:"g",target:"Target 180g",st:"st-mute",spark:[]},
+    {key:"workout",label:"Workouts",value:3,unit:"/7d",target:"Target 6/wk",st:"st-warn",spark:[]},
+    {key:"alcfree",label:"Alcohol-free",value:4,unit:"/7d",target:"Target 4/wk",st:"st-good",spark:[]},
+  ],
+  okrs:[
+    {domain:"Professional",focus:"Establishing the Foundation",status:"Stablising",st:"st-warn",pct:20,done:1,total:5},
+    {domain:"Physical",focus:"Reach 85kg",status:"Active",st:"st-warn",pct:30,done:3,total:10},
+  ],
+  projects:[
+    {title:"OLA 2.0",status:"in progress",st:"st-warn",next:"Scope the redesign",pct:40},
+    {title:"MBA ReDesign",status:"not started",st:"st-mute",next:"",pct:0},
+  ],
+  weekly:{title:"Week 23 - 2026",focus:["Hold the 5pm hard stop 4/5 days"],revenue:null,passive:null,leads:null,energy:null},
+  inbox:[{text:"Idea: andragogy explainer thread",src:"07_Thinking"}],
+  counts:{open:18,surfaced:6,inbox:3},
+  vault:"Vault",
+  wip:{count:4,limit:3,over:true,flagged:5},
+  goals:{items:[{tag:"OES",count:5,weight:14,color:"#1f4d3f"},{tag:"Product",count:3,weight:7,color:"#c28f1e"},{tag:"Profile",count:2,weight:6,color:"#3f6f8f"}],untagged:4,total:10},
+  review:{
+    closed:[{text:"Ship triage agent v1 to OES",src:"2026-06-23",done:"2026-06-23"}],
+    waiting:[{text:"Platform team API spec",src:"05_Projects",sub:"started 9d ago"}],
+    attention:[{text:"Review assessment-turnaround pilot data",src:"2026-06-12",sub:"overdue 5d"}],
+    momentum:{this:1,prev:3},
+  },
+};
+const STC = {"st-good":"var(--green)","st-warn":"var(--yellow)","st-fail":"var(--red)","st-mute":"var(--muted-2)"};
+
+function Spark({data,color}){
+  if(!data||data.length<2) return null;
+  const w=88,h=24,min=Math.min(...data),max=Math.max(...data),rng=(max-min)||1;
+  const pts=data.map((v,i)=>`${(i/(data.length-1))*w},${h-((v-min)/rng)*(h-4)-2}`).join(' ');
+  return <svg width={w} height={h} style={{display:'block',marginTop:8}}><polyline points={pts} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round"/></svg>;
+}
+
+const GOAL_LIST=[['OES','#1f4d3f'],['Product','#c28f1e'],['Profile','#3f6f8f']];
+const PRIO_CYCLE=['','Highest','High','Medium','Low','Lowest'];
+function EdTaskCard({t,onOp,vault}){
+  const [editing,setEditing]=useState(null);
+  const [val,setVal]=useState('');
+  const checked=!!(t.done||t.checked);
+  const raw=t.raw||'';
+  const activeTags=GOAL_LIST.filter(([g])=>raw.toLowerCase().includes('#'+g.toLowerCase())).map(([g])=>g);
+  const startText=()=>{ if(checked)return; setVal(t.text); setEditing('text'); };
+  const commitText=()=>{ const v=(val||'').trim(); if(v&&v!==t.text) onOp(t,'set_text',v); setEditing(null); };
+  const cyclePrio=()=>{ const i=Math.max(0,PRIO_CYCLE.indexOf(t.prio||'')); onOp(t,'set_priority',PRIO_CYCLE[(i+1)%PRIO_CYCLE.length]); };
+  const startDue=()=>{ setVal(t.due||''); setEditing('due'); };
+  const fp=(t.path||''); const ofile=fp.endsWith('.md')?fp.slice(0,-3):fp;
+  const srcEl=(vault&&t.path)
+    ? <a href={`obsidian://open?vault=${encodeURIComponent(vault)}&file=${encodeURIComponent(ofile)}`} title={'Open in Obsidian: '+t.src} onClick={e=>e.stopPropagation()} className="mini" style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:110,color:'var(--pine)',textDecoration:'none'}}>{t.src}</a>
+    : <span className="mini" style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:110}}>{t.src}</span>;
+  return (
+    <div className="kan-card">
+      <div style={{display:'flex',gap:9,alignItems:'flex-start'}}>
+        <span onClick={()=>onOp(t,'toggle_done')} title={checked?'Reopen':'Complete'} style={{flex:'none',width:16,height:16,marginTop:1,borderRadius:5,cursor:'pointer',border:'1.5px solid '+(checked?'var(--pine)':'var(--muted-2)'),background:checked?'var(--pine)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:10,lineHeight:1}}>{checked?'✓':''}</span>
+        <div style={{flex:1,minWidth:0}}>
+          {editing==='text'
+            ? <input autoFocus value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();commitText();}else if(e.key==='Escape'){setEditing(null);}}} onBlur={commitText} style={{width:'100%',fontSize:12.5,fontWeight:500,color:'var(--ink)',border:'1px solid var(--pine)',borderRadius:6,padding:'4px 7px',outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+            : <div onClick={startText} title="Click to edit" style={{fontSize:12.5,fontWeight:500,color:'var(--ink)',lineHeight:1.4,cursor:'text',textDecoration:checked?'line-through':'none',opacity:checked?0.55:1,wordBreak:'break-word'}}>{t.text}</div>}
+          {checked ? (
+            <div style={{display:'flex',alignItems:'center',gap:8,marginTop:8}}>
+              {t.done&&<span className="tagx">✅ {t.done.slice(5)}</span>}
+              <span style={{flex:1}}/>
+              {srcEl}
+              <button onClick={()=>onOp(t,'delete')} title="Delete" style={{flex:'none',border:'none',background:'transparent',color:'var(--muted-2)',cursor:'pointer',fontSize:15,lineHeight:1,padding:'0 2px'}}>×</button>
+            </div>
+          ) : (
+            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:8,alignItems:'center'}}>
+              <span onClick={cyclePrio} title="Priority, click to change" className="tagx" style={{cursor:'pointer',borderStyle:t.prio?'solid':'dashed',color:t.prio?'var(--pine)':'var(--muted-2)'}}>{t.prio||'priority'}</span>
+              {editing==='due'
+                ? <input type="date" autoFocus value={val} onChange={e=>{onOp(t,'set_due',e.target.value||'');setEditing(null);}} onBlur={()=>setEditing(null)} onKeyDown={e=>{if(e.key==='Escape')setEditing(null);}} style={{fontSize:11,border:'1px solid var(--pine)',borderRadius:6,padding:'2px 5px',fontFamily:'inherit',color:'var(--ink)'}}/>
+                : <span onClick={startDue} title="Due date, click to change" className="tagx" style={{cursor:'pointer',borderStyle:t.due?'solid':'dashed',color:t.due?'var(--ink)':'var(--muted-2)'}}>{t.due?('📅 '+t.due.slice(5)):'+ due'}</span>}
+              {GOAL_LIST.map(([g,c])=>{const on=activeTags.includes(g);return(<span key={g} onClick={()=>onOp(t,'toggle_tag',g)} title="Toggle goal tag" className="tagx" style={{cursor:'pointer',borderStyle:on?'solid':'dashed',background:on?c:'transparent',color:on?'#fff':'var(--muted-2)',borderColor:on?c:'var(--line)'}}>{g}</span>);})}
+              {t.sub&&<span className="tagx" style={{color:'var(--gold)',borderColor:'var(--gold-soft)'}}>{t.sub}</span>}
+              <span style={{flex:1}}/>
+              {srcEl}
+              <button onClick={()=>onOp(t,'delete')} title="Delete" style={{flex:'none',border:'none',background:'transparent',color:'var(--muted-2)',cursor:'pointer',fontSize:15,lineHeight:1,padding:'0 2px'}}>×</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductivityView(){
+  const [d,setD]=useState(null);
+  const [cap,setCap]=useState('');
+  const [capType,setCapType]=useState('task');
+  const [saving,setSaving]=useState(false);
+  const [toast,setToast]=useState('');
+  const load=useCallback(()=>{
+    fetch(`${API}/productivity/overview`).then(r=>r.ok?r.json():Promise.reject()).then(setD).catch(()=>setD(SEED_PROD));
+  },[]);
+  useEffect(()=>{load();},[load]);
+
+  const submit=async()=>{
+    const text=cap.trim();
+    if(!text||saving) return;
+    setSaving(true);
+    try{
+      const r=await fetch(`${API}/productivity/capture`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,type:capType})});
+      const j=await r.json();
+      if(j.ok){ setToast(capType==='task'?`Added to ${j.file}`:`Saved to 07_Thinking/${j.file}`); setCap(''); setTimeout(load,300); }
+      else setToast(j.error||'Could not save');
+    }catch{ setToast('Capture failed. Is the orchestrator running on port 8000?'); }
+    finally{ setSaving(false); setTimeout(()=>setToast(''),4500); }
+  };
+
+  const op=async(t,opName,value)=>{
+    if(!t.path||!t.raw){ setToast('Demo data. Start the orchestrator to edit live tasks.'); setTimeout(()=>setToast(''),3500); return; }
+    if(opName==='delete'&&!confirm('Delete this task from its note?')) return;
+    if(opName==='delete'||opName==='toggle_done'){
+      setD(prev=>{ if(!prev) return prev; const c=JSON.parse(JSON.stringify(prev));
+        const strip=arr=>(arr||[]).filter(x=>!(x.path===t.path&&x.raw===t.raw));
+        if(c.tasks) for(const k in c.tasks) c.tasks[k]=strip(c.tasks[k]);
+        c.inbox=strip(c.inbox);
+        if(c.review){ c.review.waiting=strip(c.review.waiting); c.review.attention=strip(c.review.attention); }
+        return c; });
+    }
+    try{
+      const r=await fetch(`${API}/productivity/task/update`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:t.path,raw:t.raw,op:opName,value:value||''})});
+      const j=await r.json();
+      if(j.ok){ load(); } else { setToast(j.error||'Edit failed'); setTimeout(()=>setToast(''),4000); load(); }
+    }catch{ setToast('Edit failed. Is the orchestrator running on 8000?'); setTimeout(()=>setToast(''),4000); load(); }
+  };
+
+  const dd=d||{};
+  const tasks=dd.tasks||{}, metrics=dd.metrics||[], okrs=dd.okrs||[], projects=dd.projects||[], weekly=dd.weekly||{};
+  const wip=dd.wip||{count:0,limit:3,over:false,flagged:0}, goals=dd.goals||{items:[],untagged:0,total:0}, review=dd.review||{closed:[],waiting:[],attention:[]};
+  const inbox=dd.inbox||[], counts=dd.counts||{}, vault=dd.vault||'';
+  const gval=g=>(g.weight!=null?g.weight:(g.count||0));
+  const gtot=(goals.items||[]).reduce((n,g)=>n+gval(g),0)+(goals.untagged||0)||1;
+  const buckets=[['overdue','🚨 Overdue'],['today','☀️ Due today'],['priority','🔥 High priority'],['week','📅 This week']];
+  const surfaced=counts.surfaced!=null?counts.surfaced:buckets.reduce((n,[k])=>n+((tasks[k]||[]).length),0);
+  const lane=t=>{const r=(t.raw||'').toLowerCase();return (r.includes('#am')||r.includes('#profile'))?'am':'day';};
+
+  return (
+    <div className="view-wrap"><div className="view-inner" style={{maxWidth:1120}}>
+      <ViewHead eyebrow="Personal productivity" title="Productivity cockpit." lede="Your tasks, goals, projects, and daily habits in one place. Read live from across the vault and scored against your 2026 targets."/>
+
+      {/* Quick capture */}
+      <div className="card" style={{marginTop:24,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+        <div style={{display:'flex',gap:2,background:'var(--surface-2)',border:'1px solid var(--line)',borderRadius:9,padding:3}}>
+          {[['task','✓ Task'],['capture','💡 Capture']].map(([v,l])=>(
+            <button key={v} onClick={()=>setCapType(v)} style={{padding:'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12.5,fontWeight:600,background:capType===v?'var(--pine)':'transparent',color:capType===v?'#fff':'var(--muted)'}}>{l}</button>
+          ))}
+        </div>
+        <input value={cap} onChange={e=>setCap(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')submit();}}
+          placeholder={capType==='task'?"Add a task…  e.g. Email Dean !1 fri #oes":"Capture a thought into 07_Thinking…"}
+          style={{flex:1,minWidth:220,background:'var(--surface-2)',border:'1px solid var(--line)',borderRadius:10,padding:'9px 13px',fontSize:14,color:'var(--ink)'}}/>
+        <button onClick={submit} disabled={!cap.trim()||saving} style={{background:cap.trim()?'var(--accent)':'var(--surface-2)',border:'1px solid var(--line)',color:cap.trim()?'#fff':'var(--muted)',borderRadius:10,padding:'9px 18px',fontSize:13.5,fontWeight:600,cursor:cap.trim()?'pointer':'default'}}>{saving?'Saving…':'Add'}</button>
+        {toast&&<span className="mini" style={{width:'100%',color:'var(--pine)'}}>{toast}</span>}
+        {capType==='task'&&!toast&&<span className="mini" style={{width:'100%',color:'var(--muted-2)'}}>Modifiers: !1-!5 priority · today / tomorrow / fri / +3d / 2026-07-01 due · #oes #product #profile</span>}
+      </div>
+
+      {/* Focus: WIP limit + goal balance */}
+      <div className="row-head"><h3>Focus</h3><span className="mini">work in progress and goal balance</span></div>
+      <div className="grid-2">
+        <div className="card" style={{display:'flex',alignItems:'center',gap:18}}>
+          <div style={{width:74,height:74,borderRadius:'50%',flex:'none',display:'flex',alignItems:'center',justifyContent:'center',border:`3px solid ${wip.over?'#b23b3b':'var(--pine)'}`,background:wip.over?'rgba(178,59,59,0.06)':'var(--pine-tint)'}}>
+            <div className="serif" style={{fontSize:26,fontWeight:500,color:wip.over?'#b23b3b':'var(--pine)',lineHeight:1}}>{wip.count}<span style={{fontSize:13,color:'var(--muted)'}}>/{wip.limit}</span></div>
+          </div>
+          <div style={{minWidth:0}}>
+            <div className="cap-tag" style={{color:wip.over?'#b23b3b':'var(--pine)'}}>In progress</div>
+            <div className="mini" style={{marginTop:6,lineHeight:1.5}}>{wip.over?`Over your limit by ${wip.count-wip.limit}. Finish or drop something started before pulling in more.`:`Tasks started (a start date or #doing), against a limit of ${wip.limit}.`}</div>
+            <div className="mini" style={{marginTop:6,color:'var(--muted-2)'}}>{wip.flagged||0} open at high priority</div>
+          </div>
+        </div>
+        <div className="card">
+          <div className="cap-tag" style={{color:'var(--pine)'}}>Goal balance · open tasks, weighted by priority</div>
+          <div className="bar" style={{height:10,marginTop:12,display:'flex'}}>
+            {(goals.items||[]).map((g,i)=>gval(g)>0&&<div key={i} style={{width:(gval(g)/gtot*100)+'%',background:g.color}} title={`${g.tag} ${g.count}`}/>)}
+            {goals.untagged>0&&<div style={{width:(goals.untagged/gtot*100)+'%',background:'var(--muted-2)'}} title={`untagged ${goals.untagged}`}/>}
+          </div>
+          <div style={{display:'flex',gap:14,flexWrap:'wrap',marginTop:10}}>
+            {(goals.items||[]).map((g,i)=>(
+              <span key={i} className="mini" style={{display:'inline-flex',alignItems:'center',gap:5}}><span style={{width:8,height:8,borderRadius:'50%',background:g.color}}/>{g.tag} {g.count}</span>
+            ))}
+            {goals.untagged>0&&<span className="mini" style={{display:'inline-flex',alignItems:'center',gap:5}}><span style={{width:8,height:8,borderRadius:'50%',background:'var(--muted-2)'}}/>untagged {goals.untagged}</span>}
+          </div>
+          <div style={{marginTop:14,borderTop:'1px solid var(--line-soft)',paddingTop:12}}>
+            <div className="mini" style={{marginBottom:8}}>OKR domains</div>
+            <div style={{display:'grid',gap:8}}>
+              {okrs.map((o,i)=>(
+                <div key={i} style={{display:'grid',gridTemplateColumns:'92px 1fr 40px',gap:10,alignItems:'center'}}>
+                  <span className="mini" style={{color:'var(--ink)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.domain}</span>
+                  <div className="bar"><i style={{width:(o.pct||0)+'%'}}/></div>
+                  <span className="mini" style={{textAlign:'right'}}>{o.pct||0}%</span>
+                </div>
+              ))}
+              {okrs.length===0&&<div className="mini">No OKR notes found in 02_OKRs.</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Life metrics */}
+      <div className="row-head"><h3>Habits and metrics</h3><span className="mini">vs your 2026 targets</span></div>
+      <div className="grid-3" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
+        {metrics.map((m,i)=>(
+          <div key={i} className="card stat" style={{position:'relative'}}>
+            <span style={{position:'absolute',top:16,right:16,width:8,height:8,borderRadius:'50%',background:STC[m.st]||'var(--muted-2)'}}/>
+            <div className="k">{m.label}</div>
+            <div className="v" style={{fontSize:28}}>{m.value!=null?m.value:'—'}<span style={{fontSize:14,color:'var(--muted)',marginLeft:3}}>{m.value!=null?m.unit:''}</span></div>
+            <div className="s">{m.target}</div>
+            {m.spark&&m.spark.length>1&&<Spark data={m.spark} color={STC[m.st]||'var(--pine)'}/>}
+          </div>
+        ))}
+      </div>
+
+      {/* Tasks */}
+      <div className="row-head"><h3>Tasks</h3><span className="mini">{surfaced} surfaced · {counts.open!=null?counts.open:surfaced} open · {counts.inbox||0} in inbox</span></div>
+      {surfaced===0
+        ? <div className="card" style={{textAlign:'center',color:'var(--muted)',padding:'26px'}}>✅ Nothing dated or flagged. Add due dates or priorities in your notes and they’ll appear here.</div>
+        : <div className="kan">
+            {buckets.map(([k,label])=>(
+              <div key={k} className="kan-col">
+                <div className="kan-h"><span>{label}</span><span>{(tasks[k]||[]).length}</span></div>
+                {k==='today'
+                  ? [['am','Morning · writing / profile'],['day','Day job · OES']].map(([ln,lnl])=>{
+                      const items=(tasks[k]||[]).filter(t=>lane(t)===ln);
+                      return items.length>0?(
+                        <div key={ln} style={{marginBottom:6}}>
+                          <div className="mini" style={{color:'var(--muted-2)',margin:'2px 0 6px'}}>{lnl}</div>
+                          {items.map((t,i)=>(<EdTaskCard key={i} t={t} onOp={op} vault={vault}/>))}
+                        </div>):null;
+                    })
+                  : (tasks[k]||[]).map((t,i)=>(<EdTaskCard key={i} t={t} onOp={op} vault={vault}/>))}
+                {(tasks[k]||[]).length===0&&<div className="mini" style={{padding:'4px 2px'}}>—</div>}
+              </div>
+            ))}
+          </div>}
+
+      {inbox.length>0&&<React.Fragment>
+        <div className="row-head"><h3>Inbox</h3><span className="mini">{inbox.length} open, no date or priority. Triage these.</span></div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
+          {inbox.map((t,i)=>(<EdTaskCard key={i} t={t} onOp={op} vault={vault}/>))}
+        </div>
+      </React.Fragment>}
+
+      {/* OKRs + Weekly focus */}
+      <div className="row-head"><h3>Life OKRs</h3><span className="mini">02_OKRs</span></div>
+      <div className="grid-2">
+        <div style={{display:'grid',gap:12}}>
+          {okrs.map((o,i)=>(
+            <div key={i} className="card card-i">
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
+                <span className="serif" style={{fontSize:16,fontWeight:500,color:'var(--ink)'}}>{o.domain}</span>
+                {o.status&&<span className={"stag "+(o.st||'st-mute')}>{o.status}</span>}
+              </div>
+              {o.focus&&<div className="mini" style={{marginTop:6}}>{o.focus}</div>}
+              <div className="bar" style={{marginTop:10}}><i style={{width:(o.pct||0)+'%'}}/></div>
+              <div className="mini" style={{marginTop:5}}>{o.pct||0}% · {o.done||0}/{o.total||0} tasks</div>
+            </div>
+          ))}
+          {okrs.length===0&&<div className="card mini">No OKR notes found in 02_OKRs.</div>}
+        </div>
+        <div className="card" style={{alignSelf:'start'}}>
+          <div className="cap-tag" style={{color:'var(--pine)'}}>This week{weekly.title?` · ${weekly.title}`:''}</div>
+          <div style={{marginTop:11,display:'flex',flexDirection:'column',gap:9}}>
+            {(weekly.focus||[]).map((f,i)=>(
+              <div key={i} style={{display:'flex',gap:10,fontSize:13.5,color:'var(--ink)',lineHeight:1.5}}>
+                <span style={{width:6,height:6,borderRadius:'50%',background:'var(--gold)',flex:'none',marginTop:6}}/><span>{f}</span>
+              </div>
+            ))}
+            {(!weekly.focus||weekly.focus.length===0)&&<div className="mini">Set this week’s focus in 03_Weekly.</div>}
+          </div>
+          {(weekly.revenue!=null||weekly.passive!=null||weekly.leads!=null)&&(
+            <div style={{marginTop:14,borderTop:'1px solid var(--line-soft)',paddingTop:12,display:'flex',gap:18,flexWrap:'wrap'}}>
+              {weekly.revenue!=null&&<div><div className="mini">Consultancy</div><div className="serif" style={{fontSize:18,color:'var(--pine)'}}>${weekly.revenue}</div></div>}
+              {weekly.passive!=null&&<div><div className="mini">Passive</div><div className="serif" style={{fontSize:18,color:'var(--pine)'}}>${weekly.passive}</div></div>}
+              {weekly.leads!=null&&<div><div className="mini">Leads</div><div className="serif" style={{fontSize:18,color:'var(--pine)'}}>{weekly.leads}</div></div>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Projects */}
+      <div className="row-head"><h3>Projects</h3><span className="mini">05_Projects</span></div>
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
+        {projects.map((p,i)=>(
+          <div key={i} className="card card-i" style={{display:'grid',gridTemplateColumns:'1fr auto',gap:16,alignItems:'center'}}>
+            <div style={{minWidth:0}}>
+              <div className="serif" style={{fontSize:16,fontWeight:500,color:'var(--ink)'}}>{p.title}</div>
+              {p.next&&<div className="mini" style={{marginTop:5}}>Next: {p.next}</div>}
+            </div>
+            <div style={{textAlign:'right',minWidth:168}}>
+              <span className={"stag "+(p.st||'st-mute')}>{p.status}</span>
+              <div className="bar" style={{marginTop:10}}><i style={{width:(p.pct||0)+'%'}}/></div>
+              <div className="mini" style={{marginTop:5}}>{p.pct||0}% complete</div>
+            </div>
+          </div>
+        ))}
+        {projects.length===0&&<div className="card mini">No projects found in 05_Projects.</div>}
+      </div>
+
+      {/* Weekly review */}
+      <div className="row-head"><h3>Weekly review</h3><span className="mini">{(review.momentum&&review.momentum.this)||0} closed this week{review.momentum&&review.momentum.prev!=null?`, ${review.momentum.prev} last week`:''} · stuck · needs you</span></div>
+      <div className="kan" style={{gridTemplateColumns:'repeat(3,1fr)'}}>
+        {[['closed','✅ Closed this week',review.closed],['waiting','⏳ Waiting too long',review.waiting],['attention','⚠️ Needs attention',review.attention]].map(([k,label,arr])=>(
+          <div key={k} className="kan-col">
+            <div className="kan-h"><span>{label}</span><span>{(arr||[]).length}</span></div>
+            {(arr||[]).map((t,i)=>(<EdTaskCard key={i} t={t} onOp={op} vault={vault}/>))}
+            {(arr||[]).length===0&&<div className="mini" style={{padding:'4px 2px'}}>—</div>}
+          </div>
+        ))}
+      </div>
+    </div></div>
+  );
+}
+
+// ── App ────────────────────────────────────────────────────────────────────
+function App() {
+  const [sessionId,setSessionId]   = useState(()=>crypto.randomUUID());
+  const [messages,setMessages]     = useState([]);
+  const [input,setInput]           = useState('');
+  const [streaming,setStreaming]   = useState(false);
+  const [sessionCost,setSessionCost] = useState(0);
+  const [showCost,setShowCost]     = useState(false);
+  const [showSidebar,setShowSidebar] = useState(true);
+  const [routeMode,setRouteMode]   = useState('auto');
+  const [pinnedModel,setPinnedModel] = useState('');
+  const [models,setModels]         = useState({});
+  const [sidebarTick,setSidebarTick] = useState(0);
+  const [view,setView]             = useState('chat');   // 'chat' | 'admin'
+  const [attached,setAttached]     = useState([]);        // chat-mode filenames
+  const [uploadMode,setUploadMode] = useState('chat');    // 'chat' | 'kb'
+  const [uploading,setUploading]   = useState(false);
+  const [improving,setImproving]   = useState(false);
+  const [roster,setRoster]         = useState(null);
+  const [wjDept,setWjDept]         = useState(null);      // selected department obj
+  const [wjAgent,setWjAgent]       = useState(null);      // selected employee obj
+  const [useTools,setUseTools]     = useState(true);      // let agents call n8n workflows
+  const bottomRef = useRef(null);
+  const abortRef  = useRef(null);
+  const fileRef   = useRef(null);
+
+  useEffect(()=>{
+    fetch(`${API}/models`).then(r=>r.json()).then(setModels).catch(()=>{});
+    fetch(`${API}/wijerco/roster`).then(r=>r.json()).then(setRoster).catch(()=>{});
+  },[]);
+
+  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}); },[messages]);
+
+  const loadSession = async id => {
+    setSessionId(id);
+    try {
+      const d = await fetch(`${API}/sessions/${id}`).then(r=>r.json());
+      setMessages((d.messages||[]).map((m,i)=>({
+        id:i, role:m.role, content:m.content,
+        modelLabel:m.model_key||'', cost_usd:m.cost_usd||0, latency_ms:0,
+      })));
+      setSessionCost(d.total_cost_usd||0);
+    } catch {}
+  };
+
+  const newSession = () => {
+    setSessionId(crypto.randomUUID());
+    setMessages([]);
+    setSessionCost(0);
+    setAttached([]);
+  };
+
+  const send = async () => {
+    const q = input.trim();
+    if(!q||streaming) return;
+    setInput('');
+    const uid = Date.now();
+    const aid = uid+1;
+    setMessages(prev=>[...prev,{id:uid,role:'user',content:q},{id:aid,role:'assistant',content:'',streaming:true}]);
+    setStreaming(true);
+
+    const ep = routeMode==='rag' ? '/query/stream' : '/hybrid/stream';
+    const body = {query:q,session_id:sessionId,system_prompt:'',conversation_history:[],force_model_key:pinnedModel||null,max_tier:3,tools:useTools&&routeMode!=='rag'};
+    if(wjAgent){ body.subagent = wjAgent.slug; body.department = wjAgent.department; }
+    try {
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      const resp = await fetch(`${API}${ep}`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(body),
+        signal:ctrl.signal,
+      });
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf='', full='', meta={};
+
+      while(true) {
+        const {done,value}=await reader.read();
+        if(done) break;
+        buf+=dec.decode(value,{stream:true});
+        const parts=buf.split('\n\n'); buf=parts.pop()||'';
+        for(const part of parts) {
+          if(!part.startsWith('data: ')) continue;
+          const raw=part.slice(6).trim();
+          if(raw==='[DONE]') break;
+          try {
+            const ev=JSON.parse(raw);
+            if(ev.type==='tool_call'){
+              setMessages(prev=>prev.map(m=>m.id===aid?{...m,tools:[...(m.tools||[]),{name:ev.tool,status:'running'}]}:m));
+            } else if(ev.type==='tool_result'){
+              setMessages(prev=>prev.map(m=>m.id===aid?{...m,tools:(m.tools||[]).map(t=>(t.name===ev.tool&&t.status==='running')?{...t,status:ev.ok?'done':'error'}:t)}:m));
+            } else if(ev.type==='meta'||ev.route){ meta={...meta,...ev}; }
+            else if(!ev.done&&ev.token){
+              full+=ev.token;
+              setMessages(prev=>prev.map(m=>m.id===aid?{...m,content:full}:m));
+            } else if(ev.done){ meta={...meta,...ev}; }
+          } catch {}
+        }
+      }
+      const cost=meta.cost_usd||0;
+      setMessages(prev=>prev.map(m=>m.id===aid?{...m,streaming:false,provider:meta.provider,modelLabel:meta.model_label||meta.model_key,cost_usd:cost,latency_ms:meta.latency_ms||0,dept:meta.route||meta.department,memory:!!meta.memory_used}:m));
+      setSessionCost(p=>p+cost);
+      setSidebarTick(n=>n+1);
+    } catch(err) {
+      if(err.name!=='AbortError')
+        setMessages(prev=>prev.map(m=>m.id===aid?{...m,streaming:false,content:'[Connection error — is the orchestrator running on port 8000?]'}:m));
+    } finally { setStreaming(false); abortRef.current=null; }
+  };
+
+  const stop=()=>{ abortRef.current?.abort(); setStreaming(false); };
+
+  const onPickFile = () => fileRef.current?.click();
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    setUploading(true);
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('mode', uploadMode);
+    fd.append('session_id', sessionId);
+    try {
+      const r = await fetch(`${API}/upload`,{method:'POST',body:fd});
+      const d = await r.json();
+      if(d.mode==='kb'){
+        setMessages(prev=>[...prev,{id:Date.now(),role:'assistant',content:`📥 Indexed "${d.file}" into the knowledge base (${d.chunks} chunks). It's now searchable across all conversations.`,streaming:false}]);
+      } else {
+        setAttached(d.attached||[file.name]);
+      }
+    } catch {
+      setMessages(prev=>[...prev,{id:Date.now(),role:'assistant',content:'[Upload failed — check the file type and that the orchestrator is running.]',streaming:false}]);
+    } finally {
+      setUploading(false);
+      if(fileRef.current) fileRef.current.value='';
+    }
+  };
+
+  const clearAttached = async () => {
+    try { await fetch(`${API}/upload/${sessionId}`,{method:'DELETE'}); } catch {}
+    setAttached([]);
+  };
+
+  const handleImprove = async () => {
+    const draft = input.trim();
+    if(!draft||improving) return;
+    setImproving(true);
+    try {
+      const r = await fetch(`${API}/improve-prompt`,{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({prompt:draft,max_tier:1}),
+      });
+      const d = await r.json();
+      if(d.improved) setInput(d.improved);
+    } catch {} finally { setImproving(false); }
+  };
+
+  const QUICK = [
+    "What are the latest trends in Australian higher education?",
+    "Draft a proposal for a micro-credential in data literacy.",
+    "What's the most cost-effective LinkedIn strategy for WijerCo?",
+    "Summarise the key TEQSA compliance requirements for 2025.",
+  ];
+
+  const avail = Object.entries(models).filter(([,v])=>v.available);
+
+  const VIEW_LABELS = {chat:'Chat',admin:'Usage',productivity:'Productivity',harness:'Self-Improve',n8n:'Automations',library:'Deliverables',content:'Content pipeline',engagements:'Engagements',kb:'Knowledge base',memory:'Memory',intel:'Sector intel',trace:'Routing',schedule:'Scheduled runs'};
+  const NAV = [
+    {label:'Workspace', items:[
+      ['chat','Chat',<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-4 4V5z" strokeLinejoin="round"/></svg>],
+      ['productivity','Productivity',<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4" strokeLinecap="round" strokeLinejoin="round"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" strokeLinecap="round" strokeLinejoin="round"/></svg>],
+      ['admin','Usage',<svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 16v-4M12 16V8M16 16v-2" strokeLinecap="round"/></svg>],
+    ]},
+    {label:'Delivery', items:[
+      ['library','Deliverables',<svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M16 4v3h3"/></svg>],
+      ['content','Content',<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z" strokeLinejoin="round"/></svg>],
+      ['engagements','Engagements',<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round"/></svg>],
+    ]},
+    {label:'Knowledge', items:[
+      ['kb','Knowledge base',<svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6"/></svg>],
+      ['memory','Memory',<svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-4-6 4z" strokeLinejoin="round"/></svg>],
+      ['intel','Sector intel',<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.6 2.6 2.6 12.8 0 16M12 4c-2.6 2.6-2.6 12.8 0 16"/></svg>],
+    ]},
+    {label:'Operations', items:[
+      ['n8n','Automations',<svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.3"/><circle cx="18" cy="6" r="2.3"/><circle cx="18" cy="18" r="2.3"/><path d="M8.2 11l7.6-4M8.2 13l7.6 4"/></svg>],
+      ['schedule','Scheduled',<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2" strokeLinecap="round"/></svg>],
+      ['trace','Routing',<svg viewBox="0 0 24 24"><path d="M6 4v6a4 4 0 004 4h8" strokeLinecap="round"/><path d="M15 11l3 3-3 3" strokeLinecap="round" strokeLinejoin="round"/></svg>],
+      ['harness','Self-Improve',<svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" strokeLinecap="round"/></svg>],
+    ]},
+  ];
+
+  return (
+    <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
+      {/* ── Left rail ── */}
+      <div className="rail">
+        <div className="rail-brand">
+          <span className="rail-mark">Wijer<span>Co</span></span>
+          <span className="rail-tag">Command Centre</span>
+        </div>
+        <div className="rail-divider"/>
+        <nav className="rail-nav">
+          {NAV.map((sec,si)=>(
+            <div key={sec.label}>
+              <div className="nav-label" style={{paddingTop:si?16:0}}>{sec.label}</div>
+              {sec.items.map(([v,l,ic])=>(
+                <button key={v} className={`nav-item${view===v?' active':''}`} onClick={()=>setView(v)}>
+                  {ic}<span>{l}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="rail-foot">
+          <div className="rail-card">
+            <div className="rail-av">AW</div>
+            <div>
+              <div style={{fontSize:12.5,fontWeight:600,color:'#eef4f0',lineHeight:1.25}}>WijerCo</div>
+              <div style={{fontSize:10.5,color:'#8fa89b',marginTop:1}}>Aaron Wijeratne</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Collapsible conversations ── */}
+      {showSidebar&&view==='chat'&&<SessionSidebar currentId={sessionId} onSelect={loadSession} onNew={newSession} tick={sidebarTick}/>}
+
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
+        {/* Topbar */}
+        <div className="topbar">
+          {view==='chat'&&<button className="icon-btn" onClick={()=>setShowSidebar(v=>!v)} title="Toggle conversations">☰</button>}
+          <div className="crumb">Workspace / <b>{VIEW_LABELS[view]}</b></div>
+          <div style={{flex:1}}/>
+          <div style={{display:'flex',gap:10}}>
+            {[[8000,'API'],[8001,'Data'],[8002,'Search'],[8003,'Cloud'],[8006,'RAG']].map(([p,l])=>(
+              <ServiceDot key={p} port={p} label={l}/>
+            ))}
+            <ServiceDot key="qdrant" label="Qdrant" url={`${API}/health/qdrant`}/>
+          </div>
+          <button onClick={()=>setShowCost(true)} style={{background:'var(--pine-tint)',border:'1px solid #cdddd2',color:'var(--pine)',borderRadius:999,padding:'5px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+            {fmtCost(sessionCost)}
+          </button>
+        </div>
+
+        {/* Toolbar */}
+        {view==='chat' && <div style={{background:'var(--bg2)',borderBottom:'1px solid var(--border)',padding:'8px 16px',display:'flex',gap:10,alignItems:'center',flexShrink:0,flexWrap:'wrap'}}>
+          <div style={{display:'flex',gap:2,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:9,padding:3}}>
+            {[['auto','🔀 Auto'],['rag','🔍 RAG only'],['wijerco','🏢 WijerCo']].map(([v,l])=>(
+              <button key={v} onClick={()=>{setRouteMode(v); if(v!=='wijerco'){setWjAgent(null);setWjDept(null);}}} style={{padding:'4px 11px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,background:routeMode===v?'var(--pine)':'transparent',color:routeMode===v?'#fff':'var(--muted)',boxShadow:routeMode===v?'0 1px 3px rgba(31,77,63,.4)':'none',transition:'all .15s'}}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <select value={pinnedModel} onChange={e=>setPinnedModel(e.target.value)} style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:8,padding:'4px 10px',fontSize:12,cursor:'pointer'}}>
+            <option value="">🤖 Auto model</option>
+            {avail.map(([key,spec])=><option key={key} value={key}>{spec.label}</option>)}
+          </select>
+          <button onClick={()=>setUseTools(v=>!v)} title="Let agents run your n8n workflows"
+            style={{background:useTools?'var(--gold-tint)':'var(--bg3)',border:'1px solid '+(useTools?'#e2cf8f':'var(--border)'),color:useTools?'#8a630f':'var(--muted)',borderRadius:8,padding:'4px 11px',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+            🔧 Actions {useTools?'on':'off'}
+          </button>
+          <div style={{flex:1}}/>
+          <button onClick={newSession} style={{background:'none',border:'1px solid var(--border)',color:'var(--muted)',borderRadius:8,padding:'4px 12px',cursor:'pointer',fontSize:12}}>+ New chat</button>
+        </div>}
+
+        {view==='admin' && <AdminView/>}
+        {view==='productivity' && <ProductivityView/>}
+        {view==='harness' && <HarnessView/>}
+        {view==='n8n' && <N8nView/>}
+        {view==='library' && <DeliverablesLibrary/>}
+        {view==='content' && <ContentPipeline/>}
+        {view==='engagements' && <EngagementsView/>}
+        {view==='kb' && <KnowledgeBaseView/>}
+        {view==='memory' && <MemoryView/>}
+        {view==='intel' && <SectorIntelView/>}
+        {view==='trace' && <RoutingInspector/>}
+        {view==='schedule' && <ScheduledRunsView/>}
+
+        {/* WijerCo team gallery (until an employee is chosen) */}
+        {view==='chat' && routeMode==='wijerco' && !wjAgent && (
+          <WijercoGallery
+            roster={roster}
+            dept={wjDept}
+            onDept={setWjDept}
+            onAgent={(a)=>{ setWjAgent(a); setMessages([]); setSessionId(crypto.randomUUID()); setSessionCost(0); setAttached([]); }}
+            onBack={()=>setWjDept(null)}
+          />
+        )}
+
+        {view==='chat' && (routeMode!=='wijerco' || wjAgent) && <>
+        {/* Agent banner when chatting with a specific employee */}
+        {wjAgent && (
+          <div style={{background:'var(--bg2)',borderBottom:'1px solid var(--border)',padding:'8px 16px',display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+            <button onClick={()=>{setWjAgent(null);}} style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:13}}>← Team</button>
+            <Avatar agent={wjAgent} size={28}/>
+            <div>
+              <span style={{fontWeight:700,fontSize:14}}>{wjAgent.name}</span>
+              <span style={{fontSize:12,color:'var(--muted)',marginLeft:8}}>{wjAgent.role}</span>
+            </div>
+          </div>
+        )}
+        {/* Messages */}
+        <div style={{flex:1,overflowY:'auto',padding:'20px 24px'}}>
+          {messages.length===0&&wjAgent&&(
+            <div style={{textAlign:'center',marginTop:50}}>
+              <div style={{display:'flex',justifyContent:'center',marginBottom:14}}><Avatar agent={wjAgent} size={80}/></div>
+              <div style={{fontSize:22,fontWeight:700}}>{wjAgent.name}</div>
+              <div style={{fontSize:12,color:wjAgent.color,fontWeight:600,letterSpacing:.5,marginTop:2}}>{wjAgent.role.toUpperCase()}</div>
+              <div style={{fontSize:13,color:'var(--muted)',marginTop:10,maxWidth:440,marginInline:'auto',lineHeight:1.5}}>{wjAgent.blurb} Ask {wjAgent.name} anything below.</div>
+            </div>
+          )}
+          {messages.length===0&&!wjAgent&&(
+            <div style={{textAlign:'center',marginTop:64}}>
+              <div style={{width:64,height:64,borderRadius:16,margin:'0 auto 20px',background:'linear-gradient(135deg,var(--pine),var(--pine-deep))',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 10px 26px rgba(20,35,31,.22)',border:'1px solid rgba(255,255,255,.12)'}}>
+                <span className="serif" style={{fontSize:30,fontWeight:600,color:'var(--gold-soft)',lineHeight:1}}>W</span>
+              </div>
+              <div className="serif" style={{fontSize:27,fontWeight:500,marginBottom:9,color:'var(--ink)'}}>How can the team help today?</div>
+              <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:28,maxWidth:'46ch',marginInline:'auto'}}>Multi-model routing, your evidence base, and the WijerCo agent team, in one place.</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:9,justifyContent:'center',maxWidth:640,margin:'0 auto'}}>
+                {QUICK.map((p,i)=>(
+                  <button key={i} onClick={()=>setInput(p)}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--pine)';e.currentTarget.style.transform='translateY(-1px)';}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor='transparent';e.currentTarget.style.transform='none';}}
+                    style={{padding:'9px 15px',background:'var(--pine-tint)',border:'1px solid transparent',borderRadius:999,color:'var(--pine)',cursor:'pointer',fontSize:13,fontWeight:500,textAlign:'left',transition:'border-color .16s, transform .12s'}}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {messages.filter(m=>m.role!=='system').map(m=><Bubble key={m.id} msg={m}/>)}
+          <div ref={bottomRef}/>
+        </div>
+
+        {/* Input */}
+        <div style={{background:'var(--bg2)',borderTop:'1px solid var(--border)',padding:'12px 16px',flexShrink:0,boxShadow:'0 -2px 14px rgba(16,24,40,.05)'}}>
+          {/* Attached files chips */}
+          {attached.length>0&&(
+            <div style={{maxWidth:900,margin:'0 auto 8px',display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+              {attached.map((n,i)=>(
+                <span key={i} className="pill" style={{background:'var(--pine-tint)',color:'var(--pine)',border:'1px solid #cdddd2'}}>📎 {n}</span>
+              ))}
+              <button onClick={clearAttached} style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:11}}>clear</button>
+            </div>
+          )}
+          <div style={{display:'flex',gap:10,alignItems:'flex-end',maxWidth:900,margin:'0 auto'}}>
+            {/* Upload + mode */}
+            <div style={{display:'flex',flexDirection:'column',gap:4,alignItems:'center'}}>
+              <input ref={fileRef} type="file" onChange={handleUpload} style={{display:'none'}}
+                accept=".pdf,.docx,.txt,.md,.csv,.json"/>
+              <button onClick={onPickFile} disabled={uploading} title="Upload a file"
+                style={{padding:'10px 12px',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:10,color:'var(--text)',cursor:'pointer',fontSize:16,lineHeight:1}}>
+                {uploading?'…':'📎'}
+              </button>
+              <select value={uploadMode} onChange={e=>setUploadMode(e.target.value)} title="Where uploads go"
+                style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)',borderRadius:6,fontSize:10,padding:'1px 2px',cursor:'pointer'}}>
+                <option value="chat">this chat</option>
+                <option value="kb">to KB</option>
+              </select>
+            </div>
+            <textarea
+              value={input}
+              onChange={e=>setInput(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}
+              placeholder="Ask anything… (Enter to send, Shift+Enter for newline)"
+              rows={3}
+              style={{flex:1,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:12,padding:'10px 14px',color:'var(--text)',resize:'none',fontSize:14,lineHeight:1.5,transition:'border-color .15s'}}
+            />
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              <button onClick={handleImprove} disabled={!input.trim()||improving} title="Improve this prompt"
+                style={{padding:'8px 12px',background:input.trim()?'var(--gold-tint)':'var(--bg3)',border:'1px solid '+(input.trim()?'#e2cf8f':'var(--border)'),borderRadius:10,color:input.trim()?'#8a630f':'var(--muted)',cursor:input.trim()?'pointer':'default',fontWeight:600,fontSize:13}}>
+                {improving?'…':'✨ Improve'}
+              </button>
+              {streaming
+                ? <button onClick={stop} style={{padding:'10px 20px',background:'var(--red)',border:'none',borderRadius:10,color:'#fff',cursor:'pointer',fontWeight:700,fontSize:14}}>■ Stop</button>
+                : <button onClick={send} disabled={!input.trim()} style={{padding:'10px 20px',background:input.trim()?'var(--accent)':'var(--bg3)',border:'1px solid var(--border)',borderRadius:10,color:input.trim()?'#fff':'var(--muted)',cursor:input.trim()?'pointer':'default',fontWeight:700,fontSize:14,transition:'all .15s'}}>Send ↑</button>
+              }
+            </div>
+          </div>
+          <div style={{textAlign:'center',marginTop:6,fontSize:10,color:'var(--muted)'}}>
+            {routeMode==='auto'?'🔀 Auto-routing · ':routeMode==='rag'?'🔍 RAG-only · ':'🏢 WijerCo · '}
+            {pinnedModel?`📌 ${models[pinnedModel]?.label||pinnedModel}`:'🤖 Optimal model auto-selected'}
+            {' · Conversations saved automatically'}
+          </div>
+        </div>
+        </>}
+      </div>
+
+      {showCost&&<CostModal onClose={()=>setShowCost(false)}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+# Gitleaks configuration for the Agentic RAG Ecosystem.
+# Extends the built-in ruleset (Anthropic, OpenAI, Google, AWS, generic keys,
+# and many more) and adds an allowlist so the placeholder values in
+# .env.example do not trip the scanner.
+#
+# Run a scan:        gitleaks detect --source . --config .gitleaks.toml
+# Scan staged only:  gitleaks protect --staged --config .gitleaks.toml
+
+title = "agentic-rag-ecosystem"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders and example values that are not real secrets"
+regexes = [
+  '''your-[a-z0-9-]*-key-here''',
+  '''changeme''',
+]
+paths = [
+  '''(^|/)\.venv''',
+  '''(^|/)node_modules''',
+  '''(^|/)logs/''',
+]

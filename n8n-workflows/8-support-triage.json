@@ -1,0 +1,85 @@
+{
+  "name": "WijerCo — Inbound Triage & Draft Reply",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wijerco-inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-inbound",
+      "name": "Webhook (incoming message)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'Triage this incoming message: classify priority (urgent/normal/low), the topic, whether it needs a reply, and which WijerCo agent should handle it. Message:\\n' + ($json.body.message || JSON.stringify($json.body)), session_id: 'n8n-inbound', force_route: 'support', subagent: 'triage-agent' }) }}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "n-triage",
+      "name": "Tally: triage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/hybrid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'Draft a reply in Aaron\\'s voice to the original message, informed by this triage. Collegial, specific, ready to send after a glance.\\n\\nTriage:\\n' + $json.answer + '\\n\\nOriginal message:\\n' + ($('Webhook (incoming message)').item.json.body.message || ''), session_id: 'n8n-inbound', force_route: 'support', subagent: 'responder-agent' }) }}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "n-responder",
+      "name": "Echo: draft reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 320]
+    },
+    {
+      "parameters": {
+        "fromEmail": "a.j.c.wijeratne@gmail.com",
+        "toEmail": "a.j.c.wijeratne@gmail.com",
+        "subject": "WijerCo — Inbound message triaged, draft reply ready",
+        "emailFormat": "text",
+        "text": "=TRIAGE\n{{ $('Tally: triage').item.json.answer }}\n\n— — —\nDRAFT REPLY (review before sending)\n{{ $json.answer }}",
+        "options": {}
+      },
+      "id": "n-email-triage",
+      "name": "Email triage + draft",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [920, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ triage: $('Tally: triage').item.json.answer, draft_reply: $json.answer }) }}",
+        "options": {}
+      },
+      "id": "resp-inbound",
+      "name": "Return triage + draft",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [920, 420]
+    }
+  ],
+  "connections": {
+    "Webhook (incoming message)": { "main": [[{ "node": "Tally: triage", "type": "main", "index": 0 }]] },
+    "Tally: triage": { "main": [[{ "node": "Echo: draft reply", "type": "main", "index": 0 }]] },
+    "Echo: draft reply": { "main": [[{ "node": "Email triage + draft", "type": "main", "index": 0 }, { "node": "Return triage + draft", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
