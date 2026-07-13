@@ -11,6 +11,12 @@ title = "agentic-rag-ecosystem"
 [extend]
 useDefault = true
 
+[[rules]]
+id = "telegram-bot-token"
+description = "Telegram bot token"
+regex = '''\b[0-9]{8,12}:[A-Za-z0-9_-]{30,}\b'''
+keywords = ["telegram", "bot", "token"]
+
 [allowlist]
 description = "Placeholders and example values that are not real secrets"
 regexes = [

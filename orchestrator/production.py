@@ -32,7 +32,10 @@ FORMATS = (
     "course_teaser",
     "proposal_walkthrough",
 )
-JSON_FIELDS = {"brief", "research", "script", "asset_plan", "edit_plan", "review", "linked_assets", "gates"}
+JSON_FIELDS = {
+    "brief", "research", "script", "asset_plan", "edit_plan", "review",
+    "linked_assets", "publish_targets", "gates",
+}
 
 _DB_PATH = Path(os.getenv("MEDIA_DB_PATH", "data/media.db"))
 
@@ -102,6 +105,7 @@ def _db() -> Generator[sqlite3.Connection, None, None]:
             edit_plan     TEXT,
             review        TEXT,
             linked_assets TEXT,
+            publish_targets TEXT,
             gates         TEXT,
             owner         TEXT,
             created_at    TEXT NOT NULL,
@@ -119,6 +123,9 @@ def _db() -> Generator[sqlite3.Connection, None, None]:
             note          TEXT
         )
     """)
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(productions)").fetchall()}
+    if "publish_targets" not in columns:
+        conn.execute("ALTER TABLE productions ADD COLUMN publish_targets TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_productions_state ON productions(state)")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_productions_project ON productions(project)")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_production_events_prod ON production_events(production_id,at)")
@@ -142,7 +149,7 @@ def _loads(value: str | None, default: Any) -> Any:
 def _row_to_production(row: sqlite3.Row, *, with_events: bool = False) -> dict:
     data = dict(row)
     for field in JSON_FIELDS:
-        default = [] if field == "linked_assets" else {}
+        default = [] if field in {"linked_assets", "publish_targets"} else {}
         data[field] = _loads(data.get(field), default)
     if with_events:
         with _db() as conn:
@@ -239,7 +246,13 @@ def _parse_agent_output(text: Any) -> dict:
         return {"_raw": raw}
 
 
-def create_production(title: str, project: str | None, format: str, owner: str | None = None) -> str:
+def create_production(
+    title: str,
+    project: str | None,
+    format: str,
+    owner: str | None = None,
+    publish_targets: list[Any] | None = None,
+) -> str:
     if format not in FORMATS:
         raise ValueError(f"format must be one of {FORMATS}")
     pid = str(uuid.uuid4())
@@ -247,10 +260,11 @@ def create_production(title: str, project: str | None, format: str, owner: str |
     with _db() as conn:
         conn.execute(
             "INSERT INTO productions (production_id,title,project,format,state,brief,research,script,"
-            "asset_plan,edit_plan,review,linked_assets,gates,owner,created_at,updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "asset_plan,edit_plan,review,linked_assets,publish_targets,gates,owner,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (pid, title, project, format, "idea", "{}", "{}", "{}", "{}",
-             "{}", "{}", "[]", "{}", owner, now, now),
+             "{}", "{}", "[]", json.dumps(publish_targets or [], ensure_ascii=False),
+             "{}", owner, now, now),
         )
     return pid
 
@@ -283,7 +297,7 @@ def list_productions(state: str | None = None, project: str | None = None, limit
 def update_production(production_id: str, **fields: Any) -> bool:
     allowed = {
         "title", "project", "format", "state", "brief", "research", "script",
-        "asset_plan", "edit_plan", "review", "linked_assets", "gates", "owner",
+        "asset_plan", "edit_plan", "review", "linked_assets", "publish_targets", "gates", "owner",
     }
     sets: list[str] = []
     params: list[Any] = []
@@ -415,6 +429,15 @@ async def advance(production_id: str, actor: str = "operator") -> dict:
         agent_outputs.append({"subagent": "render-service", "field": "linked_assets", "output": render_result})
 
     updated = transition(production_id, next_state, actor, f"advanced from {state}")
+    if next_state == "publish" and updated.get("publish_targets"):
+        from publishers import service as publication_service
+
+        publication_results = await publication_service.publish_targets(updated, actor=actor)
+        agent_outputs.append({
+            "subagent": "publication-service",
+            "field": "publications",
+            "output": publication_results,
+        })
     return {"production": updated, "agent_output": agent_outputs}
 
 

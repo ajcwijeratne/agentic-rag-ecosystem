@@ -56,6 +56,8 @@ from . import governance as governance_store
 from . import operating as operating_store
 from . import deployment as deployment_store
 from . import obsidian_projects as obsidian_projects_store
+from publishers import service as publication_service
+from publishers import store as publication_store
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -741,6 +743,7 @@ class ProductionCreateRequest(BaseModel):
     project: str | None = None
     format:  str
     owner:   str | None = None
+    publish_targets: list[Any] = Field(default_factory=list)
 
 
 class ProductionTransitionRequest(BaseModel):
@@ -757,6 +760,19 @@ class ProductionActionRequest(BaseModel):
 class ProductionHandoffRequest(BaseModel):
     actor: str = "operator"
     note:  str = ""
+
+
+class ProductionPublishRequest(BaseModel):
+    channel: str
+    actor:   str = "operator"
+    options: dict[str, Any] = Field(default_factory=dict)
+
+
+class PublicationConfirmRequest(BaseModel):
+    url:         str = Field(..., min_length=1)
+    actor:       str = "operator"
+    external_id: str | None = None
+    note:        str = ""
 
 
 class GovernanceApproveRequest(BaseModel):
@@ -854,7 +870,9 @@ async def production_intelligence():
 @app.post("/production", dependencies=[Depends(require_admin)])
 async def create_production(req: ProductionCreateRequest):
     try:
-        pid = production_store.create_production(req.title, req.project, req.format, req.owner)
+        pid = production_store.create_production(
+            req.title, req.project, req.format, req.owner, req.publish_targets
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return production_store.get_production(pid)
@@ -975,6 +993,58 @@ async def handoff_production(production_id: str, req: ProductionHandoffRequest):
         "deliverable": deliverable,
         "memory": memory,
     }
+
+
+@app.post("/production/{production_id}/publish", dependencies=[Depends(require_admin)])
+async def publish_production(production_id: str, req: ProductionPublishRequest):
+    try:
+        return await publication_service.publish(
+            production_id, req.channel, actor=req.actor, options=req.options
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="production not found")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.get("/publications")
+async def list_publications(
+    production_id: str | None = None,
+    channel: str | None = None,
+    status: str | None = None,
+    limit: int = 200,
+):
+    return {
+        "items": publication_store.list_publications(
+            production_id=production_id, channel=channel, status=status, limit=limit
+        )
+    }
+
+
+@app.get("/publications/{publication_id}")
+async def get_publication(publication_id: str):
+    publication = publication_store.get_publication(publication_id)
+    if not publication:
+        raise HTTPException(status_code=404, detail="publication not found")
+    return publication
+
+
+@app.post("/publications/{publication_id}/confirm", dependencies=[Depends(require_admin)])
+async def confirm_publication(publication_id: str, req: PublicationConfirmRequest):
+    try:
+        return publication_service.confirm_publication(
+            publication_id,
+            url=req.url,
+            actor=req.actor,
+            external_id=req.external_id,
+            note=req.note,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="publication not found")
 
 
 @app.get("/governance/pending")

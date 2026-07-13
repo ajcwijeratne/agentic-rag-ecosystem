@@ -23,7 +23,10 @@ if (Test-Path ".env") {
     Get-Content ".env" | ForEach-Object {
         if ($_ -match '^\s*([^#][^=]+)=(.*)$') {
             $key = $matches[1].Trim()
-            $val = $matches[2].Trim().Trim('"').Trim("'")
+            # Match python-dotenv semantics: an inline comment is not part of
+            # the value. Without this, APPRISE_EXTRA_URLS="# ..." becomes a
+            # collection of invalid notification URLs.
+            $val = ($matches[2] -split '#', 2)[0].Trim().Trim('"').Trim("'")
             [System.Environment]::SetEnvironmentVariable($key, $val, "Process")
         }
     }
@@ -49,8 +52,15 @@ foreach ($p in $ports) {
         }
     } catch {}
 }
-# Clear stale PID files
-Get-ChildItem "logs\*.pid" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+# Clear only PID files owned by this launcher. The daemon and channel workers
+# are separate long-lived services and must retain their tracking files.
+$managedServices = @(
+    "orchestrator", "local_data_agent", "search_agent", "cloud_agent",
+    "indexer", "retriever", "notifier"
+)
+foreach ($serviceName in $managedServices) {
+    Remove-Item "logs\$serviceName.pid" -Force -ErrorAction SilentlyContinue
+}
 Start-Sleep 2
 
 function Start-Service($name, $module) {
