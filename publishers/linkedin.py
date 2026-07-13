@@ -11,7 +11,18 @@ def _text(value: Any) -> str:
     if isinstance(value, str):
         return value.strip()
     if isinstance(value, dict):
-        for key in ("linkedin_post", "post", "copy", "draft", "script", "text", "content", "_raw"):
+        for key in ("linkedin_post", "post", "copy", "text", "content", "_raw"):
+            found = _text(value.get(key))
+            if found:
+                return found
+        section_order = value.get("section_order")
+        section_map = value.get("script")
+        if isinstance(section_order, list) and isinstance(section_map, dict):
+            parts = [_text(section_map.get(str(section))) for section in section_order]
+            joined = "\n\n".join(part for part in parts if part)
+            if joined:
+                return joined
+        for key in ("draft", "script"):
             found = _text(value.get(key))
             if found:
                 return found

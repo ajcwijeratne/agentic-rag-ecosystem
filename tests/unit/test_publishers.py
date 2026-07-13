@@ -46,6 +46,41 @@ async def test_linkedin_handoff_requires_publish_gate_and_is_idempotent(publishi
     assert len(store.list_publications(production_id=pid)) == 1
 
 
+@pytest.mark.asyncio
+async def test_linkedin_handoff_joins_ordered_draft_sections(publishing, monkeypatch):
+    production, governance, store, service, linkedin, youtube = publishing
+    notifications = []
+
+    async def fake_notify(**kwargs):
+        notifications.append(kwargs)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(linkedin, "notify", fake_notify)
+    record = {
+        "production_id": "production-1",
+        "title": "A governed post",
+        "script": {
+            "draft": {
+                "script": {
+                    "section_order": ["open", "body", "close"],
+                    "script": {
+                        "open": "Opening paragraph.",
+                        "body": "Evidence paragraph.",
+                        "close": "Closing paragraph.",
+                    },
+                }
+            }
+        },
+        "linked_assets": [],
+    }
+
+    result = await linkedin.prepare_handoff(record)
+
+    expected = "Opening paragraph.\n\nEvidence paragraph.\n\nClosing paragraph."
+    assert result["copy"] == expected
+    assert expected in notifications[0]["body"]
+
+
 def test_manual_confirmation_records_url_and_timestamp(publishing):
     production, governance, store, service, linkedin, youtube = publishing
     item = store.create_or_get("prod-1", "linkedin", "test")
