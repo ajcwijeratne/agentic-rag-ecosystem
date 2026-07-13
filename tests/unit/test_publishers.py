@@ -8,12 +8,16 @@ import pytest
 @pytest.fixture()
 def publishing(tmp_path, monkeypatch):
     db = tmp_path / "media.db"
+    vault = tmp_path / "vault"
+    vault.mkdir()
     monkeypatch.setenv("MEDIA_DB_PATH", str(db))
     monkeypatch.setenv("PUBLICATION_DB_PATH", str(db))
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(vault))
+    monkeypatch.setenv("WRITING_PIPELINE_PATH", "09_Writing Pipline")
     from orchestrator import governance, production
-    from publishers import linkedin, service, store, youtube
+    from publishers import linkedin, obsidian, service, store, youtube
 
-    for module in (governance, production, store, linkedin, youtube, service):
+    for module in (governance, production, store, linkedin, obsidian, youtube, service):
         importlib.reload(module)
     return production, governance, store, service, linkedin, youtube
 
@@ -79,6 +83,61 @@ async def test_linkedin_handoff_joins_ordered_draft_sections(publishing, monkeyp
     expected = "Opening paragraph.\n\nEvidence paragraph.\n\nClosing paragraph."
     assert result["copy"] == expected
     assert expected in notifications[0]["body"]
+
+
+@pytest.mark.asyncio
+async def test_obsidian_sync_starts_only_when_linkedin_handoff_is_ready(publishing, monkeypatch):
+    production, governance, store, service, linkedin, youtube = publishing
+    pid = production.create_production("Ready post", "demo", "linkedin_short", "Aaron")
+    production.update_production(pid, script={"linkedin_post": "Final governed copy."})
+    vault = service.obsidian._vault()
+    assert not list(vault.rglob("*.md"))
+
+    production.transition(pid, "publish", "test", "ready")
+    governance.approve("public_claim", pid, "test")
+    governance.approve("external_publish", pid, "test")
+
+    async def fake_notify(**kwargs):
+        return {"status": "ok"}
+
+    monkeypatch.setattr(linkedin, "notify", fake_notify)
+    publication = await service.publish(pid, "linkedin", actor="test")
+
+    sync = publication["meta"]["obsidian_sync"]
+    note = vault / sync["path"]
+    assert publication["status"] == "handoff_ready"
+    assert note.parent.name == "03_Ready"
+    assert "Final governed copy." in note.read_text(encoding="utf-8")
+    assert not list((vault / "09_Writing Pipline" / "00_Ideas").glob("*.md"))
+
+
+def test_confirmation_moves_same_obsidian_note_to_published(publishing):
+    production, governance, store, service, linkedin, youtube = publishing
+    pid = production.create_production("Published post", "demo", "linkedin_short", "Aaron")
+    production.update_production(pid, script={"linkedin_post": "Published copy."})
+    production.transition(pid, "publish", "test", "ready")
+    item = store.create_or_get(pid, "linkedin", "test")
+    item = store.update_publication(
+        item["publication_id"],
+        status="handoff_ready",
+        meta={"copy": "Published copy."},
+    )
+    item = service._sync_obsidian(production.get_production(pid), item)
+    ready_path = service.obsidian._vault() / item["meta"]["obsidian_sync"]["path"]
+    assert ready_path.is_file()
+
+    confirmed = service.confirm_publication(
+        item["publication_id"],
+        url="https://www.linkedin.com/feed/update/urn:li:activity:2",
+        actor="Aaron",
+    )
+
+    published_path = service.obsidian._vault() / confirmed["meta"]["obsidian_sync"]["path"]
+    assert confirmed["status"] == "published"
+    assert published_path.parent.name == "04_Published"
+    assert published_path.is_file()
+    assert not ready_path.exists()
+    assert "urn:li:activity:2" in published_path.read_text(encoding="utf-8")
 
 
 def test_manual_confirmation_records_url_and_timestamp(publishing):

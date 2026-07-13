@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import linkedin, store, youtube
+from . import linkedin, obsidian, store, youtube
 
 
 def _channel(value: str) -> str:
@@ -31,6 +31,21 @@ def _assert_publishable(production: dict) -> None:
             raise PermissionError(f"{gate}: {result.get('reason')}")
 
 
+def _sync_obsidian(production: dict, publication: dict, *, published: bool = False) -> dict:
+    """Keep publication delivery successful even if the local vault is unavailable."""
+    meta = dict(publication.get("meta") or {})
+    try:
+        result = (
+            obsidian.sync_published(production, publication)
+            if published
+            else obsidian.sync_ready(production, publication)
+        )
+        meta["obsidian_sync"] = result
+    except Exception as exc:
+        meta["obsidian_sync"] = {"status": "error", "error": str(exc)[:500]}
+    return store.update_publication(publication["publication_id"], meta=meta)
+
+
 async def publish(
     production_id: str,
     channel: str,
@@ -48,28 +63,32 @@ async def publish(
     options = options or {}
     publication = store.create_or_get(production_id, channel, actor, {"options": options})
     if publication.get("status") in {"published", "handoff_ready"}:
-        return publication
+        return _sync_obsidian(
+            production, publication, published=publication.get("status") == "published"
+        )
     publication = store.update_publication(
         publication["publication_id"], status="publishing", actor=actor, error=None
     )
     try:
         if channel == "linkedin":
             result = await linkedin.prepare_handoff(production, options)
-            return store.update_publication(
+            publication = store.update_publication(
                 publication["publication_id"],
                 status="handoff_ready",
                 actor=actor,
                 meta=result,
                 error=None,
             )
+            return _sync_obsidian(production, publication)
         result = await youtube.upload(production, options)
-        return store.mark_published(
+        publication = store.mark_published(
             publication["publication_id"],
             url=result["url"],
             external_id=result.get("external_id"),
             actor=actor,
             meta=result,
         )
+        return _sync_obsidian(production, publication, published=True)
     except Exception as exc:
         store.update_publication(
             publication["publication_id"], status="failed", actor=actor, error=str(exc)[:1000]
@@ -108,10 +127,16 @@ def confirm_publication(
     meta = dict(publication.get("meta") or {})
     if note:
         meta["confirmation_note"] = note
-    return store.mark_published(
+    publication = store.mark_published(
         publication_id,
         url=url,
         external_id=external_id,
         actor=actor,
         meta=meta,
     )
+    from orchestrator import production as production_store
+
+    production = production_store.get_production(str(publication.get("production_id") or ""))
+    if not production:
+        return publication
+    return _sync_obsidian(production, publication, published=True)

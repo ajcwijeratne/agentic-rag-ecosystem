@@ -29,6 +29,12 @@ asset IDs to the configured notification channels and records the publication as
 `POST /publications/{publication_id}/confirm` with the public URL. The record
 then becomes `published` and receives `published_at`.
 
+Once the governed handoff reaches `handoff_ready`, the final copy is synced to
+`<OBSIDIAN_VAULT_PATH>/<WRITING_PIPELINE_PATH>/03_Ready`. No idea, draft,
+asset-plan, or review state is written to the vault. The note is keyed by
+production ID, so retries update the same file. Confirming the public URL moves
+that note to `04_Published` and records the URL in its frontmatter and body.
+
 ## YouTube
 
 YouTube uses the official Data API v3 resumable upload flow. Configure:
