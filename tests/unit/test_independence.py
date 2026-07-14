@@ -133,6 +133,34 @@ def test_cycle_never_executes_approval_tasks(iso_env, monkeypatch):
     assert notifications, "operator was not notified about the waiting approval"
 
 
+def test_cycle_persists_notify_once_marker(iso_env, monkeypatch):
+    from orchestrator import daemon, operating
+    monkeypatch.setattr(daemon, "STATE_PATH", iso_env / "daemon_state.json")
+    monkeypatch.setattr(daemon, "LOG_PATH", iso_env / "daemon.jsonl")
+
+    notifications = []
+
+    async def fake_notify(title, body):
+        notifications.append(title)
+
+    monkeypatch.setattr(daemon, "_notify", fake_notify)
+    operating.add_task(
+        None,
+        "Approve external_publish for launch video",
+        type="approval",
+        status="waiting_approval",
+        priority=5,
+    )
+
+    first = asyncio.run(daemon.run_cycle(daemon.load_state()))
+    second = asyncio.run(daemon.run_cycle(daemon.load_state()))
+
+    assert first["action"] == "waiting_on_human"
+    assert second["action"] == "waiting_on_human"
+    assert notifications == ["Waiting on you"]
+    assert daemon.load_state()["notified_tasks"]
+
+
 def test_cycle_executes_agent_task_and_marks_done(iso_env, monkeypatch):
     from orchestrator import daemon, operating
     monkeypatch.setattr(daemon, "STATE_PATH", iso_env / "daemon_state.json")

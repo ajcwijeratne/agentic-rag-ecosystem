@@ -287,6 +287,10 @@ async def run_cycle(state: dict[str, Any]) -> dict[str, Any]:
             await _notify("Waiting on you", body)
             notified.append(task_id)
             state["notified_tasks"] = notified[-200:]
+            # Persist immediately. The main loop re-reads state after each
+            # cycle so pause/resume changes made mid-cycle win; without this
+            # write, that re-read discards the notify-once marker.
+            save_state(state)
             _log_decision("notify_waiting", {"task_id": task_id, "type": kind, "title": task["title"]})
         return {"picked": task_id, "action": "waiting_on_human", "type": kind}
 
@@ -305,6 +309,7 @@ async def run_cycle(state: dict[str, Any]) -> dict[str, Any]:
             f"for {budget['month']} (${budget['spent_usd']:.2f} spent).",
         )
         state["budget_warned_month"] = budget["month"]
+        save_state(state)
 
     if DRY_RUN:
         _log_decision("dry_run", {"task_id": task_id, "type": kind, "title": task["title"]})

@@ -60,6 +60,25 @@ def test_operating_syncs_pending_governance_to_tasks(tmp_path, monkeypatch):
     assert all(task["status"] == "waiting_approval" for task in overview["approval_tasks"])
 
 
+def test_operating_sync_closes_tasks_after_gates_clear(tmp_path, monkeypatch):
+    operating, production, governance, obsidian_projects, agent_executor, client = _modules(tmp_path, monkeypatch)
+    pid = production.create_production("Resolved gate", "demo", "linkedin_short", "Aaron")
+    production.transition(pid, "review", "test", "ready")
+    operating.sync_approval_tasks()
+
+    waiting = operating.list_tasks(status="waiting_approval", limit=20)
+    assert {task["meta"]["gate"] for task in waiting} == {"public_claim", "external_publish"}
+
+    governance.approve("public_claim", pid, "test")
+    governance.approve("external_publish", pid, "test")
+    assert operating.sync_approval_tasks() == []
+
+    assert operating.list_tasks(status="waiting_approval", limit=20) == []
+    resolved = [task for task in operating.list_tasks(status="done", limit=20) if task["target_id"] == pid]
+    assert len(resolved) == 2
+    assert all(task["meta"]["approval_sync"]["status"] == "cleared" for task in resolved)
+
+
 def test_operating_syncs_production_next_actions_to_tasks(tmp_path, monkeypatch):
     operating, production, governance, obsidian_projects, agent_executor, client = _modules(tmp_path, monkeypatch)
     pid = production.create_production("Next action piece", "demo", "linkedin_short", "Aaron")

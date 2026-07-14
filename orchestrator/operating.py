@@ -536,7 +536,35 @@ def sync_approval_tasks() -> list[dict]:
 
     created: list[dict] = []
     pending = governance.pending().get("items", [])
-    existing = {t.get("target_id") + "::" + (t.get("meta") or {}).get("gate", "") for t in list_tasks(status="waiting_approval", limit=500) if t.get("target_id")}
+    pending_keys = {
+        f"{item.get('target_id') or item.get('production_id')}::{item.get('gate')}"
+        for item in pending
+    }
+    waiting = [
+        task for task in list_tasks(status="waiting_approval", limit=500)
+        if task.get("type") == "approval"
+        and task.get("target_id")
+        and (task.get("meta") or {}).get("gate")
+    ]
+    existing = {
+        f"{task.get('target_id')}::{(task.get('meta') or {}).get('gate')}"
+        for task in waiting
+    }
+    for task in waiting:
+        gate = (task.get("meta") or {}).get("gate")
+        key = f"{task.get('target_id')}::{gate}"
+        if key in pending_keys:
+            continue
+        meta = dict(task.get("meta") or {})
+        meta["approval_sync"] = {
+            "status": "cleared",
+            "resolved_at": _now(),
+        }
+        note = (task.get("note") or "").rstrip()
+        resolution = "Governance gate cleared; approval task closed automatically."
+        if resolution not in note:
+            note = f"{note}\n\n{resolution}".strip()
+        update_task(task["task_id"], status="done", note=note, meta=meta)
     for item in pending:
         key = f"{item.get('target_id') or item.get('production_id')}::{item.get('gate')}"
         if key in existing:
