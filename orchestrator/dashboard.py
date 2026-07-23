@@ -854,6 +854,129 @@ async def intel_feed() -> dict[str, Any]:
     return {"items": _load_items("Sector Intel") or SEED_INTEL}
 
 
+# ---------------------------------------------------------------------------
+# Sector Intel benchmarking dataset (Phase 2 pipeline output). Read-only.
+# ---------------------------------------------------------------------------
+_SECTOR_PATHS = [
+    Path(__file__).resolve().parent.parent / "sector-intel" / "data" / "published" / "sector_intel.json",
+    Path(__file__).resolve().parent.parent / "ui" / "sector_intel.json",
+]
+_SEED_SECTOR = {
+    "meta": {"sample": True, "status": "unavailable",
+             "note": "Sector dataset not found on the server. Run the Phase 2 pipeline "
+                     "(python -m sector-intel.src.run --fixtures --publish).",
+             "years": [], "groups": ["Go8", "ATN", "IRU", "RUN", "Unaligned"],
+             "institution_count": 0, "metric_count": 0, "row_count": 0},
+    "metrics": [], "domains": [], "institutions": [], "rows": [],
+}
+
+
+@router.get("/sector/dataset")
+async def sector_dataset() -> Any:
+    """Serve the published Sector Intel benchmarking dataset (Phase 2 output).
+
+    Tries the pipeline's published store first, then the copy beside the command
+    centre, then a seed so the page never errors. Same seed-fallback contract as
+    the other dashboard endpoints.
+    """
+    for candidate in _SECTOR_PATHS:
+        try:
+            if candidate.exists() and candidate.stat().st_size > 0:
+                return json.loads(candidate.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            continue
+    return _SEED_SECTOR
+
+
+class SectorBriefingRequest(BaseModel):
+    institution_id: str = Field(..., min_length=1)
+    year: int | None = None
+    audience: str = "partner leadership"
+    save: bool = True
+
+
+@router.post("/sector/briefing")
+async def sector_briefing(req: SectorBriefingRequest) -> dict[str, Any]:
+    """Phase 4: generate a client briefing for one institution.
+
+    Routes to the Sector Intelligence analyst for prose in Aaron's voice, given
+    the benchmarked evidence pack; falls back to a computed, data-driven briefing
+    so the button always returns something. Optionally saves the result as a
+    Deliverables note in the vault.
+    """
+    from . import sector_briefing as sbrief
+
+    dataset = sbrief.load_dataset()
+    ev = sbrief.build_evidence(dataset, req.institution_id, req.year)
+    if not ev:
+        raise HTTPException(status_code=404, detail="No sector data for that institution; run the pipeline first.")
+
+    markdown, source = "", "computed"
+    try:
+        from .wijerco_agent import call_wijerco_agent
+        result = await call_wijerco_agent(
+            department="research_intelligence",
+            query=sbrief.agent_query(ev, req.audience),
+            subagent="sector-intelligence-analyst",
+        )
+        answer = (result or {}).get("answer") or ""
+        if answer.strip():
+            markdown, source = answer.strip(), "agent"
+    except Exception:  # noqa: BLE001 — agent optional; computed fallback always works
+        markdown = ""
+    if not markdown:
+        markdown = sbrief.computed_briefing(ev, req.audience)
+
+    inst = ev["institution"]
+    saved: dict[str, Any] = {"ok": False, "reason": "not requested"}
+    if req.save:
+        saved = _save_sector_briefing(inst, ev["year"], markdown, source)
+
+    return {
+        "institution_id": inst["institution_id"],
+        "institution_name": inst["institution_name"],
+        "year": ev["year"],
+        "generated": datetime.now().isoformat(timespec="seconds"),
+        "source": source,
+        "sample": bool(ev["meta"].get("sample")),
+        "markdown": markdown,
+        "evidence": ev["metrics"],
+        "saved": saved,
+    }
+
+
+def _save_sector_briefing(inst: dict[str, Any], year: Any, markdown: str, source: str) -> dict[str, Any]:
+    base = _base(); vault = _vault_root()
+    if not base or not vault:
+        return {"ok": False, "reason": "OBSIDIAN_VAULT_PATH not configured"}
+    try:
+        folder = base / "Deliverables"; folder.mkdir(parents=True, exist_ok=True)
+        title = f"Sector briefing: {inst['institution_name']} ({year})"
+        path = folder / f"{_slugify_title(title)}.md"
+        i = 2
+        while path.exists():
+            path = folder / f"{_slugify_title(title)}-{i}.md"; i += 1
+        fm = {
+            "title": title,
+            "cap": "Sector Intelligence & Evidence",
+            "type": "Client briefing",
+            "status": "Draft",
+            "st": "st-warn",
+            "meta": f"{inst.get('mission_group','')} · {inst.get('state','')} · {year}",
+            "source": "Sector intel",
+            "readiness": "Internal-ready",
+            "briefing_source": source,
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        fm = {k: v for k, v in fm.items() if v not in ("", None)}
+        _write_note(path, fm, markdown)
+        audit_log("sector.briefing.save", {"institution_id": inst["institution_id"],
+                                           "path": path.relative_to(vault).as_posix(), "source": source})
+        return {"ok": True, "path": path.relative_to(vault).as_posix()}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": str(e)}
+
+
 @router.get("/schedule/list")
 async def schedule_list() -> dict[str, Any]:
     return {"items": _load_items("Scheduled Runs") or SEED_SCHED}
