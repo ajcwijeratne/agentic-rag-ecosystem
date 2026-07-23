@@ -1,0 +1,16 @@
+metric_id,metric_name,domain,unit,direction,definition
+A01,Total enrolments,Students & demand,headcount,neutral,"All students enrolled in the reference year, commencing plus continuing."
+A02,EFTSL,Students & demand,EFTSL,neutral,Equivalent full-time student load for the year.
+A03,Commencing students,Students & demand,headcount,neutral,Students starting an award course in the year.
+A04,International enrolment share,Students & demand,%,neutral,Share of enrolments that are international by citizenship.
+A05,Online / external enrolment share,Students & demand,%,neutral,Share of student load studying externally or online. Core WijerCo metric.
+A06,First-year attrition (domestic),Students & demand,%,lower,Share of commencing domestic bachelor students who neither complete nor re-enrol the next year.
+B01,Overall educational experience,Experience & outcomes,% positive,higher,SES undergraduate positive rating.
+B02,Teaching quality,Experience & outcomes,% positive,higher,"SES teaching quality scale, percent positive."
+B04,Student support,Experience & outcomes,% positive,higher,SES student support scale. Relevant to online cohorts.
+B06,Graduate full-time employment,Experience & outcomes,%,higher,Share of available undergraduates in full-time work about four months out.
+C01,Total staff FTE,Staff & workforce,FTE,neutral,Full-time equivalent staff across all functions.
+C02,Student-to-staff ratio,Staff & workforce,ratio,lower,EFTSL divided by academic FTE. Derived.
+D01,Total revenue,Finance,$m,neutral,Total operating revenue for the year.
+D02,Domestic & government revenue share,Finance,%,neutral,"Share of revenue from Commonwealth grants, HELP and domestic fees."
+D03,International fee dependence,Finance,%,neutral,International fee revenue as a share of total revenue. Shown as a risk lens. Derived.

@@ -1,0 +1,116 @@
+sources:
+- key: doe_student_allstudents_2022
+  publisher: DoE
+  release_year: 2022
+  url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-all-students-2022.xlsx
+  raw_path: data/raw/doe/doe_student_allstudents_2022.xlsx
+  retrieved_date: '2026-07-15'
+  parser: doe_students
+  metric_ids:
+  - A01
+  - A02
+  - A03
+  - A04
+  - A05
+  - A06
+- key: doe_student_allstudents_2023
+  publisher: DoE
+  release_year: 2023
+  url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-all-students-2023.xlsx
+  raw_path: data/raw/doe/doe_student_allstudents_2023.xlsx
+  retrieved_date: '2026-07-15'
+  parser: doe_students
+  metric_ids:
+  - A01
+  - A02
+  - A03
+  - A04
+  - A05
+  - A06
+- key: doe_student_allstudents_2024
+  publisher: DoE
+  release_year: 2024
+  url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-all-students-2024.xlsx
+  raw_path: data/raw/doe/doe_student_allstudents_2024.xlsx
+  retrieved_date: '2026-07-15'
+  parser: doe_students
+  metric_ids:
+  - A01
+  - A02
+  - A03
+  - A04
+  - A05
+  - A06
+- key: doe_staff_finance_2022
+  publisher: DoE
+  release_year: 2022
+  url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-staff-finance-2022.xlsx
+  raw_path: data/raw/doe/doe_staff_finance_2022.xlsx
+  retrieved_date: '2026-07-15'
+  parser: doe_staff_finance
+  metric_ids:
+  - C01
+  - D01
+  - D03
+- key: doe_staff_finance_2023
+  publisher: DoE
+  release_year: 2023
+  url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-staff-finance-2023.xlsx
+  raw_path: data/raw/doe/doe_staff_finance_2023.xlsx
+  retrieved_date: '2026-07-15'
+  parser: doe_staff_finance
+  metric_ids:
+  - C01
+  - D01
+  - D03
+- key: doe_staff_finance_2024
+  publisher: DoE
+  release_year: 2024
+  url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-staff-finance-2024.xlsx
+  raw_path: data/raw/doe/doe_staff_finance_2024.xlsx
+  retrieved_date: '2026-07-15'
+  parser: doe_staff_finance
+  metric_ids:
+  - C01
+  - D01
+  - D03
+- key: qilt_ses_2022
+  publisher: QILT
+  release_year: 2022
+  url: https://www.qilt.edu.au/PLACEHOLDER/ses-national-tables-2022.xlsx
+  raw_path: data/raw/qilt/qilt_ses_2022.xlsx
+  retrieved_date: '2026-07-15'
+  parser: qilt_ses
+  metric_ids:
+  - B01
+  - B02
+  - B04
+  - B06
+- key: qilt_ses_2023
+  publisher: QILT
+  release_year: 2023
+  url: https://www.qilt.edu.au/PLACEHOLDER/ses-national-tables-2023.xlsx
+  raw_path: data/raw/qilt/qilt_ses_2023.xlsx
+  retrieved_date: '2026-07-15'
+  parser: qilt_ses
+  metric_ids:
+  - B01
+  - B02
+  - B04
+  - B06
+- key: qilt_ses_2024
+  publisher: QILT
+  release_year: 2024
+  url: https://www.qilt.edu.au/PLACEHOLDER/ses-national-tables-2024.xlsx
+  raw_path: data/raw/qilt/qilt_ses_2024.xlsx
+  retrieved_date: '2026-07-15'
+  parser: qilt_ses
+  metric_ids:
+  - B01
+  - B02
+  - B04
+  - B06
+fixture_years:
+- 2022
+- 2023
+- 2024

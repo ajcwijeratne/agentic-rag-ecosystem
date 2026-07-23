@@ -41,3 +41,6 @@ node_modules/
 Thumbs.db
 .idea/
 .vscode/
+
+my-video/*.mp4
+sector-intel/logs/

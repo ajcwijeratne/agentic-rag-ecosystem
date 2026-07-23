@@ -1,0 +1,6 @@
+# WijerCo Sector Intel pipeline (Phase 2)
+pandas>=2.0
+openpyxl>=3.1
+PyYAML>=6.0
+requests>=2.31
+rapidfuzz>=3.0   # optional; pipeline falls back to stdlib difflib if absent

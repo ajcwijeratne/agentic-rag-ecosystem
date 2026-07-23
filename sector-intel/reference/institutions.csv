@@ -1,0 +1,44 @@
+institution_id,institution_name,short_name,provider_type
+acu,Australian Catholic University,ACU,Table A public
+anu,Australian National University,ANU,Table A public
+bond,Bond University,Bond,Table B private
+cqu,CQUniversity,CQU,Table A public
+cdu,Charles Darwin University,CDU,Table A public
+csu,Charles Sturt University,CSU,Table A public
+curtin,Curtin University,Curtin,Table A public
+deakin,Deakin University,Deakin,Table A public
+ecu,Edith Cowan University,ECU,Table A public
+federation,Federation University Australia,Federation,Table A public
+flinders,Flinders University,Flinders,Table A public
+griffith,Griffith University,Griffith,Table A public
+jcu,James Cook University,JCU,Table A public
+la-trobe,La Trobe University,La Trobe,Table A public
+macquarie,Macquarie University,Macquarie,Table A public
+monash,Monash University,Monash,Table A public
+murdoch,Murdoch University,Murdoch,Table A public
+qut,Queensland University of Technology,QUT,Table A public
+rmit,RMIT University,RMIT,Table A public
+scu,Southern Cross University,SCU,Table A public
+swinburne,Swinburne University of Technology,Swinburne,Table A public
+adelaide,The University of Adelaide,Adelaide,Table A public
+melbourne,The University of Melbourne,Melbourne,Table A public
+uq,The University of Queensland,UQ,Table A public
+sydney,The University of Sydney,Sydney,Table A public
+uwa,The University of Western Australia,UWA,Table A public
+canberra,University of Canberra,Canberra,Table A public
+divinity,University of Divinity,Divinity,Table B private
+une,University of New England,UNE,Table A public
+unsw,University of New South Wales,UNSW,Table A public
+newcastle,University of Newcastle,Newcastle,Table A public
+notre-dame,University of Notre Dame Australia,Notre Dame,Table B private
+unisa,University of South Australia,UniSA,Table A public
+unisq,University of Southern Queensland,UniSQ,Table A public
+utas,University of Tasmania,UTAS,Table A public
+uts,University of Technology Sydney,UTS,Table A public
+unisc,University of the Sunshine Coast,UniSC,Table A public
+uow,University of Wollongong,UOW,Table A public
+vu,Victoria University,VU,Table A public
+wsu,Western Sydney University,WSU,Table A public
+torrens,Torrens University Australia,Torrens,Table B private
+avondale,Avondale University,Avondale,Table B private
+uc-r,University of Canberra (Regional),UC-R,Table A public

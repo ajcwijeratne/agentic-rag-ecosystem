@@ -1,0 +1,8 @@
+source_name,institution_id
+# seed a couple of aliases to exercise the alias path
+University of NSW,unsw
+UNSW Sydney,unsw
+University of Sydney,sydney
+RMIT,rmit
+UTS,uts
+Queensland Uni of Technology,qut

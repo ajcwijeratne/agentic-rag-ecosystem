@@ -42,7 +42,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-PORT = int(os.getenv("AVATAR_WORKER_PORT", os.getenv("MUSETALK_WORKER_PORT", "7861")))
+PORT = int(os.getenv("MUSETALK_WORKER_PORT", os.getenv("AVATAR_WORKER_PORT", "7861")))
 MUSETALK_DIR = Path(os.getenv("MUSETALK_DIR", str(Path.home() / "MuseTalk")))
 REF_VIDEO = os.getenv("MUSETALK_REF_VIDEO", "")
 INFERENCE_MODULE = os.getenv("MUSETALK_INFERENCE", "scripts.inference")
