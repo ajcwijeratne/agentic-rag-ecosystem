@@ -31,6 +31,7 @@ import asyncio
 import json
 import logging
 import os
+from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
@@ -44,7 +45,15 @@ ALLOWED_CHAT_ID = os.getenv("TELEGRAM_ALLOWED_CHAT_ID") or os.getenv("APPRISE_TE
 ORCH_URL = os.getenv("ORCHESTRATOR_URL", "http://localhost:8000").rstrip("/")
 API_KEY = os.getenv("ORCH_API_KEY", os.getenv("API_KEY", ""))
 
+# Voice notes: Telegram voice message -> Whisper (8007) -> the same /inbox path
+# a typed message takes, so "plan: ...", "outcome ...", questions and tasks all
+# work spoken from the car.
+_ROOT = Path(__file__).resolve().parent.parent
+WHISPER_URL = os.getenv("WHISPER_URL", "http://localhost:8007").rstrip("/")
+VOICE_DIR = Path(os.getenv("MEDIA_INPUT_ROOT", str(_ROOT / "media_input"))) / "voice"
+
 TG = f"https://api.telegram.org/bot{BOT_TOKEN}"
+TG_FILE = f"https://api.telegram.org/file/bot{BOT_TOKEN}"
 POLL_TIMEOUT = 50
 
 
@@ -81,6 +90,69 @@ async def _send(client: httpx.AsyncClient, chat_id: str, text: str,
             await client.post(f"{TG}/sendMessage", data=payload, timeout=30)
         except Exception:
             logger.exception("sendMessage failed")
+
+
+# ---------------------------------------------------------------------------
+# Voice notes
+# ---------------------------------------------------------------------------
+
+async def _download_voice(client: httpx.AsyncClient, file_id: str) -> str | None:
+    """Resolve a Telegram file_id to a local path under the Whisper input root."""
+    meta = await client.get(f"{TG}/getFile", params={"file_id": file_id}, timeout=30)
+    file_path = (meta.json().get("result") or {}).get("file_path")
+    if not file_path:
+        return None
+    resp = await client.get(f"{TG_FILE}/{file_path}", timeout=60)
+    resp.raise_for_status()
+    VOICE_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = Path(file_path).suffix or ".oga"
+    target = VOICE_DIR / f"{file_id}{suffix}"
+    target.write_bytes(resp.content)
+    return str(target.resolve())
+
+
+async def _transcribe(client: httpx.AsyncClient, audio_path: str) -> str:
+    """Ask the Whisper service to transcribe a local audio file."""
+    headers = {"Content-Type": "application/json"}
+    if API_KEY:
+        headers["X-API-Key"] = API_KEY
+    r = await client.post(f"{WHISPER_URL}/transcribe",
+                          json={"audio_path": audio_path}, headers=headers, timeout=300)
+    r.raise_for_status()
+    data = r.json()
+    text = (data.get("transcript_preview") or "").strip()
+    out_file = data.get("output_file")
+    # transcript_preview is capped at 500 chars; for a longer note read the full
+    # markdown transcript the service wrote and strip its timestamp markup.
+    if out_file and data.get("word_count", 0) > 80:
+        try:
+            import re
+            raw = Path(out_file).read_text(encoding="utf-8")
+            body = raw.split("---", 1)[-1]
+            text = re.sub(r"\*\*\[.*?\]\*\*", "", body).replace("\n", " ").strip()
+        except Exception:
+            pass
+    return text
+
+
+async def _voice_to_text(client: httpx.AsyncClient, chat_id: str, voice: dict) -> str:
+    file_id = voice.get("file_id")
+    if not file_id:
+        return ""
+    try:
+        path = await _download_voice(client, file_id)
+        if not path:
+            await _send(client, chat_id, "Could not fetch the voice note.")
+            return ""
+        text = await _transcribe(client, path)
+    except Exception as exc:
+        await _send(client, chat_id, f"Transcription failed: {exc}")
+        return ""
+    if not text:
+        await _send(client, chat_id, "Heard nothing I could transcribe.")
+        return ""
+    await _send(client, chat_id, f"Heard: {text}")
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +227,10 @@ async def _handle_text(client: httpx.AsyncClient, chat_id: str, text: str) -> No
     if lower in ("/start", "/help"):
         await _send(client, chat_id,
                     "Commands: /brief /pending /status /pause /resume\n"
-                    "plan: <goal> creates a plan. approve <gate> <id> approves. "
+                    "plan: <goal> creates a plan. approve <gate> <id> approves.\n"
+                    "outcome <id> 4200 views 38 comments [channel] records performance.\n"
+                    "start plan <id> activates a proposed weekly plan.\n"
+                    "Send a voice note to task me by talking.\n"
                     "Anything else becomes a question or a task.")
         return
     if lower == "/brief":
@@ -187,6 +262,17 @@ async def _handle_text(client: httpx.AsyncClient, chat_id: str, text: str) -> No
     elif kind == "approval":
         await _send(client, chat_id, f"{result.get('status')}: {result.get('gate')} "
                                      f"for {result.get('target_id')}")
+    elif kind == "outcome":
+        if result.get("ok"):
+            await _send(client, chat_id,
+                        f"Outcome recorded for {result.get('target')}: "
+                        f"{json.dumps(result.get('metrics') or {})}")
+        else:
+            await _send(client, chat_id, f"Outcome not recorded: {result.get('error')}")
+    elif kind == "start_plan":
+        await _send(client, chat_id,
+                    f"Plan {result.get('plan_id')} is live: "
+                    f"{result.get('released_tasks')} task(s) released to the daemon.")
     else:
         await _send(client, chat_id, json.dumps(result)[:1000])
 
@@ -246,12 +332,17 @@ async def main() -> None:
                         continue
                     msg = upd.get("message") or {}
                     chat_id = str(msg.get("chat", {}).get("id", ""))
-                    text = msg.get("text") or ""
-                    if not text:
-                        continue
                     if chat_id != str(ALLOWED_CHAT_ID):
                         logger.warning("message from unauthorised chat %s ignored", chat_id)
                         continue
+                    text = msg.get("text") or ""
+                    if not text:
+                        voice = msg.get("voice") or msg.get("audio") or msg.get("video_note")
+                        if not voice:
+                            continue
+                        text = await _voice_to_text(client, chat_id, voice)
+                        if not text:
+                            continue
                     await _handle_text(client, chat_id, text)
                 except Exception:
                     logger.exception("update handling failed")

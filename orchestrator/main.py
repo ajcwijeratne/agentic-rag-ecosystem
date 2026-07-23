@@ -1065,6 +1065,25 @@ async def governance_approve(req: GovernanceApproveRequest):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+@app.get("/productions/{production_id}/preview")
+async def production_preview(production_id: str):
+    """Stream the newest rendered video for a production so an approver can
+    watch the clip before clearing its gate instead of approving blind."""
+    from pathlib import Path as _Path
+
+    from fastapi.responses import FileResponse
+    from orchestrator import production as _prod_store
+
+    prod = _prod_store.get_production(production_id)
+    if not prod:
+        raise HTTPException(status_code=404, detail="production not found")
+    preview = governance_store._preview_asset(prod)
+    if not preview:
+        raise HTTPException(status_code=404, detail="no video preview available")
+    return FileResponse(preview["path"], media_type="video/mp4",
+                        filename=_Path(preview["path"]).name)
+
+
 # ---------------------------------------------------------------------------
 # Autonomous operating layer  (integrated roadmap, Phase 4)
 # ---------------------------------------------------------------------------
@@ -1072,6 +1091,15 @@ async def governance_approve(req: GovernanceApproveRequest):
 @app.get("/operating/overview")
 async def operating_overview():
     return operating_store.overview()
+
+
+@app.post("/operating/plans/{plan_id}/activate", dependencies=[Depends(require_admin)])
+async def operating_activate_plan(plan_id: str):
+    """Approve a proposed weekly plan: set it active and release its tasks."""
+    try:
+        return operating_store.activate_plan(plan_id, actor="cockpit")
+    except KeyError:
+        raise HTTPException(status_code=404, detail="plan not found")
 
 
 @app.get("/operating/daily-brief")

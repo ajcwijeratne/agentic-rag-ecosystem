@@ -249,16 +249,35 @@ def list_approvals(target_id: str | None = None, limit: int = 200) -> list[dict]
     return [dict(r) for r in rows]
 
 
+def _preview_asset(production: dict[str, Any]) -> dict[str, Any] | None:
+    """Newest linked video asset with a readable file, for the approval preview."""
+    for asset_id in reversed(production.get("linked_assets") or []):
+        asset = registry.get_asset(asset_id, with_relations=False)
+        if not asset or asset.get("type") != "video":
+            continue
+        path = str(asset.get("path") or "")
+        if path and Path(path).is_file() and path.lower().endswith((".mp4", ".mov", ".webm")):
+            return {"asset_id": asset_id, "path": path}
+    return None
+
+
 def pending() -> dict[str, list]:
     from orchestrator import production
 
     items = []
     for prod in production.list_productions(limit=500):
+        preview = _preview_asset(prod)
         for gate in pending_gates(prod):
-            items.append({
+            item = {
                 "production_id": prod["production_id"],
                 "title": prod["title"],
                 "state": prod["state"],
                 **gate,
-            })
+            }
+            if preview:
+                item["preview"] = {
+                    "asset_id": preview["asset_id"],
+                    "url": f"/productions/{prod['production_id']}/preview",
+                }
+            items.append(item)
     return {"items": items}

@@ -56,6 +56,10 @@ DRY_RUN = os.getenv("DAEMON_DRY_RUN", "0") in ("1", "true", "yes")
 MAX_ATTEMPTS = int(os.getenv("DAEMON_MAX_ATTEMPTS", "2"))
 AGENT_MAX_TIER = int(os.getenv("DAEMON_AGENT_MAX_TIER", "2"))
 CONSOLIDATION_HOUR = int(os.getenv("CONSOLIDATION_HOUR", "2"))
+MEASURE_HOUR = int(os.getenv("MEASURE_HOUR", "3"))
+LEARN_DAY = int(os.getenv("LEARN_DAY", "1"))  # day of month for the learning pass
+INITIATIVE_WEEKDAY = int(os.getenv("INITIATIVE_WEEKDAY", "0"))  # Monday=0
+INITIATIVE_HOUR = int(os.getenv("INITIATIVE_HOUR", "6"))
 
 # Task types the daemon may execute without a human. `approval` and `manual`
 # always stop at notification. This is the "auto-run internal, gate external"
@@ -282,6 +286,9 @@ async def run_cycle(state: dict[str, Any]) -> dict[str, Any]:
                     if links:
                         body += (f"\nApprove: {links['approve']}"
                                  f"\nReject: {links['reject']}")
+                    base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+                    if base:
+                        body += f"\nPreview: {base}/productions/{target}/preview"
                 except Exception:
                     pass
             await _notify("Waiting on you", body)
@@ -378,6 +385,71 @@ async def _maybe_consolidate(state: dict[str, Any]) -> None:
     save_state(state)
 
 
+async def _maybe_measure(state: dict[str, Any]) -> None:
+    """Run the measure sweep once a day at MEASURE_HOUR. Pulls or requests
+    outcomes for published work and closes productions past their window."""
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    if state.get("measured_date") == today or now.hour < MEASURE_HOUR:
+        return
+    try:
+        from . import measure
+        summary = await measure.run_measure_sweep(actor="daemon")
+        _log_decision("measure_sweep", summary)
+        if summary.get("closed"):
+            await _notify("Productions measured",
+                          f"{summary['closed']} production(s) closed with outcomes recorded.")
+    except Exception as exc:
+        _log_decision("measure_error", {"error": str(exc)[:300]})
+    state["measured_date"] = today
+    save_state(state)
+
+
+async def _maybe_learn(state: dict[str, Any]) -> None:
+    """Run the learning reflection once a month on LEARN_DAY."""
+    now = datetime.now()
+    month = now.strftime("%Y-%m")
+    if state.get("learned_month") == month or now.day < LEARN_DAY:
+        return
+    try:
+        from . import learning
+        summary = learning.run_learning_reflection()
+        _log_decision("learning_reflection", summary)
+        if summary.get("ok"):
+            await _notify("Monthly performance review",
+                          "\n".join(summary.get("findings") or [])[:1500])
+    except Exception as exc:
+        _log_decision("learning_error", {"error": str(exc)[:300]})
+    state["learned_month"] = month
+    save_state(state)
+
+
+async def _maybe_weekly_initiative(state: dict[str, Any]) -> None:
+    """Once a week, propose next week's content plan as a paused proposal."""
+    now = datetime.now()
+    iso = now.isocalendar()
+    week = f"{iso[0]}-W{iso[1]:02d}"
+    if state.get("initiative_week") == week:
+        return
+    if now.weekday() != INITIATIVE_WEEKDAY or now.hour < INITIATIVE_HOUR:
+        return
+    try:
+        from . import initiative
+        summary = initiative.propose_weekly_plan(actor="daemon")
+        _log_decision("weekly_initiative", summary)
+        if summary.get("ok"):
+            await _notify(
+                "Next week's plan proposed",
+                f"{summary.get('task_count')} tasks drafted, paused for your approval.\n"
+                f"Approve with: start plan {summary.get('plan_id')}\n\n"
+                f"{(summary.get('goal') or '')[:800]}",
+            )
+    except Exception as exc:
+        _log_decision("initiative_error", {"error": str(exc)[:300]})
+    state["initiative_week"] = week
+    save_state(state)
+
+
 # ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
@@ -400,6 +472,9 @@ async def main() -> None:
             _log_decision("cycle_error", {"error": str(exc)})
         state = load_state()  # re-read in case pause happened mid-cycle
         await _maybe_consolidate(state)
+        await _maybe_measure(state)
+        await _maybe_learn(state)
+        await _maybe_weekly_initiative(state)
         state["cycles"] = int(state.get("cycles", 0)) + 1
         state["last_result"] = summary
         state["last_cycle_at"] = _now_iso()

@@ -325,6 +325,21 @@ def list_project_memory(project: str | None = None, limit: int = 100) -> list[di
     return [_row(r) for r in rows]
 
 
+def activate_plan(plan_id: str, actor: str = "operator") -> dict[str, Any]:
+    """Turn a proposed (paused) plan live: set it active and release its
+    blocked tasks to todo so the daemon can start working them."""
+    plan = get_plan(plan_id)
+    if not plan:
+        raise KeyError("plan not found")
+    update_plan(plan_id, status="active")
+    released = 0
+    for task in list_tasks(plan_id=plan_id, limit=500):
+        if task.get("status") == "blocked":
+            update_task(task["task_id"], status="todo")
+            released += 1
+    return {"plan_id": plan_id, "status": "active", "released_tasks": released, "actor": actor}
+
+
 def infer_workflow(goal: str, workflow: str | None = None) -> dict[str, Any]:
     """Classify a goal into a planner workflow using transparent heuristics."""
     requested = (workflow or "").strip().lower()
@@ -701,12 +716,21 @@ def daily_brief() -> dict[str, Any]:
         lines.append(f"{len(review)} production(s) are waiting in review.")
     if not lines:
         lines.append("No urgent operating blockers recorded.")
+    performance = {}
+    try:
+        from . import outcomes
+        performance = outcomes.highlight(days=7)
+        if performance.get("line"):
+            lines.append(performance["line"])
+    except Exception:
+        performance = {}
     return {
         "date": _now()[:10],
         "summary": " ".join(lines),
         "priorities": active_tasks[:8],
         "pending_approvals": pending,
         "productions": productions[:8],
+        "performance": performance,
         "project_memory": list_project_memory(limit=8),
     }
 

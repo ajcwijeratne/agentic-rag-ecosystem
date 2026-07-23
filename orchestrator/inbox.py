@@ -40,6 +40,7 @@ from pydantic import BaseModel, Field
 
 from . import operating
 from . import governance
+from . import outcomes
 from . import daemon as daemon_ctl
 
 router = APIRouter()
@@ -48,6 +49,12 @@ _APPROVE_RE = re.compile(
     r"^\s*(approve|reject)\s+(?P<gate>[a-z_]+)\s+(?P<target>[\w-]+)\s*(?P<note>.*)$",
     re.IGNORECASE,
 )
+
+# "outcome <id> 4200 views 38 comments" — an id token followed by a digit.
+_OUTCOME_RE = re.compile(r"^\s*outcome\s+[\w-]+\s+.*\d", re.IGNORECASE)
+
+# "start plan <plan_id>" — activate a paused weekly-initiative proposal.
+_START_PLAN_RE = re.compile(r"^\s*start\s+plan\s+(?P<plan>[\w-]+)\s*$", re.IGNORECASE)
 
 _QUESTION_STARTS = (
     "what", "who", "when", "where", "why", "how", "is ", "are ", "does ",
@@ -71,6 +78,10 @@ def classify_inbox(text: str, mode: str = "auto") -> str:
     stripped = text.strip()
     if _APPROVE_RE.match(stripped):
         return "approval"
+    if _OUTCOME_RE.match(stripped):
+        return "outcome"
+    if _START_PLAN_RE.match(stripped):
+        return "start_plan"
     if stripped.lower().startswith("plan:"):
         return "plan"
     lower = stripped.lower()
@@ -145,11 +156,38 @@ def _handle_approval(msg: InboxMessage) -> dict[str, Any]:
             "target_id": m.group("target"), "actor": actor}
 
 
+def _handle_outcome(msg: InboxMessage) -> dict[str, Any]:
+    result = outcomes.record_from_text(msg.text, source=msg.channel or "api")
+    if not result.get("ok"):
+        return {"kind": "outcome", "ok": False,
+                "error": result.get("error", "could not record outcome"),
+                "channels": result.get("channels")}
+    return {"kind": "outcome", "ok": True, "target": result.get("target"),
+            "channel": result.get("channel"), "metrics": result.get("metrics"),
+            "recorded": len(result.get("recorded") or [])}
+
+
+def _handle_start_plan(msg: InboxMessage) -> dict[str, Any]:
+    m = _START_PLAN_RE.match(msg.text.strip())
+    if not m:
+        raise HTTPException(status_code=400, detail="start plan command not understood")
+    actor = f"{msg.channel}:{msg.sender}" if msg.sender else msg.channel
+    try:
+        result = operating.activate_plan(m.group("plan"), actor=actor)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="plan not found")
+    return {"kind": "start_plan", **result}
+
+
 @router.post("/inbox")
 async def inbox(msg: InboxMessage) -> dict[str, Any]:
     kind = classify_inbox(msg.text, msg.mode)
     if kind == "approval":
         return _handle_approval(msg)
+    if kind == "start_plan":
+        return _handle_start_plan(msg)
+    if kind == "outcome":
+        return _handle_outcome(msg)
     if kind == "plan":
         return _create_plan(msg)
     if kind == "ask":
@@ -180,6 +218,46 @@ def daemon_resume(body: DaemonAction | None = None) -> dict[str, Any]:
 @router.get("/operating/daemon/status")
 def daemon_status() -> dict[str, Any]:
     return daemon_ctl.status()
+
+
+# ---------------------------------------------------------------------------
+# Outcomes: the measured half of the loop
+# ---------------------------------------------------------------------------
+
+class OutcomeReport(BaseModel):
+    text: str | None = None
+    publication_id: str | None = None
+    production_id: str | None = None
+    channel: str | None = None
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    source: str = "api"
+
+
+@router.get("/outcomes")
+def outcomes_list(production_id: str | None = None, channel: str | None = None,
+                  limit: int = 200) -> dict[str, Any]:
+    return {"items": outcomes.list_outcomes(production_id=production_id,
+                                            channel=channel, limit=limit)}
+
+
+@router.get("/outcomes/highlight")
+def outcomes_highlight(days: int = 7) -> dict[str, Any]:
+    return outcomes.highlight(days=days)
+
+
+@router.post("/outcomes/record")
+def outcomes_record(body: OutcomeReport) -> dict[str, Any]:
+    if body.text:
+        result = outcomes.record_from_text(body.text, source=body.source)
+        if not result.get("ok"):
+            raise HTTPException(status_code=400, detail=result.get("error"))
+        return result
+    if body.publication_id and body.production_id and body.channel and body.metrics:
+        return {"ok": True, "outcome": outcomes.record_outcome(
+            body.publication_id, body.production_id, body.channel,
+            body.metrics, source=body.source)}
+    raise HTTPException(status_code=400,
+                        detail="provide text, or publication_id+production_id+channel+metrics")
 
 
 # ---------------------------------------------------------------------------
