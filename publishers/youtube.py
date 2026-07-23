@@ -126,3 +126,33 @@ def _upload_sync(production: dict, options: dict[str, Any]) -> dict:
 
 async def upload(production: dict, options: dict[str, Any] | None = None) -> dict:
     return await asyncio.to_thread(_upload_sync, production, options or {})
+
+
+def _stats_sync(video_id: str) -> dict:
+    if not video_id:
+        raise ValueError("video_id is required")
+    with httpx.Client(follow_redirects=True) as client:
+        token = _access_token(client)
+        response = client.get(
+            "https://www.googleapis.com/youtube/v3/videos",
+            params={"part": "statistics", "id": video_id},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        items = response.json().get("items") or []
+    if not items:
+        raise RuntimeError(f"YouTube returned no video for {video_id!r}")
+    stats = items[0].get("statistics") or {}
+    return {
+        "views": int(stats.get("viewCount") or 0),
+        "likes": int(stats.get("likeCount") or 0),
+        "comments": int(stats.get("commentCount") or 0),
+        "extra": {"favorites": int(stats.get("favoriteCount") or 0)},
+    }
+
+
+async def fetch_stats(video_id: str) -> dict:
+    """Pull public statistics for a published video. Metric keys match the
+    outcomes store so the measure worker can record the result directly."""
+    return await asyncio.to_thread(_stats_sync, video_id)
