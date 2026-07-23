@@ -257,6 +257,40 @@ def month_to_date_cost(month: str | None = None) -> float:
     return total
 
 
+GPU_HOURLY_USD = float(_os.getenv("GPU_HOURLY_USD", "0.50") or 0.50)
+
+
+def record_media(
+    *,
+    capability: str,
+    provider: str,
+    tool: str,
+    seconds: float,
+    cost_usd: float | None = None,
+    query: str = "",
+) -> float:
+    """Record a media generation job in the same ledger the budget breaker reads.
+
+    Local GPU work is free in dollars, so it is costed as a GPU-time-equivalent
+    (compute seconds x GPU_HOURLY_USD) to make the budget breaker see load and
+    to price it against any future paid provider. A provider-reported cost_usd
+    (e.g. HeyGen, ElevenLabs) overrides the estimate."""
+    if cost_usd is None:
+        cost_usd = round(max(0.0, float(seconds)) / 3600.0 * GPU_HOURLY_USD, 6)
+    tracker.record(
+        model_key=tool or provider or "media",
+        model_label=f"media:{tool or provider or capability}",
+        provider=provider or "self",
+        task_type=f"media/{capability}",
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=float(cost_usd),
+        latency_ms=int(max(0.0, float(seconds)) * 1000),
+        query=(query or capability)[:80],
+    )
+    return float(cost_usd)
+
+
 def budget_status() -> dict[str, Any]:
     """Current month spend against MONTHLY_BUDGET_USD."""
     budget = float(_os.getenv("MONTHLY_BUDGET_USD", "0") or 0)

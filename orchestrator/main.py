@@ -276,6 +276,18 @@ async def ops_rehearsal():
     return deployment_store.operational_rehearsal()
 
 
+@app.get("/ops/routing-eval", dependencies=[Depends(require_role("operator"))])
+async def ops_routing_eval():
+    from orchestrator import router_eval
+    return router_eval.evaluate()
+
+
+@app.get("/ops/monthly-review", dependencies=[Depends(require_role("operator"))])
+async def ops_monthly_review():
+    from orchestrator import review
+    return review.run_monthly_review()
+
+
 @app.post("/routing-test")
 async def routing_test(req: QueryRequest):
     """Dry-run the router to see which model would be selected."""

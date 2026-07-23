@@ -58,6 +58,7 @@ AGENT_MAX_TIER = int(os.getenv("DAEMON_AGENT_MAX_TIER", "2"))
 CONSOLIDATION_HOUR = int(os.getenv("CONSOLIDATION_HOUR", "2"))
 MEASURE_HOUR = int(os.getenv("MEASURE_HOUR", "3"))
 LEARN_DAY = int(os.getenv("LEARN_DAY", "1"))  # day of month for the learning pass
+REVIEW_DAY = int(os.getenv("REVIEW_DAY", "1"))  # day of month for the monthly review
 INITIATIVE_WEEKDAY = int(os.getenv("INITIATIVE_WEEKDAY", "0"))  # Monday=0
 INITIATIVE_HOUR = int(os.getenv("INITIATIVE_HOUR", "6"))
 
@@ -450,6 +451,26 @@ async def _maybe_weekly_initiative(state: dict[str, Any]) -> None:
     save_state(state)
 
 
+async def _maybe_review(state: dict[str, Any]) -> None:
+    """Assemble the monthly review once a month on REVIEW_DAY."""
+    now = datetime.now()
+    month = now.strftime("%Y-%m")
+    if state.get("reviewed_month") == month or now.day < REVIEW_DAY:
+        return
+    try:
+        from . import review
+        summary = review.run_monthly_review()
+        _log_decision("monthly_review", {"month": summary.get("month"),
+                                         "report": summary.get("report_path")})
+        if summary.get("ok"):
+            await _notify("Monthly review",
+                          "\n".join(summary.get("highlights") or [])[:1500])
+    except Exception as exc:
+        _log_decision("review_error", {"error": str(exc)[:300]})
+    state["reviewed_month"] = month
+    save_state(state)
+
+
 # ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
@@ -475,6 +496,7 @@ async def main() -> None:
         await _maybe_measure(state)
         await _maybe_learn(state)
         await _maybe_weekly_initiative(state)
+        await _maybe_review(state)
         state["cycles"] = int(state.get("cycles", 0)) + 1
         state["last_result"] = summary
         state["last_cycle_at"] = _now_iso()
