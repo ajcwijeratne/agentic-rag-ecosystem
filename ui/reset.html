@@ -1,0 +1,16 @@
+﻿<!doctype html>
+<meta charset="utf-8">
+<title>Resetting Command Centre…</title>
+<body style="font-family:system-ui,sans-serif;background:#070e1c;color:#e4ecf7;padding:44px;line-height:1.5">
+<h2 style="color:#f4b23f;font-weight:600">Resetting Command Centre…</h2>
+<p id="msg">Clearing the old cached app. This takes a second.</p>
+<p><a id="go" href="/app/command_centre.html" style="color:#34e0c8">Continue to Command Centre</a></p>
+<script>
+(async () => {
+  try { const regs = await navigator.serviceWorker.getRegistrations(); for (const r of regs) { await r.unregister(); } } catch (e) {}
+  try { if (window.caches) { const ks = await caches.keys(); for (const k of ks) { await caches.delete(k); } } } catch (e) {}
+  document.getElementById("msg").textContent = "Done. Loading the new Command Centre…";
+  setTimeout(() => { location.replace("/app/command_centre.html"); }, 600);
+})();
+</script>
+</body>
