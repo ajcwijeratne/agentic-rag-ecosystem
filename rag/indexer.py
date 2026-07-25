@@ -31,7 +31,13 @@ import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from dotenv import load_dotenv
+
 from .embedder import embed_batch
+
+# Load .env so CLI and service runs honour OBSIDIAN_VAULT_PATH and friends
+# (matches the convention in main.py, daemon.py, llm_registry.py).
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -182,7 +188,7 @@ def load_vault(vault: Path) -> list[tuple[str, str, str]]:
     for md_file in vault.rglob("*.md"):
         try:
             text = md_file.read_text(encoding="utf-8", errors="replace")
-            rel = str(md_file.relative_to(vault))
+            rel = md_file.relative_to(vault).as_posix()
             results.append((rel, text, _mtime_iso(md_file)))
         except Exception as exc:
             print(f"[indexer] Could not read {md_file}: {exc}")
@@ -303,7 +309,7 @@ async def index_wijerco(wijerco_path: Path = WIJERCO_PATH) -> dict[str, Any]:
         for md_file in target.rglob("*.md"):
             try:
                 text = md_file.read_text(encoding="utf-8", errors="replace")
-                rel  = str(md_file.relative_to(wijerco_path))
+                rel  = md_file.relative_to(wijerco_path).as_posix()
                 all_files.append((rel, text, _mtime_iso(md_file)))
             except Exception as exc:
                 print(f"[indexer] Could not read {md_file}: {exc}")

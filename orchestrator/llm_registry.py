@@ -110,13 +110,13 @@ MODELS: dict[str, ModelSpec] = {
 
     # ── Tier 1 — Budget Cloud ─────────────────────────────────────────────
     "deepseek/deepseek-chat": ModelSpec(
-        model_id          = "deepseek-chat",
+        model_id          = "deepseek-v4-flash",
         provider          = "deepseek",
         tier              = 1,
-        label             = "DeepSeek Chat",
-        cost_input_per_m  = 0.07,
+        label             = "DeepSeek V4 Flash",
+        cost_input_per_m  = 0.14,
         cost_output_per_m = 0.28,
-        context_window    = 64_000,
+        context_window    = 1_000_000,
         max_output        = 8_192,
         capabilities      = {"classification", "retrieval", "summary", "advisory", "code", "creative", "fast"},
         requires_env      = "DEEPSEEK_API_KEY",
@@ -172,17 +172,17 @@ MODELS: dict[str, ModelSpec] = {
 
     # ── Tier 2 — Mid ─────────────────────────────────────────────────────
     "deepseek/deepseek-reasoner": ModelSpec(
-        model_id          = "deepseek-reasoner",
+        model_id          = "deepseek-v4-pro",
         provider          = "deepseek",
         tier              = 2,
-        label             = "DeepSeek-R1",
-        cost_input_per_m  = 0.55,
-        cost_output_per_m = 2.19,
-        context_window    = 64_000,
+        label             = "DeepSeek V4 Pro",
+        cost_input_per_m  = 0.435,
+        cost_output_per_m = 0.87,
+        context_window    = 1_000_000,
         max_output        = 32_768,
         capabilities      = {"reasoning", "code", "advisory", "summary", "classification"},
         requires_env      = "DEEPSEEK_API_KEY",
-        supports_tools    = False,   # deepseek-reasoner (R1) has no function calling
+        supports_tools    = True,   # deepseek-v4-pro supports function calling
     ),
     "google/gemini-2.5-pro": ModelSpec(
         model_id          = "gemini-2.5-pro",
