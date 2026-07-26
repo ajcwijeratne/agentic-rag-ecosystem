@@ -145,33 +145,80 @@ def chunk_with_sections(
 ) -> list[tuple[str, str]]:
     """Chunk Markdown into (chunk_text, section_heading) pairs.
 
-    Splits on Markdown headings so each chunk carries the nearest preceding
-    heading as its section. Text before the first heading gets an empty section.
+    Heading-aware and paragraph-aware:
+      * Splits on Markdown headings; each chunk carries its immediate heading
+        as the section, and a heading breadcrumb (title > section > subsection)
+        is prefixed onto the chunk text so section context is embedded with it.
+      * Splits a section body on blank lines and packs paragraphs only up to a
+        small minimum, so dense fact blocks (key/value lists, short deliverable
+        lists) become their own retrievable chunks instead of being diluted
+        inside one large section chunk.
     """
-    blocks: list[tuple[str, list[str]]] = []
-    current_heading = ""
+    # 1. Split into heading blocks, tracking the heading breadcrumb.
+    stack: list[tuple[int, str]] = []
+    blocks: list[tuple[str, str, list[str]]] = []   # (breadcrumb, heading, body)
     current_lines: list[str] = []
+
+    def _flush_block() -> None:
+        if any(l.strip() for l in current_lines):
+            crumb = " > ".join(h for _, h in stack)
+            imm = stack[-1][1] if stack else ""
+            blocks.append((crumb, imm, list(current_lines)))
+
     for line in text.splitlines():
         m = _HEADING_RE.match(line)
         if m:
-            if current_lines:
-                blocks.append((current_heading, current_lines))
-            current_heading = m.group(2).strip()
+            _flush_block()
             current_lines = []
+            level = len(m.group(1))
+            heading = m.group(2).strip()
+            while stack and stack[-1][0] >= level:
+                stack.pop()
+            stack.append((level, heading))
         else:
             current_lines.append(line)
-    if current_lines:
-        blocks.append((current_heading, current_lines))
+    _flush_block()
 
+    # 2. Within each block, group paragraphs (blank-line separated) into chunks.
+    min_chunk_words = 25
     pairs: list[tuple[str, str]] = []
-    for heading, lines in blocks:
-        words = " ".join(lines).split()
+
+    def _emit(crumb: str, heading: str, body: str) -> None:
+        words = body.split()
+        if not words:
+            return
         i = 0
         while i < len(words):
-            chunk = " ".join(words[i : i + chunk_size])
-            if chunk.strip():
-                pairs.append((chunk, heading))
+            piece = " ".join(words[i : i + chunk_size])
+            pairs.append((f"{crumb}\n\n{piece}" if crumb else piece, heading))
+            if len(words) <= chunk_size:
+                break
             i += chunk_size - overlap
+
+    for crumb, heading, lines in blocks:
+        paragraphs: list[str] = []
+        buf: list[str] = []
+        for l in lines:
+            if l.strip() == "":
+                if buf:
+                    paragraphs.append("\n".join(buf))
+                    buf = []
+            else:
+                buf.append(l)
+        if buf:
+            paragraphs.append("\n".join(buf))
+
+        acc: list[str] = []
+        acc_words = 0
+        for p in paragraphs:
+            acc.append(p)
+            acc_words += len(p.split())
+            if acc_words >= min_chunk_words:
+                _emit(crumb, heading, "\n\n".join(acc))
+                acc, acc_words = [], 0
+        if acc:
+            _emit(crumb, heading, "\n\n".join(acc))
+
     return pairs
 
 
