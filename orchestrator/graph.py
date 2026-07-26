@@ -66,7 +66,7 @@ async def _fetch_agent(name: str, base: str, query: str) -> tuple[str, list[dict
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{base}/retrieve",
-                json={"query": query, "top_k": 5},
+                json={"query": query, "top_k": int(os.getenv("RAG_RETRIEVE_TOP_K", "12"))},
                 timeout=15.0,
             )
         resp.raise_for_status()
