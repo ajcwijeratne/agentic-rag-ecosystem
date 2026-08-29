@@ -3,6 +3,7 @@ sources:
   publisher: DoE
   release_year: 2022
   url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-all-students-2022.xlsx
+  source_page: https://www.education.gov.au/higher-education-statistics/student-data
   raw_path: data/raw/doe/doe_student_allstudents_2022.xlsx
   retrieved_date: '2026-07-15'
   parser: doe_students
@@ -17,6 +18,7 @@ sources:
   publisher: DoE
   release_year: 2023
   url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-all-students-2023.xlsx
+  source_page: https://www.education.gov.au/higher-education-statistics/resources/2023-section-2-all-students
   raw_path: data/raw/doe/doe_student_allstudents_2023.xlsx
   retrieved_date: '2026-07-15'
   parser: doe_students
@@ -31,6 +33,7 @@ sources:
   publisher: DoE
   release_year: 2024
   url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-all-students-2024.xlsx
+  source_page: https://www.education.gov.au/higher-education-statistics/student-data/selected-higher-education-statistics-2024-student-data
   raw_path: data/raw/doe/doe_student_allstudents_2024.xlsx
   retrieved_date: '2026-07-15'
   parser: doe_students
@@ -45,6 +48,7 @@ sources:
   publisher: DoE
   release_year: 2022
   url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-staff-finance-2022.xlsx
+  source_page: https://www.education.gov.au/higher-education-statistics/staff-data
   raw_path: data/raw/doe/doe_staff_finance_2022.xlsx
   retrieved_date: '2026-07-15'
   parser: doe_staff_finance
@@ -56,6 +60,7 @@ sources:
   publisher: DoE
   release_year: 2023
   url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-staff-finance-2023.xlsx
+  source_page: https://www.education.gov.au/higher-education-statistics/staff-data/selected-higher-education-statistics-2023-staff-data
   raw_path: data/raw/doe/doe_staff_finance_2023.xlsx
   retrieved_date: '2026-07-15'
   parser: doe_staff_finance
@@ -67,6 +72,7 @@ sources:
   publisher: DoE
   release_year: 2024
   url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-staff-finance-2024.xlsx
+  source_page: https://www.education.gov.au/higher-education-statistics/staff-data
   raw_path: data/raw/doe/doe_staff_finance_2024.xlsx
   retrieved_date: '2026-07-15'
   parser: doe_staff_finance
@@ -78,6 +84,7 @@ sources:
   publisher: QILT
   release_year: 2022
   url: https://www.qilt.edu.au/PLACEHOLDER/ses-national-tables-2022.xlsx
+  source_page: https://www.qilt.edu.au/resources?survey=SES&type=Reports
   raw_path: data/raw/qilt/qilt_ses_2022.xlsx
   retrieved_date: '2026-07-15'
   parser: qilt_ses
@@ -90,6 +97,7 @@ sources:
   publisher: QILT
   release_year: 2023
   url: https://www.qilt.edu.au/PLACEHOLDER/ses-national-tables-2023.xlsx
+  source_page: https://www.qilt.edu.au/resources?survey=SES&type=Reports
   raw_path: data/raw/qilt/qilt_ses_2023.xlsx
   retrieved_date: '2026-07-15'
   parser: qilt_ses
@@ -101,9 +109,20 @@ sources:
 - key: qilt_ses_2024
   publisher: QILT
   release_year: 2024
-  url: https://www.qilt.edu.au/PLACEHOLDER/ses-national-tables-2024.xlsx
-  raw_path: data/raw/qilt/qilt_ses_2024.xlsx
-  retrieved_date: '2026-07-15'
+  url: https://www.qilt.edu.au/docs/default-source/default-document-library/ses_2024_national_report_tables.zip?sfvrsn=f1ce2f6e_1
+  source_page: https://www.qilt.edu.au/surveys/student-experience-survey-(ses)
+  raw_path: data/raw/qilt/ses_2024_extracted/SES_2024_National_Report_Tables.xlsx
+  retrieved_date: '2026-08-16'
+  verified: true
+  note: 'Real file downloaded and unzipped 16 Aug 2026 (165 sheets). parser.py
+    sheet/column config for qilt_ses is still fixture-era guesswork (sheet
+    STMT_SES_ALL_1Y does not exist in the real file) and metric B06 graduate
+    employment does not belong here at all -- that is a Graduate Outcomes
+    Survey (GOS) metric, not SES. Needs a proper remap: institution-level
+    figures live in the QOE_*_INST_FIG family for overall experience; teaching
+    quality, student support, and peer engagement are not published as
+    single-year by-institution sheets in this file, only as multi-year trend
+    tables by student group/stage.'
   parser: qilt_ses
   metric_ids:
   - B01
