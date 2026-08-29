@@ -17,6 +17,7 @@
       });
     }
   </script>
+  <script>if(!(window.crypto&&crypto.randomUUID)){window.crypto=window.crypto||{};window.crypto.randomUUID=function(){return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,function(c){var r=Math.random()*16|0,v=c==="x"?r:(r&0x3|0x8);return v.toString(16);});};}</script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -24,26 +25,29 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;450;500;600&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      /* WijerCo palette */
-      --ink:#14231f; --pine:#1f4d3f; --pine-deep:#163b30;
-      --gold:#c28f1e; --gold-soft:#e7c873; --gold-tint:#f6eed8;
-      --paper:#eef0ea; --surface:#fbfbf8; --surface-2:#f4f5f0;
-      --line:#dadfd5; --line-soft:#e6e9e1; --pine-tint:#e4ece6;
-      /* compatibility aliases used across existing markup */
-      --bg:#eef0ea; --bg2:#fbfbf8; --bg3:#f4f5f0;
-      --border:#dadfd5; --border-strong:#cfd6ca;
-      --text:#14231f; --muted:#5c665e; --muted-2:#838d84;
-      --accent:#1f4d3f; --accent-strong:#163b30; --accent-weak:#e4ece6;
-      --green:#1f7a52; --red:#bb4a3f; --yellow:#b07d16;
-      --shadow-sm:0 1px 2px rgba(20,35,31,.05);
-      --shadow-md:0 8px 28px rgba(20,35,31,.08);
-      --shadow-lg:0 18px 44px rgba(20,35,31,.14);
+      /* Apex dark palette (Command Centre merge) */
+      --void:#030711; --raised:#0b1424; --faint:#46587a;
+      --teal:#34e0c8; --blue:#5b9df9; --amber:#f5a05e; --coral:#ff6b72;
+      --line-strong:rgba(91,157,249,.26);
+      --ink:#e4ecf7; --pine:#159b86; --pine-deep:#0b1424;
+      --gold:#f4b23f; --gold-soft:#f2cf82; --gold-tint:rgba(244,178,63,.12);
+      --paper:#030711; --surface:#070e1c; --surface-2:#0b1424;
+      --line:rgba(91,157,249,.13); --line-soft:rgba(91,157,249,.08); --pine-tint:rgba(52,224,200,.10);
+      --bg:#030711; --bg2:#070e1c; --bg3:#0b1424;
+      --border:rgba(91,157,249,.16); --border-strong:rgba(91,157,249,.30);
+      --text:#e4ecf7; --muted:#8fa0bd; --muted-2:#7c90b0;
+      --accent:#34e0c8; --accent-strong:#5b9df9; --accent-weak:rgba(52,224,200,.12);
+      --green:#34e0c8; --red:#ff6b72; --yellow:#f5a05e;
+      --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+      --shadow-md:0 8px 28px rgba(0,0,0,.5);
+      --shadow-lg:0 18px 44px rgba(0,0,0,.6);
     }
     *{box-sizing:border-box;margin:0;padding:0}
-    body{background:var(--paper);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;line-height:1.5}
-    h1,h2,h3,.display,.serif{font-family:'Fraunces',Georgia,serif;font-weight:500;letter-spacing:-.012em}
+    body{background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;line-height:1.5}
+    h1,h2,h3,.display,.serif{font-family:'IBM Plex Sans',system-ui,sans-serif;font-weight:500;letter-spacing:-.012em}
     ::selection{background:var(--pine-tint);color:var(--pine)}
     ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#cbd2c7;border-radius:8px;border:2px solid var(--surface)}::-webkit-scrollbar-thumb:hover{background:#b5beb1}
     .typing-cursor::after{content:'▋';animation:blink .7s infinite}
@@ -60,7 +64,7 @@
     /* ---- Left rail ---- */
     .rail{width:236px;min-width:236px;background:var(--pine-deep);color:#dfe7e1;display:flex;flex-direction:column;padding:24px 16px 18px;flex-shrink:0}
     .rail-brand{display:flex;flex-direction:column;gap:2px;padding:0 8px 2px}
-    .rail-mark{font-family:'Fraunces',serif;font-weight:600;font-size:23px;letter-spacing:-.01em;color:#fff;line-height:1}
+    .rail-mark{font-family:'IBM Plex Sans',sans-serif;font-weight:600;font-size:23px;letter-spacing:-.01em;color:#fff;line-height:1}
     .rail-mark span{color:var(--gold-soft)}
     .rail-tag{font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:#8fa89b;font-weight:600}
     .rail-divider{height:1px;background:rgba(255,255,255,.09);margin:20px 8px}
@@ -74,7 +78,7 @@
     .nav-item.active svg{opacity:1;color:var(--gold-soft)}
     .rail-foot{flex:none;padding-top:12px;display:flex;flex-direction:column;gap:8px}
     .rail-card{display:flex;align-items:center;gap:10px;padding:10px;border-radius:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07)}
-    .rail-av{width:32px;height:32px;border-radius:8px;flex:none;background:linear-gradient(135deg,var(--gold) 0%,#9d7016 100%);color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif}
+    .rail-av{width:32px;height:32px;border-radius:8px;flex:none;background:linear-gradient(135deg,var(--gold) 0%,#9d7016 100%);color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Sans',sans-serif}
     /* ---- Topbar ---- */
     .topbar{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line);background:var(--surface);flex-shrink:0}
     .crumb{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-2,#838d84);font-weight:600}
@@ -86,17 +90,17 @@
     .view-inner{max-width:1000px;margin:0 auto}
     .eyebrow{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:10px}
     .eyebrow::before{content:"";width:22px;height:1.5px;background:var(--gold)}
-    .view-title{font-family:'Fraunces',serif;font-weight:500;font-size:clamp(24px,3vw,34px);line-height:1.1;letter-spacing:-.015em;color:var(--ink)}
+    .view-title{font-family:'IBM Plex Sans',sans-serif;font-weight:500;font-size:clamp(24px,3vw,34px);line-height:1.1;letter-spacing:-.015em;color:var(--ink)}
     .view-lede{font-size:15px;color:var(--muted);margin-top:12px;max-width:62ch;line-height:1.55}
     .row-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:26px 0 14px}
-    .row-head h3{font-family:'Fraunces',serif;font-weight:500;font-size:19px;color:var(--ink)}
+    .row-head h3{font-family:'IBM Plex Sans',sans-serif;font-weight:500;font-size:19px;color:var(--ink)}
     .grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
     .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
     .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow-sm)}
     .card-i{transition:box-shadow .16s,transform .12s,border-color .16s}
     .card-i:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);border-color:var(--line-soft)}
     .stat .k{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-2);font-weight:600}
-    .stat .v{font-family:'Fraunces',serif;font-size:32px;font-weight:500;color:var(--pine);margin-top:8px;line-height:1}
+    .stat .v{font-family:'IBM Plex Sans',sans-serif;font-size:32px;font-weight:500;color:var(--pine);margin-top:8px;line-height:1}
     .stat .s{font-size:12.5px;color:var(--muted);margin-top:8px}
     .cap-tag{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);font-weight:600}
     .tagx{font-size:11px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line-soft);padding:4px 9px;border-radius:6px}
@@ -119,10 +123,10 @@
     .content-command{display:grid;grid-template-columns:1.12fr repeat(3,minmax(0,.8fr));gap:12px;margin-top:24px}
     .content-action{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:8px;padding:14px 15px;box-shadow:var(--shadow-sm);min-width:0}
     .content-action .k,.content-panel .k,.content-smart .k{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted-2);font-weight:600}
-    .content-action .v{font-family:'Fraunces',serif;font-size:22px;line-height:1.18;color:var(--ink);margin-top:8px}
+    .content-action .v{font-family:'IBM Plex Sans',sans-serif;font-size:22px;line-height:1.18;color:var(--ink);margin-top:8px}
     .content-action .s{font-size:12px;color:var(--muted);line-height:1.45;margin-top:8px}
     .content-health{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px;box-shadow:var(--shadow-sm);min-width:0}
-    .content-health .v{font-family:'Fraunces',serif;font-size:28px;line-height:1;color:var(--pine);margin-top:9px}
+    .content-health .v{font-family:'IBM Plex Sans',sans-serif;font-size:28px;line-height:1;color:var(--pine);margin-top:9px}
     .content-health .s{font-size:12px;color:var(--muted);line-height:1.35;margin-top:8px}
     .content-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:18px}
     .content-tab{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--muted);font-weight:600;cursor:pointer;font-family:inherit}
@@ -151,7 +155,7 @@
     .delivery-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:24px}
     .delivery-stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 15px;box-shadow:var(--shadow-sm);min-width:0}
     .delivery-stat .k{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted-2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .delivery-stat .v{font-family:'Fraunces',serif;font-size:28px;line-height:1;color:var(--pine);margin-top:8px}
+    .delivery-stat .v{font-family:'IBM Plex Sans',sans-serif;font-size:28px;line-height:1;color:var(--pine);margin-top:8px}
     .delivery-stat .s{font-size:12px;color:var(--muted);margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .delivery-tools{display:grid;grid-template-columns:minmax(220px,1fr) 180px 180px 160px;gap:10px;margin-top:18px;align-items:center}
     .delivery-input,.delivery-select{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font-size:12.5px;color:var(--ink);font-family:inherit}
@@ -237,6 +241,79 @@
       .drawer-grid,.drawer-linkgrid{grid-template-columns:1fr}
       .agent-actions{grid-template-columns:1fr}
     }
+
+    /* ===================== APEX MERGE: shell + dark fit ===================== */
+    body{position:relative}
+    body::before{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.035;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");}
+    #root{position:relative;z-index:2;height:100vh}
+    ::-webkit-scrollbar-thumb{background:rgba(91,157,249,.28);border:2px solid var(--surface)}
+    /* status pills recoloured for dark */
+    .st-good{background:rgba(52,224,200,.12)!important;color:#34e0c8!important}
+    .st-warn{background:rgba(245,160,94,.14)!important;color:#f5a05e!important}
+    .st-mute{background:rgba(124,144,176,.14)!important;color:#8fa0bd!important}
+    .st-fail{background:rgba(255,107,114,.14)!important;color:#ff6b72!important}
+    /* command bar */
+    .apx-bar{display:flex;align-items:center;gap:16px;padding:0 16px;height:50px;flex-shrink:0;
+      border-bottom:1px solid var(--line);background:rgba(3,7,17,.7);backdrop-filter:blur(12px);position:relative;z-index:20}
+    .apx-brand{display:flex;align-items:baseline;gap:8px}
+    .apx-brand .w{font-family:'IBM Plex Sans',sans-serif;font-weight:600;font-size:14px;color:var(--ink)}
+    .apx-brand .slash{color:var(--faint)}
+    .apx-brand .a{font-size:12px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:var(--gold)}
+    .apx-crumb{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:.06em}
+    .apx-meters{margin-left:auto;display:flex;align-items:center;gap:22px}
+    .apx-meter{display:flex;flex-direction:column;gap:2px;line-height:1;font-family:'IBM Plex Mono',monospace}
+    .apx-meter .mk{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+    .apx-meter .mv{font-size:12.5px;font-weight:500;color:var(--ink)}
+    .apx-meter .mv.warn{color:var(--amber)}
+    /* overview stage */
+    .apx-stage{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 300px;overflow:hidden;font-family:'IBM Plex Mono',monospace}
+    .apx-field{position:relative;min-height:0;display:flex;flex-direction:column}
+    .apxo-wrap{position:relative;flex:1 1 auto;min-height:0}
+    .apxo-wrap canvas{display:block;width:100%;height:100%}
+    .apxo-hud{position:absolute;top:24px;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none;z-index:5}
+    .apxo-hud .n{font-size:11px;font-weight:600;letter-spacing:.44em;text-transform:uppercase;color:var(--gold)}
+    .apxo-hud .s{margin-top:6px;font-size:10px;letter-spacing:.1em;color:var(--muted);min-height:13px}
+    .apxo-hud .s.live{color:var(--accent)}
+    .apx-kpis{flex:0 0 auto;display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);background:rgba(3,7,17,.4)}
+    .apx-kpi{padding:12px 16px;border-right:1px solid var(--line)}
+    .apx-kpi:last-child{border-right:0}
+    .apx-kpi .k{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+    .apx-kpi-row{display:flex;align-items:flex-end;gap:8px;margin-top:5px}
+    .apx-kpi .v{font-size:19px;font-weight:450;line-height:1;letter-spacing:-.02em;color:var(--ink)}
+    .apx-kpi .u{font-size:10px;color:var(--muted);margin-bottom:1px}
+    .apx-kpi .chart{margin-top:8px;height:26px}
+    .apx-console{flex:0 0 auto;border-top:1px solid var(--line);padding:12px 16px;background:rgba(3,7,17,.55)}
+    .apx-chips{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+    .apx-chip{font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:4px 9px;border-radius:100px;border:1px solid var(--line);color:var(--muted);background:none;cursor:pointer}
+    .apx-chip:hover{color:var(--ink);border-color:var(--line-strong)}
+    .apx-input-row{display:flex;align-items:center;gap:12px}
+    .apx-mic{width:34px;height:34px;flex:none;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(244,178,63,.4);background:rgba(244,178,63,.08);color:var(--gold);cursor:pointer}
+    .apx-console input{flex:1 1 auto;min-width:0;background:transparent;border:0;color:var(--ink);font-family:'IBM Plex Sans',sans-serif;font-size:13.5px;padding:8px 0}
+    .apx-console input:focus{outline:none}
+    .apx-console input::placeholder{color:var(--faint)}
+    .apx-send{flex:none;padding:8px 14px;border-radius:5px;border:1px solid var(--line-strong);background:rgba(91,157,249,.1);color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+    .apx-send:hover{background:rgba(91,157,249,.2)}
+    .apx-send[disabled]{opacity:.4;cursor:default}
+    .apx-rail-r{border-left:1px solid var(--line);display:flex;flex-direction:column;gap:16px;min-height:0;padding:16px;background:var(--surface);overflow:hidden}
+    .apx-r-block{display:flex;flex-direction:column;min-height:0;flex:1 1 auto}
+    .apx-r-block.tight{flex:0 0 auto}
+    .apx-h{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
+    .apx-feed{display:flex;flex-direction:column;gap:1px;min-height:0;overflow-y:auto}
+    .apx-ev{display:grid;grid-template-columns:42px 1fr;gap:8px;padding:7px 0 7px 8px;border-left:2px solid var(--line)}
+    .apx-ev.disp{border-left-color:var(--accent)}
+    .apx-ev .t{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--faint);padding-top:1px}
+    .apx-ev .who{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+    .apx-ev .msg{font-family:'IBM Plex Sans',sans-serif;font-size:12.5px;line-height:1.5;margin-top:3px;color:var(--ink);word-wrap:break-word}
+    .apx-empty{font-family:'IBM Plex Sans',sans-serif;font-size:12.5px;line-height:1.55;color:var(--muted);padding:8px 0}
+    .apx-loop{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:11.5px;font-family:'IBM Plex Sans',sans-serif;color:var(--ink)}
+    .apx-loop:last-child{border-bottom:0}
+    .apx-loop .in{margin-left:auto;color:var(--muted);font-size:10.5px;font-family:'IBM Plex Mono',monospace}
+    .apx-dot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--faint)}
+    .apx-dot.st-good{background:var(--accent)!important}.apx-dot.st-warn{background:var(--amber)!important}.apx-dot.st-fail{background:var(--coral)!important}.apx-dot.st-mute{background:var(--faint)!important}
+    @media(max-width:900px){.apx-stage{grid-template-columns:1fr}.apx-rail-r{display:none}.apx-kpis{grid-template-columns:repeat(2,1fr)}}
+    .apx-mic.live{border-color:var(--teal);color:var(--teal);background:rgba(52,224,200,.14);animation:apxring 1.6s infinite}
+    @keyframes apxring{0%{box-shadow:0 0 0 0 rgba(52,224,200,.45)}100%{box-shadow:0 0 0 13px rgba(52,224,200,0)}}
   </style>
 </head>
 <body>
@@ -1849,66 +1926,6 @@ function ProductionPipeline(){
   );
 }
 
-function GovernanceView(){
-  const [pending,setPending]=useState([]);
-  const [approvals,setApprovals]=useState([]);
-  const [note,setNote]=useState("");
-  const [toast,setToast]=useState("");
-  const load=()=>{
-    fetch(`${API}/governance/pending`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setPending(d.items||[])).catch(()=>setPending([]));
-    fetch(`${API}/governance/approvals`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setApprovals(d.items||[])).catch(()=>setApprovals([]));
-  };
-  useEffect(()=>{load();},[]);
-  const decide=async(item,status='approved')=>{
-    try{
-      await fetch(`${API}/governance/approve`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gate:item.gate,target_id:item.target_id||item.production_id,note,actor:'command-centre',status})});
-      setToast(status==='approved'?'Gate approved.':'Gate rejected.');
-      setNote("");
-      load();
-    }catch{setToast("Could not update gate.");}
-  };
-  return (
-    <div className="view-wrap"><div className="view-inner" style={{maxWidth:1080}}>
-      <ViewHead eyebrow="Autonomous operations" title="Governance gates." lede="Review blocked publications, generated media checks, sensitive assets, and paid adapter approvals before work proceeds."/>
-      {toast&&<div className="card" style={{marginTop:18,background:'var(--pine-tint)',color:'var(--pine)',fontSize:13}}>{toast}</div>}
-      <div className="grid-2" style={{marginTop:24,alignItems:'start'}}>
-        <div className="card">
-          <div className="sec-h"><span className="t">Pending approvals</span><span className="x">{pending.length}</span></div>
-          <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Approval note" style={{width:'100%',boxSizing:'border-box',background:'var(--surface-2)',border:'1px solid var(--line)',borderRadius:8,padding:'8px 9px',fontSize:12,marginBottom:12}}/>
-          {pending.length===0&&<div className="mini">No gates are waiting.</div>}
-          {pending.map((p,i)=>(
-            <div key={`${p.gate}-${p.target_id}-${i}`} className="kv" style={{alignItems:'center'}}>
-              <span style={{minWidth:0}}>
-                <span className="stag st-warn">{p.gate}</span>
-                <span style={{marginLeft:8,fontWeight:600,color:'var(--ink)'}}>{p.title||p.target_id}</span>
-                <div className="mini" style={{marginTop:3}}>{p.reason} · {p.state||'adapter spend'}</div>
-              </span>
-              <span style={{display:'flex',gap:6}}>
-                <button onClick={()=>decide(p,'approved')} style={{background:'var(--pine)',border:'none',color:'#fff',borderRadius:8,padding:'6px 9px',fontSize:12,fontWeight:600,cursor:'pointer'}}>Approve</button>
-                <button onClick={()=>decide(p,'rejected')} style={{background:'var(--surface-2)',border:'1px solid var(--line)',color:'var(--muted)',borderRadius:8,padding:'6px 9px',fontSize:12,cursor:'pointer'}}>Reject</button>
-              </span>
-            </div>
-          ))}
-        </div>
-        <div className="card">
-          <div className="sec-h"><span className="t">Approval history</span><span className="x">{approvals.length}</span></div>
-          {approvals.length===0&&<div className="mini">No approvals recorded yet.</div>}
-          {approvals.map(a=>(
-            <div key={a.id} className="kv">
-              <span style={{minWidth:0}}>
-                <span className={"stag "+(a.status==='approved'?'st-good':'st-fail')}>{a.status}</span>
-                <span style={{marginLeft:8,fontWeight:600,color:'var(--ink)'}}>{a.gate}</span>
-                <div className="mini" style={{marginTop:3}}>{a.target_id} · {a.actor||'unknown'} · {a.at}</div>
-                {a.note&&<div className="mini" style={{marginTop:3,whiteSpace:'normal'}}>{a.note}</div>}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div></div>
-  );
-}
-
 function OperatingView(){
   const [overview,setOverview]=useState(null);
   const [brief,setBrief]=useState(null);
@@ -1917,11 +1934,24 @@ function OperatingView(){
   const [goal,setGoal]=useState("");
   const [memory,setMemory]=useState("");
   const [toast,setToast]=useState("");
+  const [pending,setPending]=useState([]);
+  const [approvals,setApprovals]=useState([]);
+  const [govNote,setGovNote]=useState("");
   const load=()=>{
     fetch(`${API}/operating/overview`).then(r=>r.ok?r.json():Promise.reject()).then(setOverview).catch(()=>setOverview(null));
     fetch(`${API}/operating/daily-brief`).then(r=>r.ok?r.json():Promise.reject()).then(setBrief).catch(()=>setBrief(null));
+    fetch(`${API}/governance/pending`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setPending(d.items||[])).catch(()=>setPending([]));
+    fetch(`${API}/governance/approvals`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setApprovals(d.items||[])).catch(()=>setApprovals([]));
   };
   useEffect(()=>{load();},[]);
+  const decideGate=async(item,status='approved')=>{
+    try{
+      await fetch(`${API}/governance/approve`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gate:item.gate,target_id:item.target_id||item.production_id,note:govNote,actor:'command-centre',status})});
+      setToast(status==='approved'?'Gate approved.':'Gate rejected.');
+      setGovNote("");
+      load();
+    }catch{setToast("Could not update gate.");}
+  };
   const createPlan=async()=>{
     if(!title.trim()){setToast("Name the plan first.");return;}
     try{
@@ -2017,6 +2047,40 @@ function OperatingView(){
           <button onClick={addMemory} style={{background:'var(--pine)',border:'none',color:'#fff',borderRadius:8,padding:'8px 12px',fontSize:12,fontWeight:600,cursor:'pointer'}}>Save</button>
         </div>
         {(overview?.project_memory||[]).map(m=><div key={m.memory_id} className="kv"><span><b>{m.project}</b><div className="mini" style={{whiteSpace:'normal'}}>{m.content}</div></span><span className="mini">{m.source}</span></div>)}
+      </div>
+      <div className="grid-2" style={{marginTop:16,alignItems:'start'}}>
+        <div className="card">
+          <div className="sec-h"><span className="t">Pending approvals</span><span className="x">{pending.length}</span></div>
+          <input value={govNote} onChange={e=>setGovNote(e.target.value)} placeholder="Approval note" style={{width:'100%',boxSizing:'border-box',background:'var(--surface-2)',border:'1px solid var(--line)',borderRadius:8,padding:'8px 9px',fontSize:12,marginBottom:12}}/>
+          {pending.length===0&&<div className="mini">No gates are waiting.</div>}
+          {pending.map((p,i)=>(
+            <div key={`${p.gate}-${p.target_id}-${i}`} className="kv" style={{alignItems:'center'}}>
+              <span style={{minWidth:0}}>
+                <span className="stag st-warn">{p.gate}</span>
+                <span style={{marginLeft:8,fontWeight:600,color:'var(--ink)'}}>{p.title||p.target_id}</span>
+                <div className="mini" style={{marginTop:3}}>{p.reason} · {p.state||'adapter spend'}</div>
+              </span>
+              <span style={{display:'flex',gap:6}}>
+                <button onClick={()=>decideGate(p,'approved')} style={{background:'var(--pine)',border:'none',color:'#fff',borderRadius:8,padding:'6px 9px',fontSize:12,fontWeight:600,cursor:'pointer'}}>Approve</button>
+                <button onClick={()=>decideGate(p,'rejected')} style={{background:'var(--surface-2)',border:'1px solid var(--line)',color:'var(--muted)',borderRadius:8,padding:'6px 9px',fontSize:12,cursor:'pointer'}}>Reject</button>
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="card">
+          <div className="sec-h"><span className="t">Approval history</span><span className="x">{approvals.length}</span></div>
+          {approvals.length===0&&<div className="mini">No approvals recorded yet.</div>}
+          {approvals.map(a=>(
+            <div key={a.id} className="kv">
+              <span style={{minWidth:0}}>
+                <span className={"stag "+(a.status==='approved'?'st-good':'st-fail')}>{a.status}</span>
+                <span style={{marginLeft:8,fontWeight:600,color:'var(--ink)'}}>{a.gate}</span>
+                <div className="mini" style={{marginTop:3}}>{a.target_id} · {a.actor||'unknown'} · {a.at}</div>
+                {a.note&&<div className="mini" style={{marginTop:3,whiteSpace:'normal'}}>{a.note}</div>}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div></div>
   );
@@ -2243,10 +2307,12 @@ function KnowledgeBaseView(){
   const [attn,setAttn]=useState(false);
   const [busy,setBusy]=useState('');
   const [err,setErr]=useState('');
+  const [memGroups,setMemGroups]=useState(null);
   const load=()=>{
     fetch(`${API}/kb/overview`).then(r=>r.ok?r.json():Promise.reject()).then(setD).catch(()=>setD(SEED_KB));
     fetch(`${API}/kb/quality`).then(r=>r.ok?r.json():null).then(x=>x&&setQ(x)).catch(()=>{});
     fetch(`${API}/kb/misses`).then(r=>r.ok?r.json():null).then(x=>x&&setMisses(x.items||[])).catch(()=>{});
+    fetch(`${API}/memory/overview`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setMemGroups(d.groups||d)).catch(()=>setMemGroups(SEED_MEMORY));
   };
   useEffect(load,[]);
   const s=(d||{}).stats||{}; const cols=(d||{}).collections||[];
@@ -2387,25 +2453,9 @@ function KnowledgeBaseView(){
           </div>
         ))}
       </div>
-    </div></div>
-  );
-}
-
-// Memory
-const SEED_MEMORY = [
-  {g:"Identity", items:["Aaron Wijeratne, Academic Director at OES, Swinburne Online","Positioning for PVC or Academic Dean on a 12-month horizon","PhD Organisational Behaviour; Business and Commerce (Hons)"]},
-  {g:"Preferences", items:["Lead with the point; no preamble or filler","Banned buzzwords enforced; no em dashes","Claims backed by names, numbers, and dates"]},
-  {g:"Projects", items:["WijerCo brand on hold while at OES (conflict of interest)","Ship an adopted product or capability at OES this year","Build a published thought-leadership profile"]},
-  {g:"Decisions", items:["Routing ambiguity defaults to Strategy & Change","Client work paused; internal Command Centre is the focus"]},
-];
-function MemoryView(){
-  const [groups,setGroups]=useState(null);
-  useEffect(()=>{fetch(`${API}/memory/overview`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setGroups(d.groups||d)).catch(()=>setGroups(SEED_MEMORY));},[]);
-  return (
-    <div className="view-wrap"><div className="view-inner">
-      <ViewHead eyebrow="Long-term memory" title="What the system remembers." lede="The facts and preferences carried between conversations. Correct anything it gets wrong before it shapes the next answer."/>
-      <div className="grid-2" style={{marginTop:24}}>
-        {(groups||[]).map((g,i)=>(
+      <div className="row-head"><h3>Memory</h3><span className="mini">Facts and preferences carried between conversations</span></div>
+      <div className="grid-2" style={{marginTop:0,marginBottom:8}}>
+        {(memGroups||[]).map((g,i)=>(
           <div key={i} className="card">
             <div className="cap-tag" style={{color:'var(--pine)'}}>{g.g}</div>
             <div style={{marginTop:11,display:'flex',flexDirection:'column',gap:10}}>
@@ -2423,6 +2473,13 @@ function MemoryView(){
   );
 }
 
+// Memory
+const SEED_MEMORY = [
+  {g:"Identity", items:["Aaron Wijeratne, Academic Director at OES, Swinburne Online","Positioning for PVC or Academic Dean on a 12-month horizon","PhD Organisational Behaviour; Business and Commerce (Hons)"]},
+  {g:"Preferences", items:["Lead with the point; no preamble or filler","Banned buzzwords enforced; no em dashes","Claims backed by names, numbers, and dates"]},
+  {g:"Projects", items:["WijerCo brand on hold while at OES (conflict of interest)","Ship an adopted product or capability at OES this year","Build a published thought-leadership profile"]},
+  {g:"Decisions", items:["Routing ambiguity defaults to Strategy & Change","Client work paused; internal Command Centre is the focus"]},
+];
 // Sector intelligence
 const SEED_INTEL = [
   {src:"TEQSA", date:"11 Jun", head:"Consultation opens on teaching-qualification expectations for academic staff", so:"The forcing function you have been writing about. Institutions that move first will set the benchmark."},
@@ -3694,6 +3751,501 @@ function ProductivityView(){
 }
 
 // ── App ────────────────────────────────────────────────────────────────────
+/* ============================================================
+   APEX SHELL COMPONENTS  (Command Centre merge, phases 2-4)
+   Ported from apex-command-centre-v3.html into the live React app.
+   Relies on globals already defined above: React hooks, API, fmtCost, fmtMs.
+   ============================================================ */
+const APX_VOICE = { active:false, level:0, wave:new Array(48).fill(0) };
+
+class ApxErrorBoundary extends React.Component {
+  constructor(p){ super(p); this.state={err:null}; }
+  static getDerivedStateFromError(err){ return {err}; }
+  componentDidCatch(err,info){ try{ console.error('Command Centre UI error:', err, info); }catch(e){} }
+  render(){
+    if(this.state.err){
+      return React.createElement('div',{style:{padding:'26px',fontFamily:"'IBM Plex Mono',monospace",color:'#e4ecf7',background:'#070e1c',height:'100vh',overflow:'auto'}},
+        React.createElement('div',{style:{color:'#f4b23f',fontSize:16,marginBottom:12,letterSpacing:'.04em'}},'Command Centre hit an error while loading'),
+        React.createElement('div',{style:{color:'#8fa0bd',fontSize:12,marginBottom:14}},'The rest of the app is fine. Send this text to Claude to fix it.'),
+        React.createElement('pre',{style:{whiteSpace:'pre-wrap',color:'#ff6b72',fontSize:12,lineHeight:1.5}}, String((this.state.err&&this.state.err.stack)||this.state.err)));
+    }
+    return this.props.children;
+  }
+}
+
+const APX_CC = {
+  idle:    { hex:'#5b9df9', rgb:'91,157,249' },
+  running: { hex:'#34e0c8', rgb:'52,224,200' },
+  queued:  { hex:'#f5a05e', rgb:'245,160,94' },
+  blocked: { hex:'#ff6b72', rgb:'255,107,114' }
+};
+
+// Inner ring = primary daily surfaces; outer ring = systems & operations.
+const APX_NODES = [
+  { id:'chat',        label:'Chat',           ring:1 },
+  { id:'productivity',label:'Productivity',   ring:1 },
+  { id:'content',     label:'Content',        ring:1 },
+  { id:'production',  label:'Production',      ring:1 },
+  { id:'library',     label:'Deliverables',   ring:1 },
+  { id:'engagements', label:'Engagements',    ring:1 },
+  { id:'kb',          label:'Knowledge base', ring:2 },
+  { id:'memory',      label:'Memory',         ring:2 },
+  { id:'intel',       label:'Sector intel',   ring:2 },
+  { id:'operating',   label:'Operating',      ring:2 },
+  { id:'governance',  label:'Governance',     ring:2 },
+  { id:'n8n',         label:'Automations',    ring:2 },
+  { id:'schedule',    label:'Scheduled',      ring:2 },
+  { id:'trace',       label:'Routing',        ring:2 },
+  { id:'harness',     label:'Self-Improve',   ring:2 },
+  { id:'quality',     label:'Quality',        ring:2 },
+  { id:'admin',       label:'Usage',          ring:2 },
+  { id:'media',       label:'Media library',  ring:2 }
+];
+
+function apxSparkPath(vals,w,h,pad){
+  const min=Math.min(...vals), max=Math.max(...vals), span=max-min||1;
+  return vals.map((v,i)=>{
+    const x=(i/(vals.length-1||1))*w;
+    const y=h-pad-((v-min)/span)*(h-pad*2);
+    return (i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);
+  }).join(' ');
+}
+function apxAreaSVG(vals,color,w,h){
+  if(!vals||!vals.length) vals=[0,0];
+  const d=apxSparkPath(vals,w,h,3);
+  const uid='ag'+Math.random().toString(36).slice(2,8);
+  return '<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="'+h+'" preserveAspectRatio="none">'+
+    '<defs><linearGradient id="'+uid+'" x1="0" y1="0" x2="0" y2="1">'+
+    '<stop offset="0%" stop-color="'+color+'" stop-opacity="0.30"/>'+
+    '<stop offset="100%" stop-color="'+color+'" stop-opacity="0"/></linearGradient></defs>'+
+    '<path d="'+d+' L '+w+' '+h+' L 0 '+h+' Z" fill="url(#'+uid+')"/>'+
+    '<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="1.25" stroke-linecap="round" '+
+    'stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>';
+}
+
+/* ---- Orbital navigation canvas: rotating nodes + live Apex core + voice ---- */
+function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
+  const cvRef  = useRef(null);
+  const rafRef = useRef(0);
+  const stRef  = useRef(statuses);
+  stRef.current = statuses;
+
+  useEffect(()=>{
+    const cv = cvRef.current; if(!cv) return;
+    const ctx = cv.getContext('2d'); if(!ctx) return;
+    const reduced = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) || false;
+    let W=0,H=0,cx=0,cy=0,R=0,t=0;
+    let mouse={x:-999,y:-999}, hovered=null;
+    const hits=[];
+    const stars=Array.from({length:80},()=>({x:Math.random(),y:Math.random(),r:Math.random()*1.1+0.2,a:Math.random()*0.5+0.1}));
+
+    const ring1=APX_NODES.filter(n=>n.ring===1);
+    const ring2=APX_NODES.filter(n=>n.ring===2);
+    const nodes=APX_NODES.map(n=>{
+      const grp = n.ring===1?ring1:ring2;
+      const idx = grp.indexOf(n);
+      return { ...n, angle:(idx/grp.length)*Math.PI*2 + (n.ring===2?0.30:0), pulse:0, packets:[] };
+    });
+
+    function resize(){
+      const r=cv.getBoundingClientRect(); if(!r.width) return;
+      const dpr=Math.min(window.devicePixelRatio||1,2);
+      W=r.width; H=r.height;
+      cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr);
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      cx=W/2; cy=H/2+6; R=Math.min(W,H*1.5);
+    }
+    const ro=new ResizeObserver(resize); ro.observe(cv); resize();
+
+    const statusOf=id=>(stRef.current&&stRef.current[id])||'idle';
+    const geom=n=>{
+      const rx = n.ring===1 ? R*0.26 : R*0.415;
+      const ry = n.ring===1 ? R*0.12 : R*0.20;
+      return { x:cx+Math.cos(n.angle)*rx, y:cy+Math.sin(n.angle)*ry, depth:(Math.sin(n.angle)+1)/2 };
+    };
+
+    function drawCore(){
+      const beat=0.5+0.5*Math.sin(t*1.5);
+      const active = Object.values(stRef.current||{}).some(v=>v==='running'||v==='queued') || APX_VOICE.active;
+      const rr=R*0.075;
+      const glowR=rr*3.2*(1+(APX_VOICE.active?Math.min(1,APX_VOICE.level*1.4)*0.5:0));
+      const glow=ctx.createRadialGradient(cx,cy,0,cx,cy,glowR);
+      glow.addColorStop(0,'rgba(52,224,200,'+(0.16+beat*0.06)+')');
+      glow.addColorStop(1,'rgba(52,224,200,0)');
+      ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(cx,cy,glowR,0,Math.PI*2); ctx.fill();
+
+      const inner=ctx.createRadialGradient(cx,cy,0,cx,cy,rr*0.9);
+      inner.addColorStop(0,'rgba(214,255,250,'+(0.9+beat*0.1)+')');
+      inner.addColorStop(0.3,'rgba(52,224,200,0.62)');
+      inner.addColorStop(1,'rgba(52,224,200,0)');
+      ctx.fillStyle=inner; ctx.beginPath(); ctx.arc(cx,cy,rr*0.9,0,Math.PI*2); ctx.fill();
+
+      ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2);
+      ctx.strokeStyle='rgba(244,178,63,'+(0.7+beat*0.3)+')';
+      ctx.lineWidth=2.2; ctx.shadowColor='#f4b23f'; ctx.shadowBlur=16+beat*14; ctx.stroke(); ctx.shadowBlur=0;
+
+      if(APX_VOICE.active){
+        const wave=APX_VOICE.wave, N=wave.length;
+        ctx.strokeStyle='rgba(52,224,200,0.8)'; ctx.lineWidth=1.6; ctx.beginPath();
+        for(let i=0;i<=N;i++){
+          const a=(i/N)*Math.PI*2 - Math.PI/2;
+          const amp=wave[i%N]||0;
+          const rad=rr*1.18 + amp*rr*1.25;
+          const x=cx+Math.cos(a)*rad, y=cy+Math.sin(a)*rad;
+          if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle='rgba(244,178,63,0.34)'; ctx.lineWidth=1;
+        for(let i=0;i<36;i++){
+          const a=(i/36)*Math.PI*2 + t*0.12, long=i%9===0;
+          const r1=rr*1.2, r2=rr*(long?1.34:1.27);
+          ctx.beginPath();
+          ctx.moveTo(cx+Math.cos(a)*r1,cy+Math.sin(a)*r1);
+          ctx.lineTo(cx+Math.cos(a)*r2,cy+Math.sin(a)*r2);
+          ctx.stroke();
+        }
+      }
+      const sp=active?1.6:0.4;
+      ctx.beginPath(); ctx.arc(cx,cy,rr*1.5,t*sp,t*sp+1.1);
+      ctx.strokeStyle=active?'rgba(52,224,200,0.6)':'rgba(244,178,63,0.24)';
+      ctx.lineWidth=1.4; ctx.stroke();
+    }
+
+    function drawNode(d,n){
+      const c=APX_CC[statusOf(n.id)], isHot=hovered===n.id;
+      if(statusOf(n.id)==='running') n.pulse=Math.min(1,n.pulse+0.05); else n.pulse=Math.max(0,n.pulse-0.03);
+      const scale=0.7+d.depth*0.55, alpha=0.45+d.depth*0.55;
+      const r=(n.ring===1?5.6:4.2)*scale+n.pulse*3;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(d.x,d.y);
+      ctx.strokeStyle='rgba('+c.rgb+','+(0.05+n.pulse*0.2+(isHot?0.16:0))+')'; ctx.lineWidth=1; ctx.stroke();
+      n.packets.forEach(p=>{
+        const px=cx+(d.x-cx)*p.v, py=cy+(d.y-cy)*p.v;
+        const pg=ctx.createRadialGradient(px,py,0,px,py,6);
+        pg.addColorStop(0,'rgba('+c.rgb+',0.9)'); pg.addColorStop(1,'rgba('+c.rgb+',0)');
+        ctx.fillStyle=pg; ctx.beginPath(); ctx.arc(px,py,6,0,Math.PI*2); ctx.fill();
+      });
+      const hg=ctx.createRadialGradient(d.x,d.y,0,d.x,d.y,r*4.5);
+      hg.addColorStop(0,'rgba('+c.rgb+','+(0.3*alpha+n.pulse*0.3+(isHot?0.2:0))+')');
+      hg.addColorStop(1,'rgba('+c.rgb+',0)');
+      ctx.fillStyle=hg; ctx.beginPath(); ctx.arc(d.x,d.y,r*4.5,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=alpha; ctx.fillStyle=c.hex;
+      ctx.beginPath(); ctx.arc(d.x,d.y,r,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+      if(isHot){ ctx.beginPath(); ctx.arc(d.x,d.y,r+6,0,Math.PI*2); ctx.strokeStyle='rgba('+c.rgb+',0.55)'; ctx.lineWidth=1; ctx.stroke(); }
+      const right=d.x>=cx;
+      ctx.font=(isHot?'500 ':'400 ')+(9.5+d.depth*1.6).toFixed(1)+"px 'IBM Plex Mono','IBM Plex Sans',monospace";
+      ctx.fillStyle='rgba(228,236,247,'+(alpha*(isHot?1:0.72))+')';
+      ctx.textAlign=right?'left':'right'; ctx.textBaseline='middle';
+      ctx.fillText(n.label,d.x+(right?r+9:-(r+9)),d.y);
+      hits.push({ id:n.id, x:d.x, y:d.y, r:Math.max(r+10,16) });
+    }
+
+    function frame(){
+      try{
+        if(W){
+          ctx.clearRect(0,0,W,H);
+          hits.length=0;
+          // stars
+          stars.forEach(s=>{ ctx.globalAlpha=s.a*(0.6+0.4*Math.sin(t*0.6+s.x*20)); ctx.fillStyle='#9fc0ee';
+            ctx.beginPath(); ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2); ctx.fill(); });
+          ctx.globalAlpha=1;
+          // filaments
+          for(let i=0;i<14;i++){
+            const p=i/14, rot=p*Math.PI*2+t*0.045;
+            const rx=R*(0.16+p*0.30)+Math.sin(t*0.45+i*1.3)*R*0.014;
+            const ry=rx*(0.18+(i%5)*0.09);
+            ctx.save(); ctx.translate(cx,cy); ctx.rotate(rot);
+            ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2);
+            const grd=ctx.createLinearGradient(-rx,0,rx,0);
+            const a=0.10+0.07*Math.sin(t*0.6+i);
+            grd.addColorStop(0,'rgba(52,224,200,0)');
+            grd.addColorStop(0.45,'rgba(52,224,200,'+a.toFixed(3)+')');
+            grd.addColorStop(0.72,'rgba(91,157,249,'+(a*0.7).toFixed(3)+')');
+            grd.addColorStop(1,'rgba(91,157,249,0)');
+            ctx.strokeStyle=grd; ctx.lineWidth=1; ctx.stroke(); ctx.restore();
+          }
+          // depth-sorted nodes with the core between the two layers
+          const placed=nodes.map(n=>({n,g:geom(n)})).sort((a,b)=>a.g.depth-b.g.depth);
+          placed.filter(p=>p.g.depth<0.5).forEach(p=>drawNode(p.g,p.n));
+          drawCore();
+          placed.filter(p=>p.g.depth>=0.5).forEach(p=>drawNode(p.g,p.n));
+          // hover
+          let hv=null;
+          for(const h of hits){ if(Math.hypot(mouse.x-h.x,mouse.y-h.y)<h.r){ hv=h.id; break; } }
+          if(hv!==hovered){ hovered=hv; cv.style.cursor=hv?'pointer':'default';
+            if(setHoverName) setHoverName(hv?(APX_NODES.find(n=>n.id===hv)||{}).label:null); }
+          // advance
+          if(!reduced){
+            t+=0.016;
+            nodes.forEach(n=>{
+              n.angle += (n.ring===1?0.0016:0.0009)*(statusOf(n.id)==='running'?2.4:1);
+              n.packets.forEach(p=>{ p.v+=0.014; });
+              n.packets=n.packets.filter(p=>p.v<1);
+              if(statusOf(n.id)==='running' && Math.random()<0.03) n.packets.push({v:0});
+            });
+          }
+        }
+      }catch(e){ /* never let a frame crash the app */ }
+      if(!reduced) rafRef.current=requestAnimationFrame(frame);
+    }
+    frame();
+
+    const onMove=e=>{ const r=cv.getBoundingClientRect(); mouse={x:e.clientX-r.left,y:e.clientY-r.top}; };
+    const onLeave=()=>{ mouse={x:-999,y:-999}; };
+    const onClick=e=>{ const r=cv.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
+      for(const h of hits){ if(Math.hypot(mx-h.x,my-h.y)<h.r){ setView(h.id); return; } } };
+    cv.addEventListener('mousemove',onMove);
+    cv.addEventListener('mouseleave',onLeave);
+    cv.addEventListener('click',onClick);
+    return ()=>{ cancelAnimationFrame(rafRef.current); try{ro.disconnect();}catch(e){}
+      cv.removeEventListener('mousemove',onMove); cv.removeEventListener('mouseleave',onLeave); cv.removeEventListener('click',onClick); };
+  },[]);
+
+  return (
+    <div className="apxo-wrap">
+      <canvas ref={cvRef} aria-hidden="true"/>
+      <div className="apxo-hud">
+        <div className="n">Apex</div>
+        <div className={"s"+(hoverName?' live':'')}>{hoverName?('open '+hoverName):'orchestrator standing by'}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---- KPI strip (best-effort live, graceful fallback) ---- */
+function ApxKpis(){
+  const [k,setK]=useState({tasks:'—',lat:'—',succ:'—',spend:'—',s1:[],s2:[],s3:[],s4:[]});
+  useEffect(()=>{
+    let live=true;
+    (async()=>{
+      const out={tasks:'—',lat:'—',succ:'—',spend:'—',s1:[],s2:[],s3:[],s4:[]};
+      try{
+        const r=await fetch(`${API}/trace/recent`); const j=await r.json();
+        const items=Array.isArray(j)?j:(j.items||[]);
+        const ms=items.map(x=>+x.ms).filter(n=>!isNaN(n));
+        if(ms.length){ const sorted=[...ms].sort((a,b)=>a-b); const p95=sorted[Math.min(sorted.length-1,Math.floor(sorted.length*0.95))];
+          out.lat=fmtMs(p95); out.s2=ms.slice(-14); }
+        if(items.length){ out.tasks=String(items.length); out.s1=items.map((_,i)=>i+1).slice(-14); }
+      }catch(e){}
+      try{ const r=await fetch(`${API}/cost`); const j=await r.json();
+        const v=+(j.today ?? j.total ?? j.usd ?? j.session ?? NaN);
+        if(!isNaN(v)) out.spend=fmtCost(v);
+      }catch(e){}
+      try{ const r=await fetch(`${API}/quality/overview`); const j=await r.json();
+        const v=+(j.success ?? j.pass_rate ?? j.recall ?? (j.stats&&j.stats.success) ?? NaN);
+        if(!isNaN(v)) out.succ=(v<=1?Math.round(v*100):Math.round(v))+'%';
+      }catch(e){}
+      if(live) setK(out);
+    })();
+    return ()=>{live=false;};
+  },[]);
+  const card=(kk,v,u,series,color)=>(
+    <div className="apx-kpi">
+      <div className="k">{kk}</div>
+      <div className="apx-kpi-row"><span className="v">{v}</span><span className="u">{u}</span></div>
+      <div className="chart" dangerouslySetInnerHTML={{__html:apxAreaSVG(series&&series.length?series:[1,1],color,120,26)}}/>
+    </div>
+  );
+  return (
+    <div className="apx-kpis">
+      {card('Tasks / activity',k.tasks,'recent',k.s1,'#34e0c8')}
+      {card('Route latency',k.lat,'p95',k.s2,'#5b9df9')}
+      {card('Run success',k.succ,'%',k.s3,'#34e0c8')}
+      {card('Token spend',k.spend,'',k.s4,'#f5a05e')}
+    </div>
+  );
+}
+
+/* ---- Dispatch console: chips, text, and voice (speech + waveform) ---- */
+function ApxConsole({ onDispatch }){
+  const [text,setText]=useState('');
+  const [listening,setListening]=useState(false);
+  const recRef=useRef(null);
+  const audioRef=useRef(null);
+  const chips=[
+    'Draft a proposal for a micro-credential in data literacy.',
+    'Summarise this week’s TEQSA and sector signals.',
+    'What needs a reply in client support today?',
+    'Build a content brief from the latest sector intel.'
+  ];
+  const go=()=>{ const t=text.trim(); if(t&&onDispatch) onDispatch(t); };
+
+  function stopAudio(){
+    APX_VOICE.active=false; APX_VOICE.level=0; APX_VOICE.wave.fill(0);
+    const a=audioRef.current;
+    if(a){ try{cancelAnimationFrame(a.raf);}catch(e){} try{a.ctx.close();}catch(e){}
+      try{a.stream.getTracks().forEach(tr=>tr.stop());}catch(e){} audioRef.current=null; }
+  }
+  async function startAudio(){
+    try{
+      if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) return;
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const AC=window.AudioContext||window.webkitAudioContext; if(!AC){ stream.getTracks().forEach(t=>t.stop()); return; }
+      const actx=new AC(); const src=actx.createMediaStreamSource(stream);
+      const an=actx.createAnalyser(); an.fftSize=128; src.connect(an);
+      const data=new Uint8Array(an.frequencyBinCount);
+      audioRef.current={ctx:actx,stream,an,data,raf:0};
+      const tick=()=>{ const a=audioRef.current; if(!a) return;
+        a.an.getByteFrequencyData(a.data);
+        const wave=APX_VOICE.wave, N=wave.length; let sum=0;
+        for(let i=0;i<N;i++){ const v=(a.data[i%a.data.length]||0)/255; wave[i]=v; sum+=v; }
+        APX_VOICE.level=sum/N; APX_VOICE.active=true;
+        a.raf=requestAnimationFrame(tick);
+      };
+      tick();
+    }catch(e){ /* mic blocked or insecure context: degrade silently */ }
+  }
+  function toggleMic(){
+    if(listening){ setListening(false); try{recRef.current&&recRef.current.stop();}catch(e){} stopAudio(); return; }
+    setListening(true); startAudio();
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(SR){
+      try{
+        const rec=new SR(); rec.lang='en-AU'; rec.interimResults=true; rec.continuous=false;
+        rec.onresult=ev=>{ let txt=''; for(let i=0;i<ev.results.length;i++) txt+=ev.results[i][0].transcript; setText(txt);
+          if(ev.results[ev.results.length-1].isFinal){ setListening(false); stopAudio(); if(txt.trim()&&onDispatch) onDispatch(txt.trim()); } };
+        rec.onerror=()=>{ setListening(false); stopAudio(); };
+        rec.onend=()=>{ setListening(false); stopAudio(); };
+        recRef.current=rec; rec.start();
+      }catch(e){ /* keep waveform even if recognition unavailable */ }
+    }
+  }
+  useEffect(()=>()=>stopAudio(),[]);
+
+  return (
+    <div className="apx-console">
+      <div className="apx-chips">
+        {chips.map((c,i)=><button key={i} className="apx-chip" onClick={()=>setText(c)}>{c.length>40?c.slice(0,40)+'…':c}</button>)}
+      </div>
+      <div className="apx-input-row">
+        <button className={"apx-mic"+(listening?' live':'')} title="Voice input" onClick={toggleMic} aria-label="Toggle voice input">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 11a7 7 0 0 1-14 0M12 18v4"/>
+          </svg>
+        </button>
+        <input value={text} onChange={e=>setText(e.target.value)}
+          onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); go(); } }}
+          placeholder="Brief Apex, or press the microphone" aria-label="Brief for Apex"/>
+        <button className="apx-send" onClick={go} disabled={!text.trim()}>Dispatch</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---- Right rail: activity feed + scheduled loops (live) ---- */
+function ApxActivity(){
+  const [events,setEvents]=useState(null);
+  const [loops,setLoops]=useState(null);
+  useEffect(()=>{
+    let live=true;
+    fetch(`${API}/trace/recent`).then(r=>r.json()).then(j=>{
+      const items=Array.isArray(j)?j:(j.items||[]);
+      if(live) setEvents(items.slice(0,8));
+    }).catch(()=>{ if(live) setEvents([]); });
+    fetch(`${API}/schedule/list`).then(r=>r.json()).then(j=>{
+      const items=Array.isArray(j)?j:(j.items||[]);
+      if(live) setLoops(items.slice(0,6));
+    }).catch(()=>{ if(live) setLoops([]); });
+    return ()=>{live=false;};
+  },[]);
+  return (
+    <aside className="apx-rail-r">
+      <div className="apx-r-block">
+        <h2 className="apx-h">Activity</h2>
+        <div className="apx-feed">
+          {events===null && <p className="apx-empty">Loading recent routing activity…</p>}
+          {events!==null && events.length===0 && <p className="apx-empty">Nothing recent. Brief Apex on the left and dispatches appear here.</p>}
+          {events && events.map((e,i)=>(
+            <div key={i} className="apx-ev disp">
+              <div className="t">{typeof e.ms!=='undefined'?fmtMs(+e.ms):''}</div>
+              <div>
+                <div className="who">{e.dept||e.model||'route'}</div>
+                <div className="msg">{e.q||e.query||'—'}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="apx-r-block tight">
+        <h2 className="apx-h">Scheduled loops</h2>
+        <div>
+          {loops===null && <p className="apx-empty">Loading…</p>}
+          {loops!==null && loops.length===0 && <p className="apx-empty">No scheduled runs found.</p>}
+          {loops && loops.map((l,i)=>(
+            <div key={i} className="apx-loop">
+              <span className={"apx-dot "+(l.st||'st-mute')}></span>
+              <span className="nm">{l.name||'Run'}</span>
+              <span className="in">{l.next||l.when||''}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+/* ---- Command bar meters (live, best-effort) ---- */
+function ApxBar({ view, setView, VIEW_LABELS, sessionCost }){
+  const [queue,setQueue]=useState(null);
+  const [spend,setSpend]=useState(null);
+  const [clock,setClock]=useState('--:--');
+  useEffect(()=>{
+    const tick=()=>{ const d=new Date(); setClock(String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')); };
+    tick(); const iv=setInterval(tick,20000);
+    let live=true;
+    (async()=>{
+      let q=0;
+      try{ const r=await fetch(`${API}/governance/pending`); const j=await r.json(); const it=Array.isArray(j)?j:(j.items||[]); q+=it.length; }catch(e){}
+      try{ const r=await fetch(`${API}/harness/proposals?status=pending`); const j=await r.json(); const it=Array.isArray(j)?j:(j.items||[]); q+=it.length; }catch(e){}
+      if(live) setQueue(q);
+    })();
+    (async()=>{ try{ const r=await fetch(`${API}/cost`); const j=await r.json(); const v=+(j.today ?? j.total ?? j.usd ?? NaN); if(!isNaN(v)&&live) setSpend(v); }catch(e){} })();
+    return ()=>{ live=false; clearInterval(iv); };
+  },[]);
+  return (
+    <div className="apx-bar">
+      <div className="apx-brand" onClick={()=>setView('overview')} style={{cursor:'pointer'}}>
+        <span className="w">WijerCo HQ</span><span className="slash">/</span><span className="a">Apex</span>
+      </div>
+      <span className="apx-crumb">{view!=='overview'?('/ '+(VIEW_LABELS[view]||view)):''}</span>
+      <div className="apx-meters">
+        <div className="apx-meter"><span className="mk">Queue depth</span><span className={"mv"+(queue>0?' warn':'')}>{queue===null?'—':queue}</span></div>
+        <div className="apx-meter"><span className="mk">Spend today</span><span className="mv">{spend===null?(typeof sessionCost==='number'?fmtCost(sessionCost):'—'):fmtCost(spend)}</span></div>
+        <div className="apx-meter"><span className="mk">Local time</span><span className="mv">{clock}</span></div>
+      </div>
+    </div>
+  );
+}
+
+/* ---- Overview: the Apex landing (orbital + KPIs + console + activity) ---- */
+function OverviewApex({ setView, onDispatch }){
+  const [statuses,setStatuses]=useState({});
+  const [hoverName,setHoverName]=useState(null);
+  useEffect(()=>{
+    let live=true;
+    (async()=>{
+      const st={};
+      try{ const r=await fetch(`${API}/governance/pending`); const j=await r.json(); const it=Array.isArray(j)?j:(j.items||[]); if(it.length) st.governance='queued'; }catch(e){}
+      try{ const r=await fetch(`${API}/schedule/list`); const j=await r.json(); const it=Array.isArray(j)?j:(j.items||[]);
+        if(it.some(x=>(x.st||'')==='st-fail')) st.schedule='blocked'; else if(it.length) st.schedule='running'; }catch(e){}
+      try{ const r=await fetch(`${API}/harness/proposals?status=pending`); const j=await r.json(); const it=Array.isArray(j)?j:(j.items||[]); if(it.length) st.harness='queued'; }catch(e){}
+      try{ const r=await fetch(`${API}/intel/feed`); const j=await r.json(); const it=Array.isArray(j)?j:(j.items||[]); if(it.length) st.intel='running'; }catch(e){}
+      if(live) setStatuses(st);
+    })();
+    return ()=>{live=false;};
+  },[]);
+  return (
+    <div className="apx-stage">
+      <div className="apx-field">
+        <ApxOrbital setView={setView} statuses={statuses} hoverName={hoverName} setHoverName={setHoverName}/>
+        <ApxKpis/>
+        <ApxConsole onDispatch={onDispatch}/>
+      </div>
+      <ApxActivity/>
+    </div>
+  );
+}
+
 function App() {
   const [sessionId,setSessionId]   = useState(()=>crypto.randomUUID());
   const [messages,setMessages]     = useState([]);
@@ -3706,7 +4258,7 @@ function App() {
   const [pinnedModel,setPinnedModel] = useState('');
   const [models,setModels]         = useState({});
   const [sidebarTick,setSidebarTick] = useState(0);
-  const [view,setView]             = useState('chat');   // 'chat' | 'admin'
+  const [view,setView]             = useState('overview');   // 'chat' | 'admin'
   const [attached,setAttached]     = useState([]);        // chat-mode filenames
   const [uploadMode,setUploadMode] = useState('chat');    // 'chat' | 'kb'
   const [uploading,setUploading]   = useState(false);
@@ -3859,9 +4411,10 @@ function App() {
 
   const avail = Object.entries(models).filter(([,v])=>v.available);
 
-  const VIEW_LABELS = {chat:'Chat',admin:'Usage',quality:'Quality',productivity:'Productivity',harness:'Self-Improve',n8n:'Automations',operating:'Operating',governance:'Governance',library:'Deliverables',content:'Content pipeline',production:'Production',media:'Media library',engagements:'Engagements',kb:'Knowledge base',memory:'Memory',intel:'Sector intel',trace:'Routing',schedule:'Scheduled runs'};
+  const VIEW_LABELS = {overview:'Overview',chat:'Chat',admin:'Usage',quality:'Quality',productivity:'Productivity',harness:'Self-Improve',n8n:'Automations',operating:'Operating',library:'Deliverables',content:'Content pipeline',production:'Production',media:'Media library',engagements:'Engagements',kb:'Knowledge base',intel:'Sector intel',trace:'Routing',schedule:'Scheduled runs'};
   const NAV = [
     {label:'Workspace', items:[
+      ['overview','Overview',<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/></svg>],
       ['chat','Chat',<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-4 4V5z" strokeLinejoin="round"/></svg>],
       ['productivity','Productivity',<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4" strokeLinecap="round" strokeLinejoin="round"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" strokeLinecap="round" strokeLinejoin="round"/></svg>],
       ['admin','Usage',<svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 16v-4M12 16V8M16 16v-2" strokeLinecap="round"/></svg>],
@@ -3876,13 +4429,11 @@ function App() {
     ]},
     {label:'Knowledge', items:[
       ['kb','Knowledge base',<svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6"/></svg>],
-      ['memory','Memory',<svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-4-6 4z" strokeLinejoin="round"/></svg>],
       ['intel','Sector intel',<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.6 2.6 2.6 12.8 0 16M12 4c-2.6 2.6-2.6 12.8 0 16"/></svg>],
     ]},
     {label:'Operations', items:[
       ['n8n','Automations',<svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.3"/><circle cx="18" cy="6" r="2.3"/><circle cx="18" cy="18" r="2.3"/><path d="M8.2 11l7.6-4M8.2 13l7.6 4"/></svg>],
       ['operating','Operating',<svg viewBox="0 0 24 24"><path d="M4 6h9M4 12h16M4 18h11" strokeLinecap="round"/><path d="M16 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round"/></svg>],
-      ['governance','Governance',<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-2.8 8.1-7 10-4.2-1.9-7-5.5-7-10V6z" strokeLinejoin="round"/><path d="M9 12l2 2 4-5" strokeLinecap="round" strokeLinejoin="round"/></svg>],
       ['schedule','Scheduled',<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2" strokeLinecap="round"/></svg>],
       ['trace','Routing',<svg viewBox="0 0 24 24"><path d="M6 4v6a4 4 0 004 4h8" strokeLinecap="round"/><path d="M15 11l3 3-3 3" strokeLinecap="round" strokeLinejoin="round"/></svg>],
       ['harness','Self-Improve',<svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" strokeLinecap="round"/></svg>],
@@ -3890,7 +4441,9 @@ function App() {
   ];
 
   return (
-    <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden'}}>
+      <ApxBar view={view} setView={setView} VIEW_LABELS={VIEW_LABELS} sessionCost={sessionCost}/>
+      <div style={{display:'flex',flex:'1 1 auto',minHeight:0,overflow:'hidden'}}>
       {/* ── Left rail ── */}
       <div className="rail">
         <div className="rail-brand">
@@ -3962,20 +4515,19 @@ function App() {
           <button onClick={newSession} style={{background:'none',border:'1px solid var(--border)',color:'var(--muted)',borderRadius:8,padding:'4px 12px',cursor:'pointer',fontSize:12}}>+ New chat</button>
         </div>}
 
+        {view==='overview' && <OverviewApex setView={setView} onDispatch={t=>{setInput(t);setView('chat');}}/>}
         {view==='admin' && <AdminView/>}
         {view==='quality' && <QualityCockpit/>}
         {view==='productivity' && <ProductivityView/>}
         {view==='harness' && <HarnessView/>}
         {view==='n8n' && <N8nView/>}
         {view==='operating' && <OperatingView/>}
-        {view==='governance' && <GovernanceView/>}
         {view==='library' && <DeliverablesLibrary/>}
         {view==='content' && <ContentPipeline/>}
         {view==='production' && <ProductionPipeline/>}
         {view==='media' && <MediaLibraryView/>}
         {view==='engagements' && <EngagementsView/>}
         {view==='kb' && <KnowledgeBaseView/>}
-        {view==='memory' && <MemoryView/>}
         {view==='intel' && <SectorIntelView/>}
         {view==='trace' && <RoutingInspector/>}
         {view==='schedule' && <ScheduledRunsView/>}
@@ -4090,12 +4642,13 @@ function App() {
         </>}
       </div>
 
+      </div>
       {showCost&&<CostModal onClose={()=>setShowCost(false)}/>}
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+ReactDOM.createRoot(document.getElementById('root')).render(<ApxErrorBoundary><App/></ApxErrorBoundary>);
 </script>
 
 <!-- ── Operating daemon panel (additive; injected UI, no changes to existing views) ── -->
