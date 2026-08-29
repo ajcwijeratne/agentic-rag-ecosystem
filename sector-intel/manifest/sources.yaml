@@ -2,9 +2,11 @@ sources:
 - key: doe_student_allstudents_2022
   publisher: DoE
   release_year: 2022
-  url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-all-students-2022.xlsx
+  url: https://www.education.gov.au/download/17789/2022-section-2-all-students/35977/document/xlsx
+  source_page: https://www.education.gov.au/higher-education-statistics/student-data
   raw_path: data/raw/doe/doe_student_allstudents_2022.xlsx
-  retrieved_date: '2026-07-15'
+  retrieved_date: '2026-08-30'
+  verified: true
   parser: doe_students
   metric_ids:
   - A01
@@ -16,9 +18,11 @@ sources:
 - key: doe_student_allstudents_2023
   publisher: DoE
   release_year: 2023
-  url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-all-students-2023.xlsx
+  url: https://www.education.gov.au/download/18592/2023-section-2-all-students/39157/document/xlsx
+  source_page: https://www.education.gov.au/higher-education-statistics/resources/2023-section-2-all-students
   raw_path: data/raw/doe/doe_student_allstudents_2023.xlsx
-  retrieved_date: '2026-07-15'
+  retrieved_date: '2026-08-30'
+  verified: true
   parser: doe_students
   metric_ids:
   - A01
@@ -30,9 +34,11 @@ sources:
 - key: doe_student_allstudents_2024
   publisher: DoE
   release_year: 2024
-  url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-all-students-2024.xlsx
+  url: https://www.education.gov.au/download/19481/2024-section-2-all-students/41929/document/xlsx
+  source_page: https://www.education.gov.au/higher-education-statistics/student-data/selected-higher-education-statistics-2024-student-data
   raw_path: data/raw/doe/doe_student_allstudents_2024.xlsx
-  retrieved_date: '2026-07-15'
+  retrieved_date: '2026-08-30'
+  verified: true
   parser: doe_students
   metric_ids:
   - A01
@@ -44,9 +50,26 @@ sources:
 - key: doe_staff_finance_2022
   publisher: DoE
   release_year: 2022
-  url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-staff-finance-2022.xlsx
-  raw_path: data/raw/doe/doe_staff_finance_2022.xlsx
-  retrieved_date: '2026-07-15'
+  url: https://www.education.gov.au/download/17857/finance-2022-financial-reports-higher-education-providers/37442/2022-higher-education-providers-finance-tables/xlsx
+  source_page: https://www.education.gov.au/higher-education-statistics/staff-data
+  raw_path: data/raw/doe/doe_finance_2022.xlsx
+  retrieved_date: '2026-08-30'
+  verified: true
+  staff_fte_raw_path: data/raw/doe/doe_staff_fte_2022.xlsx
+  staff_fte_url: https://www.education.gov.au/download/17047/2022-staff-appendix-1-actual-staff-fte/34801/document/xlsx
+  note: '''doe_staff_finance'' is a fixture-era invention -- DoE does not publish
+    a single table with staff FTE and finance together. url/raw_path point to the
+    real Finance Tables workbook (sheets: Financial Performance, Financial Perf -
+    Dual Sector, Financial Position, Comprehensive Income & Equity, Cash Flows --
+    D01 total revenue lives on Financial Performance, by institution). staff_fte_url/staff_fte_raw_path
+    point to the separate real Staff Appendix 1 workbook (sheets: Contents, A1.1-A1.18
+    numbered tables, Explanatory notes -- C01 total staff FTE needs the right A1.x
+    table identified, not yet done). acquire.py only reads url, so staff_fte_url is
+    not wired up. This source needs splitting into two real sources (doe_finance_<year>,
+    doe_staff_<year>) with their own parser configs once someone maps the exact sheet/row
+    for each metric, then benchmark.py/normalise.py need to merge C01 from one with
+    D01/D03 from the other onto the same institution row. Both real files downloaded
+    and opened 29-30 Aug 2026 to confirm this -- sheet names above are real, not guessed.'
   parser: doe_staff_finance
   metric_ids:
   - C01
@@ -55,9 +78,26 @@ sources:
 - key: doe_staff_finance_2023
   publisher: DoE
   release_year: 2023
-  url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-staff-finance-2023.xlsx
-  raw_path: data/raw/doe/doe_staff_finance_2023.xlsx
-  retrieved_date: '2026-07-15'
+  url: https://www.education.gov.au/download/18872/finance-2023-financial-reports-higher-education-providers/40111/2023-higher-education-providers-finance-tables/xlsx
+  source_page: https://www.education.gov.au/higher-education-statistics/staff-data/selected-higher-education-statistics-2023-staff-data
+  raw_path: data/raw/doe/doe_finance_2023.xlsx
+  retrieved_date: '2026-08-30'
+  verified: true
+  staff_fte_raw_path: data/raw/doe/doe_staff_fte_2023.xlsx
+  staff_fte_url: https://www.education.gov.au/download/18075/2023-staff-appendix-1-actual-staff-fte/36995/document/xlsx
+  note: '''doe_staff_finance'' is a fixture-era invention -- DoE does not publish
+    a single table with staff FTE and finance together. url/raw_path point to the
+    real Finance Tables workbook (sheets: Financial Performance, Financial Perf -
+    Dual Sector, Financial Position, Comprehensive Income & Equity, Cash Flows --
+    D01 total revenue lives on Financial Performance, by institution). staff_fte_url/staff_fte_raw_path
+    point to the separate real Staff Appendix 1 workbook (sheets: Contents, A1.1-A1.18
+    numbered tables, Explanatory notes -- C01 total staff FTE needs the right A1.x
+    table identified, not yet done). acquire.py only reads url, so staff_fte_url is
+    not wired up. This source needs splitting into two real sources (doe_finance_<year>,
+    doe_staff_<year>) with their own parser configs once someone maps the exact sheet/row
+    for each metric, then benchmark.py/normalise.py need to merge C01 from one with
+    D01/D03 from the other onto the same institution row. Both real files downloaded
+    and opened 29-30 Aug 2026 to confirm this -- sheet names above are real, not guessed.'
   parser: doe_staff_finance
   metric_ids:
   - C01
@@ -66,9 +106,26 @@ sources:
 - key: doe_staff_finance_2024
   publisher: DoE
   release_year: 2024
-  url: https://www.education.gov.au/higher-education-statistics/resources/PLACEHOLDER-staff-finance-2024.xlsx
-  raw_path: data/raw/doe/doe_staff_finance_2024.xlsx
-  retrieved_date: '2026-07-15'
+  url: https://www.education.gov.au/download/19832/finance-2024-financial-reports-higher-education-providers/43011/2024-higher-education-providers-finance-tables/xlsx
+  source_page: https://www.education.gov.au/higher-education-statistics/staff-data
+  raw_path: data/raw/doe/doe_finance_2024.xlsx
+  retrieved_date: '2026-08-30'
+  verified: true
+  staff_fte_raw_path: data/raw/doe/doe_staff_fte_2024.xlsx
+  staff_fte_url: https://www.education.gov.au/download/18777/2024-staff-appendix-1-actual-staff-fte/39838/document/xlsx
+  note: '''doe_staff_finance'' is a fixture-era invention -- DoE does not publish
+    a single table with staff FTE and finance together. url/raw_path point to the
+    real Finance Tables workbook (sheets: Financial Performance, Financial Perf -
+    Dual Sector, Financial Position, Comprehensive Income & Equity, Cash Flows --
+    D01 total revenue lives on Financial Performance, by institution). staff_fte_url/staff_fte_raw_path
+    point to the separate real Staff Appendix 1 workbook (sheets: Contents, A1.1-A1.18
+    numbered tables, Explanatory notes -- C01 total staff FTE needs the right A1.x
+    table identified, not yet done). acquire.py only reads url, so staff_fte_url is
+    not wired up. This source needs splitting into two real sources (doe_finance_<year>,
+    doe_staff_<year>) with their own parser configs once someone maps the exact sheet/row
+    for each metric, then benchmark.py/normalise.py need to merge C01 from one with
+    D01/D03 from the other onto the same institution row. Both real files downloaded
+    and opened 29-30 Aug 2026 to confirm this -- sheet names above are real, not guessed.'
   parser: doe_staff_finance
   metric_ids:
   - C01
@@ -77,9 +134,16 @@ sources:
 - key: qilt_ses_2022
   publisher: QILT
   release_year: 2022
-  url: https://www.qilt.edu.au/PLACEHOLDER/ses-national-tables-2022.xlsx
-  raw_path: data/raw/qilt/qilt_ses_2022.xlsx
-  retrieved_date: '2026-07-15'
+  url: https://www.qilt.edu.au/docs/default-source/default-document-library/ses_2022_report_tables.zip?sfvrsn=5b058ac1_1
+  source_page: https://www.qilt.edu.au/resources?survey=SES&type=Reports
+  raw_path: data/raw/qilt/ses_2022_extracted/SES_2022_National_Tables_Public.xlsx
+  retrieved_date: '2026-08-30'
+  verified: true
+  note: 'Real file downloaded and unzipped 29-30 Aug 2026 (154 sheets). Same fixture-era
+    mismatch as the 2024 entry: sheet STMT_SES_ALL_1Y does not exist. Real institution-level
+    sheets are the FOCUS_*_INST_* family (e.g. FOCUS_UG_UNI_1Y_INST_CI); B06 graduate
+    employment still does not belong here -- that is a Graduate Outcomes Survey (GOS)
+    metric, not SES. Needs the same parser remap as qilt_ses_2024.'
   parser: qilt_ses
   metric_ids:
   - B01
@@ -89,9 +153,16 @@ sources:
 - key: qilt_ses_2023
   publisher: QILT
   release_year: 2023
-  url: https://www.qilt.edu.au/PLACEHOLDER/ses-national-tables-2023.xlsx
-  raw_path: data/raw/qilt/qilt_ses_2023.xlsx
-  retrieved_date: '2026-07-15'
+  url: https://www.qilt.edu.au/docs/default-source/default-document-library/2023-ses-national-tables.zip?sfvrsn=edae06fd_2
+  source_page: https://www.qilt.edu.au/resources?survey=SES&type=Reports
+  raw_path: data/raw/qilt/ses_2023_extracted/SES_2023_National_Tables_Public.xlsx
+  retrieved_date: '2026-08-30'
+  verified: true
+  note: 'Real file downloaded and unzipped 29-30 Aug 2026 (154 sheets). Same fixture-era
+    mismatch as the 2024 entry: sheet STMT_SES_ALL_1Y does not exist. Real institution-level
+    sheets are the FOCUS_*_INST_* family (e.g. FOCUS_UG_UNI_1Y_INST_CI); B06 graduate
+    employment still does not belong here -- that is a Graduate Outcomes Survey (GOS)
+    metric, not SES. Needs the same parser remap as qilt_ses_2024.'
   parser: qilt_ses
   metric_ids:
   - B01
@@ -101,9 +172,19 @@ sources:
 - key: qilt_ses_2024
   publisher: QILT
   release_year: 2024
-  url: https://www.qilt.edu.au/PLACEHOLDER/ses-national-tables-2024.xlsx
-  raw_path: data/raw/qilt/qilt_ses_2024.xlsx
-  retrieved_date: '2026-07-15'
+  url: https://www.qilt.edu.au/docs/default-source/default-document-library/ses_2024_national_report_tables.zip?sfvrsn=f1ce2f6e_1
+  source_page: https://www.qilt.edu.au/surveys/student-experience-survey-(ses)
+  raw_path: data/raw/qilt/ses_2024_extracted/SES_2024_National_Report_Tables.xlsx
+  retrieved_date: '2026-08-16'
+  verified: true
+  note: 'Real file downloaded and unzipped 16 Aug 2026 (165 sheets). parser.py sheet/column
+    config for qilt_ses is still fixture-era guesswork (sheet STMT_SES_ALL_1Y does
+    not exist in the real file) and metric B06 graduate employment does not belong
+    here at all -- that is a Graduate Outcomes Survey (GOS) metric, not SES. Needs
+    a proper remap: institution-level figures live in the QOE_*_INST_FIG family for
+    overall experience; teaching quality, student support, and peer engagement are
+    not published as single-year by-institution sheets in this file, only as multi-year
+    trend tables by student group/stage.'
   parser: qilt_ses
   metric_ids:
   - B01

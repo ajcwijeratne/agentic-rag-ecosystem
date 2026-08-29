@@ -31,7 +31,13 @@ import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from dotenv import load_dotenv
+
 from .embedder import embed_batch
+
+# Load .env so CLI and service runs honour OBSIDIAN_VAULT_PATH and friends
+# (matches the convention in main.py, daemon.py, llm_registry.py).
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -139,33 +145,80 @@ def chunk_with_sections(
 ) -> list[tuple[str, str]]:
     """Chunk Markdown into (chunk_text, section_heading) pairs.
 
-    Splits on Markdown headings so each chunk carries the nearest preceding
-    heading as its section. Text before the first heading gets an empty section.
+    Heading-aware and paragraph-aware:
+      * Splits on Markdown headings; each chunk carries its immediate heading
+        as the section, and a heading breadcrumb (title > section > subsection)
+        is prefixed onto the chunk text so section context is embedded with it.
+      * Splits a section body on blank lines and packs paragraphs only up to a
+        small minimum, so dense fact blocks (key/value lists, short deliverable
+        lists) become their own retrievable chunks instead of being diluted
+        inside one large section chunk.
     """
-    blocks: list[tuple[str, list[str]]] = []
-    current_heading = ""
+    # 1. Split into heading blocks, tracking the heading breadcrumb.
+    stack: list[tuple[int, str]] = []
+    blocks: list[tuple[str, str, list[str]]] = []   # (breadcrumb, heading, body)
     current_lines: list[str] = []
+
+    def _flush_block() -> None:
+        if any(l.strip() for l in current_lines):
+            crumb = " > ".join(h for _, h in stack)
+            imm = stack[-1][1] if stack else ""
+            blocks.append((crumb, imm, list(current_lines)))
+
     for line in text.splitlines():
         m = _HEADING_RE.match(line)
         if m:
-            if current_lines:
-                blocks.append((current_heading, current_lines))
-            current_heading = m.group(2).strip()
+            _flush_block()
             current_lines = []
+            level = len(m.group(1))
+            heading = m.group(2).strip()
+            while stack and stack[-1][0] >= level:
+                stack.pop()
+            stack.append((level, heading))
         else:
             current_lines.append(line)
-    if current_lines:
-        blocks.append((current_heading, current_lines))
+    _flush_block()
 
+    # 2. Within each block, group paragraphs (blank-line separated) into chunks.
+    min_chunk_words = 25
     pairs: list[tuple[str, str]] = []
-    for heading, lines in blocks:
-        words = " ".join(lines).split()
+
+    def _emit(crumb: str, heading: str, body: str) -> None:
+        words = body.split()
+        if not words:
+            return
         i = 0
         while i < len(words):
-            chunk = " ".join(words[i : i + chunk_size])
-            if chunk.strip():
-                pairs.append((chunk, heading))
+            piece = " ".join(words[i : i + chunk_size])
+            pairs.append((f"{crumb}\n\n{piece}" if crumb else piece, heading))
+            if len(words) <= chunk_size:
+                break
             i += chunk_size - overlap
+
+    for crumb, heading, lines in blocks:
+        paragraphs: list[str] = []
+        buf: list[str] = []
+        for l in lines:
+            if l.strip() == "":
+                if buf:
+                    paragraphs.append("\n".join(buf))
+                    buf = []
+            else:
+                buf.append(l)
+        if buf:
+            paragraphs.append("\n".join(buf))
+
+        acc: list[str] = []
+        acc_words = 0
+        for p in paragraphs:
+            acc.append(p)
+            acc_words += len(p.split())
+            if acc_words >= min_chunk_words:
+                _emit(crumb, heading, "\n\n".join(acc))
+                acc, acc_words = [], 0
+        if acc:
+            _emit(crumb, heading, "\n\n".join(acc))
+
     return pairs
 
 
@@ -182,7 +235,7 @@ def load_vault(vault: Path) -> list[tuple[str, str, str]]:
     for md_file in vault.rglob("*.md"):
         try:
             text = md_file.read_text(encoding="utf-8", errors="replace")
-            rel = str(md_file.relative_to(vault))
+            rel = md_file.relative_to(vault).as_posix()
             results.append((rel, text, _mtime_iso(md_file)))
         except Exception as exc:
             print(f"[indexer] Could not read {md_file}: {exc}")
@@ -258,16 +311,25 @@ async def index_vault(vault: Path = VAULT_PATH) -> dict[str, Any]:
 # WijerCo knowledge base indexing
 # ---------------------------------------------------------------------------
 
-# Folders inside the WijerCo directory that are worth indexing
-_WIJERCO_INDEX_DIRS = [
+# Client knowledge base — the material RAG answers should draw on.
+_WIJERCO_KB_DIRS = [
     "KNOWLEDGE BASE",
-    "AGENTS/departments",
-    "AGENTS/subagents",
     "ABOUT ME",
 ]
+# Agent role definitions — operational config. Kept out of the client KB so they
+# don't pollute retrieval for client-facing questions; indexed separately.
+_WIJERCO_AGENT_DIRS = [
+    "AGENTS/departments",
+    "AGENTS/subagents",
+]
+WIJERCO_AGENTS_COLLECTION: str = os.getenv("WIJERCO_AGENTS_COLLECTION", "wijerco_agents")
 
 
-async def index_wijerco(wijerco_path: Path = WIJERCO_PATH) -> dict[str, Any]:
+async def index_wijerco(
+    wijerco_path: Path = WIJERCO_PATH,
+    dirs: list[str] | None = None,
+    collection: str | None = None,
+) -> dict[str, Any]:
     """
     Index the WijerCo knowledge base into a dedicated Qdrant collection
     ('wijerco_knowledge') so RAG queries can retrieve WijerCo-specific context.
@@ -279,23 +341,25 @@ async def index_wijerco(wijerco_path: Path = WIJERCO_PATH) -> dict[str, Any]:
       ABOUT ME/*.md            — Aaron's voice, company context
     """
     t0 = time.monotonic()
-    # Ensure the WijerCo collection exists
+    dirs = dirs if dirs is not None else _WIJERCO_KB_DIRS
+    collection = collection or WIJERCO_COLLECTION
+    # Ensure the collection exists
     async with httpx.AsyncClient() as client:
         resp = await client.get(
-            f"{QDRANT_URL}/collections/{WIJERCO_COLLECTION}", timeout=10.0
+            f"{QDRANT_URL}/collections/{collection}", timeout=10.0
         )
         if resp.status_code != 200:
             resp = await client.put(
-                f"{QDRANT_URL}/collections/{WIJERCO_COLLECTION}",
+                f"{QDRANT_URL}/collections/{collection}",
                 json={"vectors": {"size": VECTOR_DIM, "distance": "Cosine"}},
                 timeout=15.0,
             )
             resp.raise_for_status()
-            print(f"[indexer] Created collection '{WIJERCO_COLLECTION}'.")
+            print(f"[indexer] Created collection '{collection}'.")
 
     # Collect all markdown files from target dirs
     all_files: list[tuple[str, str, str]] = []
-    for subdir in _WIJERCO_INDEX_DIRS:
+    for subdir in dirs:
         target = wijerco_path / subdir
         if not target.exists():
             print(f"[indexer] Skipping missing dir: {target}")
@@ -303,7 +367,7 @@ async def index_wijerco(wijerco_path: Path = WIJERCO_PATH) -> dict[str, Any]:
         for md_file in target.rglob("*.md"):
             try:
                 text = md_file.read_text(encoding="utf-8", errors="replace")
-                rel  = str(md_file.relative_to(wijerco_path))
+                rel  = md_file.relative_to(wijerco_path).as_posix()
                 all_files.append((rel, text, _mtime_iso(md_file)))
             except Exception as exc:
                 print(f"[indexer] Could not read {md_file}: {exc}")
@@ -327,7 +391,7 @@ async def index_wijerco(wijerco_path: Path = WIJERCO_PATH) -> dict[str, Any]:
                 "section":     section,
                 "modified_at": modified_at,
                 "chunk_id":    chunk_id,
-                "collection":  WIJERCO_COLLECTION,
+                "collection":  collection,
                 "source":      "wijerco",
             })
 
@@ -347,7 +411,7 @@ async def index_wijerco(wijerco_path: Path = WIJERCO_PATH) -> dict[str, Any]:
     for i in range(0, len(points), batch_size):
         async with httpx.AsyncClient() as client:
             resp = await client.put(
-                f"{QDRANT_URL}/collections/{WIJERCO_COLLECTION}/points",
+                f"{QDRANT_URL}/collections/{collection}/points",
                 json={"points": points[i : i + batch_size]},
                 timeout=60.0,
             )
@@ -357,17 +421,17 @@ async def index_wijerco(wijerco_path: Path = WIJERCO_PATH) -> dict[str, Any]:
     # Also update BM25 corpus for hybrid search on the WijerCo collection
     try:
         from .retriever import update_bm25_corpus
-        update_bm25_corpus(all_chunks, all_metadata, collection=WIJERCO_COLLECTION)
+        update_bm25_corpus(all_chunks, all_metadata, collection=collection)
     except Exception as exc:
         print(f"[indexer] BM25 update warning: {exc}")
 
-    _record_run(WIJERCO_COLLECTION, len(all_files), len(points), time.monotonic() - t0)
+    _record_run(collection, len(all_files), len(points), time.monotonic() - t0)
 
     return {
         "status":         "ok",
         "files_indexed":  len(all_files),
         "chunks_total":   len(points),
-        "collection":     WIJERCO_COLLECTION,
+        "collection":     collection,
         "wijerco_path":   str(wijerco_path),
     }
 
@@ -436,6 +500,11 @@ if __name__ == "__main__":
     if args.serve:
         uvicorn.run("rag.indexer:app", host=bind_host(), port=PORT, reload=False)
     elif args.wijerco:
-        asyncio.run(index_wijerco())
+        async def _index_wijerco_all():
+            kb = await index_wijerco(dirs=_WIJERCO_KB_DIRS, collection=WIJERCO_COLLECTION)
+            print(f"[indexer] KB -> {kb}")
+            agents = await index_wijerco(dirs=_WIJERCO_AGENT_DIRS, collection=WIJERCO_AGENTS_COLLECTION)
+            print(f"[indexer] Agents -> {agents}")
+        asyncio.run(_index_wijerco_all())
     else:
         asyncio.run(index_vault(Path(args.vault)))

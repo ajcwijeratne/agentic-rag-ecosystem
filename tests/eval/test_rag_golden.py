@@ -44,7 +44,10 @@ def test_golden_answer(item):
     from harness.eval_suite import deterministic_score
 
     loop = asyncio.get_event_loop()
-    chunks = loop.run_until_complete(search(item.question, top_k=6, collection="wijerco_knowledge"))
+    # Use the same retrieval depth as the production pipeline (RAG_RETRIEVE_TOP_K)
+    # so the eval reflects real behaviour rather than a shallower fixed slice.
+    _tk = int(os.getenv("RAG_RETRIEVE_TOP_K", "12"))
+    chunks = loop.run_until_complete(search(item.question, top_k=_tk, collection="wijerco_knowledge"))
     assembled = assemble(chunks, query=item.question)
     user = f"Context:\n{assembled['rendered']}\n\nQuery: {item.question}"
     resp = loop.run_until_complete(call_with_fallback(

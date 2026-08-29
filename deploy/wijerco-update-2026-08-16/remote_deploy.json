@@ -1,0 +1,65 @@
+{
+  "id": "remote-deploy-file-write-v1",
+  "name": "Remote Deploy — File Write Webhook",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "deploy-file",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "webhook-deploy",
+      "name": "Deploy Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "deploy-file-webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "deploy-webhook-header-auth",
+          "name": "Deploy Webhook Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst out = [];\nfor (const item of items) {\n  const j = item.json || {};\n  const body = j.body || {};\n  try {\n    const relPath = body.path;\n    const b64 = body.content_b64;\n    if (!relPath || typeof b64 !== 'string') { out.push({json:{ok:false,error:'missing path or content_b64'}}); continue; }\n    const root = path.resolve('/host-repo');\n    const target = path.resolve(root, relPath);\n    if (target !== root && !target.startsWith(root + path.sep)) { out.push({json:{ok:false,error:'path escapes repo root'}}); continue; }\n    fs.mkdirSync(path.dirname(target), {recursive:true});\n    const buf = Buffer.from(b64, 'base64');\n    fs.writeFileSync(target, buf);\n    out.push({json:{ok:true,path:relPath,bytes:buf.length}});\n  } catch (e) {\n    out.push({json:{ok:false,error:String(e && e.message || e)}});\n  }\n}\nreturn out;"
+      },
+      "id": "code-write-file",
+      "name": "Write File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [720, 300]
+    }
+  ],
+  "connections": {
+    "Deploy Webhook": {
+      "main": [
+        [{ "node": "Write File", "type": "main", "index": 0 }]
+      ]
+    },
+    "Write File": {
+      "main": [
+        [{ "node": "Respond", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
