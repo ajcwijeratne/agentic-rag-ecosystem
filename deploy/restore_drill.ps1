@@ -20,7 +20,7 @@ param(
     [string]$Archive = "",
     [string]$BackupRoot = "C:\Users\ajwij\OneDrive\Documents\Agents\agentic-rag-backups",
     [string]$QdrantUrl = "http://localhost:6333",
-    [string]$PythonExe = "C:\dev\agentic-rag\.venv\Scripts\python.exe"
+    [string]$PythonExe = "C:\dev\agentic-rag-ecosystem\.venv\Scripts\python.exe"
 )
 
 $ErrorActionPreference = "Stop"

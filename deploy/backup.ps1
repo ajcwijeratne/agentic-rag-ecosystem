@@ -21,7 +21,7 @@
   Base URL for the Qdrant HTTP API. Default matches .env's QDRANT_URL.
 #>
 param(
-    [string]$RepoRoot = "C:\dev\agentic-rag",
+    [string]$RepoRoot = "C:\dev\agentic-rag-ecosystem",
     [string]$BackupRoot = "C:\Users\ajwij\OneDrive\Documents\Agents\agentic-rag-backups",
     [int]$KeepDays = 14,
     [string]$QdrantUrl = "http://localhost:6333"
