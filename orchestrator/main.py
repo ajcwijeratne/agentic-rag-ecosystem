@@ -203,16 +203,24 @@ async def _startup_checks():
 
 @app.get("/health/qdrant")
 async def health_qdrant():
-    """Proxy Qdrant's health check so the browser UI can read it (Qdrant sends no CORS headers)."""
+    """Proxy Qdrant's health check so the browser UI can read it (Qdrant sends no
+    CORS headers). Retries once after a short pause before reporting unhealthy -
+    a single slow or dropped request under load shouldn't flip the cockpit red
+    and train you to ignore it (Stage 1 item 11)."""
     qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(f"{qdrant_url}/healthz", timeout=3.0)
-        if resp.status_code == 200:
-            return {"status": "ok", "service": "qdrant"}
-    except Exception:
-        pass
-    raise HTTPException(status_code=503, detail="qdrant unavailable")
+    last_error: Exception | str | None = None
+    for attempt in range(2):
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"{qdrant_url}/healthz", timeout=3.0)
+            if resp.status_code == 200:
+                return {"status": "ok", "service": "qdrant"}
+            last_error = f"qdrant returned HTTP {resp.status_code}"
+        except Exception as exc:
+            last_error = str(exc)
+        if attempt == 0:
+            await asyncio.sleep(0.5)
+    raise HTTPException(status_code=503, detail=f"qdrant unavailable: {last_error}")
 
 
 @app.get("/ops/me")

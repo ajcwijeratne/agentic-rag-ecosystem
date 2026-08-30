@@ -36,10 +36,17 @@ services:
     networks:
       - rag-net
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/6333' || exit 1"]
+      # A raw TCP-connect check (the old version of this line) reports the
+      # container healthy even if Qdrant's HTTP layer is wedged, and can also
+      # flip to unhealthy on a single slow connection under load with no
+      # retry - a false red that trains you to ignore the health dashboard.
+      # This does an actual HTTP GET against Qdrant's own /healthz and checks
+      # for a 200, using bash's /dev/tcp since the image ships no curl/wget.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333 && echo -en \"GET /healthz HTTP/1.0\\r\\n\\r\\n\" >&3 && head -1 <&3 | grep -q 200'"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 3
+      start_period: 15s
 
   # ---------------------------------------------------------------------------
   # OLLAMA — Local LLM Inference
@@ -68,10 +75,13 @@ services:
     #           count: 1
     #           capabilities: [gpu]
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/11434' || exit 1"]
+      # Same reasoning as Qdrant's healthcheck above: an actual HTTP GET
+      # against Ollama's root endpoint instead of a bare TCP-connect check.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/11434 && echo -en \"GET / HTTP/1.0\\r\\n\\r\\n\" >&3 && head -1 <&3 | grep -q 200'"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 3
+      start_period: 15s
 
   # ---------------------------------------------------------------------------
   # N8N — Workflow Automation Engine
