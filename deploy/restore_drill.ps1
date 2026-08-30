@@ -12,15 +12,23 @@
   Base URL for the Qdrant HTTP API, used to test-restore one snapshot into a
   throwaway collection and confirm the point count matches, then delete it.
 
+.PARAMETER RepoRoot
+  Path to the agentic-rag repo, used only to derive the default PythonExe
+  below. Auto-detects between wijwork's clone (C:\dev\agentic-rag) and
+  wijerco's clone (C:\dev\agentic-rag-ecosystem) so this script runs
+  unmodified on either machine; pass -RepoRoot or -PythonExe explicitly
+  to override.
+
 .PARAMETER PythonExe
   Python interpreter with sqlite3 (stdlib - any python3 works) for the DB
-  integrity checks.
+  integrity checks. Defaults to the venv under RepoRoot.
 #>
 param(
     [string]$Archive = "",
     [string]$BackupRoot = "C:\Users\ajwij\OneDrive\Documents\Agents\agentic-rag-backups",
     [string]$QdrantUrl = "http://localhost:6333",
-    [string]$PythonExe = "C:\dev\agentic-rag-ecosystem\.venv\Scripts\python.exe"
+    [string]$RepoRoot = $(if (Test-Path "C:\dev\agentic-rag-ecosystem\docker-compose.yml") { "C:\dev\agentic-rag-ecosystem" } else { "C:\dev\agentic-rag" }),
+    [string]$PythonExe = "$RepoRoot\.venv\Scripts\python.exe"
 )
 
 $ErrorActionPreference = "Stop"

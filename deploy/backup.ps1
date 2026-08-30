@@ -7,6 +7,9 @@
 
 .PARAMETER RepoRoot
   Path to the agentic-rag repo (contains data/, logs/, .env, docker-compose.yml).
+  Auto-detects between wijwork's clone (C:\dev\agentic-rag) and wijerco's
+  clone (C:\dev\agentic-rag-ecosystem) so this script runs unmodified on
+  either machine; pass -RepoRoot explicitly to override.
 
 .PARAMETER BackupRoot
   Where finished backup archives land. Defaults to a OneDrive folder so backups
@@ -21,7 +24,7 @@
   Base URL for the Qdrant HTTP API. Default matches .env's QDRANT_URL.
 #>
 param(
-    [string]$RepoRoot = "C:\dev\agentic-rag-ecosystem",
+    [string]$RepoRoot = $(if (Test-Path "C:\dev\agentic-rag-ecosystem\docker-compose.yml") { "C:\dev\agentic-rag-ecosystem" } else { "C:\dev\agentic-rag" }),
     [string]$BackupRoot = "C:\Users\ajwij\OneDrive\Documents\Agents\agentic-rag-backups",
     [int]$KeepDays = 14,
     [string]$QdrantUrl = "http://localhost:6333"
