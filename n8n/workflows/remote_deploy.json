@@ -1,6 +1,6 @@
 {
   "id": "remote-deploy-file-write-v1",
-  "name": "Remote Deploy — File Write Webhook",
+  "name": "Remote Deploy \u2014 File Write Webhook",
   "active": true,
   "nodes": [
     {
@@ -15,7 +15,10 @@
       "name": "Deploy Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 300],
+      "position": [
+        240,
+        300
+      ],
       "webhookId": "deploy-file-webhook",
       "credentials": {
         "httpHeaderAuth": {
@@ -26,13 +29,16 @@
     },
     {
       "parameters": {
-        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst out = [];\nfor (const item of items) {\n  const j = item.json || {};\n  const body = j.body || {};\n  try {\n    const relPath = body.path;\n    const b64 = body.content_b64;\n    if (!relPath || typeof b64 !== 'string') { out.push({json:{ok:false,error:'missing path or content_b64'}}); continue; }\n    const root = path.resolve('/host-repo');\n    const target = path.resolve(root, relPath);\n    if (target !== root && !target.startsWith(root + path.sep)) { out.push({json:{ok:false,error:'path escapes repo root'}}); continue; }\n    fs.mkdirSync(path.dirname(target), {recursive:true});\n    const buf = Buffer.from(b64, 'base64');\n    fs.writeFileSync(target, buf);\n    out.push({json:{ok:true,path:relPath,bytes:buf.length}});\n  } catch (e) {\n    out.push({json:{ok:false,error:String(e && e.message || e)}});\n  }\n}\nreturn out;"
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst out = [];\nconst ALLOWED_PREFIXES = ['ui/', 'n8n/workflows/'];\nconst ALLOWED_FILES = ['docker-compose.yml'];\nconst AUDIT_LOG = '/host-repo/deploy/webhook_audit.log';\n\nfunction audit(entry) {\n  try {\n    const line = JSON.stringify(Object.assign({ ts: new Date().toISOString() }, entry)) + '\\n';\n    fs.appendFileSync(AUDIT_LOG, line);\n  } catch (e) { /* audit logging must never block the response */ }\n}\n\nfunction isAllowed(relPath) {\n  const norm = String(relPath).replace(/\\\\/g, '/');\n  if (ALLOWED_FILES.includes(norm)) return true;\n  return ALLOWED_PREFIXES.some(p => norm.startsWith(p));\n}\n\nfor (const item of items) {\n  const j = item.json || {};\n  const body = j.body || {};\n  const relPath = body.path;\n  try {\n    const b64 = body.content_b64;\n    if (!relPath || typeof b64 !== 'string') {\n      audit({ path: relPath || null, ok: false, error: 'missing path or content_b64' });\n      out.push({json:{ok:false,error:'missing path or content_b64'}});\n      continue;\n    }\n    if (!isAllowed(relPath)) {\n      audit({ path: relPath, ok: false, error: 'path not in allowlist' });\n      out.push({json:{ok:false,error:'path not in allowlist'}});\n      continue;\n    }\n    const root = path.resolve('/host-repo');\n    const target = path.resolve(root, relPath);\n    if (target !== root && !target.startsWith(root + path.sep)) {\n      audit({ path: relPath, ok: false, error: 'path escapes repo root' });\n      out.push({json:{ok:false,error:'path escapes repo root'}});\n      continue;\n    }\n    let symlinkFound = false;\n    let cursor = target;\n    while (cursor !== root && cursor.length >= root.length) {\n      try {\n        const st = fs.lstatSync(cursor);\n        if (st.isSymbolicLink()) { symlinkFound = true; break; }\n      } catch (e) { /* does not exist yet, fine */ }\n      const parent = path.dirname(cursor);\n      if (parent === cursor) break;\n      cursor = parent;\n    }\n    if (symlinkFound) {\n      audit({ path: relPath, ok: false, error: 'symlink in target path, refused' });\n      out.push({json:{ok:false,error:'symlink in target path, refused'}});\n      continue;\n    }\n    fs.mkdirSync(path.dirname(target), {recursive:true});\n    const buf = Buffer.from(b64, 'base64');\n    fs.writeFileSync(target, buf);\n    audit({ path: relPath, ok: true, bytes: buf.length });\n    out.push({json:{ok:true,path:relPath,bytes:buf.length}});\n  } catch (e) {\n    audit({ path: relPath || null, ok: false, error: String(e && e.message || e) });\n    out.push({json:{ok:false,error:String(e && e.message || e)}});\n  }\n}\nreturn out;\n"
       },
       "id": "code-write-file",
       "name": "Write File",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 300]
+      "position": [
+        480,
+        300
+      ]
     },
     {
       "parameters": {
@@ -44,18 +50,33 @@
       "name": "Respond",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [720, 300]
+      "position": [
+        720,
+        300
+      ]
     }
   ],
   "connections": {
     "Deploy Webhook": {
       "main": [
-        [{ "node": "Write File", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Write File",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Write File": {
       "main": [
-        [{ "node": "Respond", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },

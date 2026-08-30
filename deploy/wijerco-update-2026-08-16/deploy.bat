@@ -111,7 +111,7 @@ curl -s -o nul -w "  /kb/overview               -> HTTP %%{http_code} (want 200)
 curl -s -o nul -w "  /app/command_centre.html   -> HTTP %%{http_code} (want 200)\n" http://localhost:8000/app/command_centre.html
 findstr /C:"cc-shell-v7" "%REPO%\ui\sw.js" >nul && echo   sw.js cache version         -> v7 confirmed on disk || echo   sw.js cache version         -> NOT v7, copy step may have failed
 findstr /C:"id:'governance'" "%REPO%\ui\command_centre.html" >nul && echo   governance nav entry        -> STILL PRESENT, this is the bug, tell Claude || echo   governance nav entry        -> gone, correct
-curl -s -o nul -w "  n8n deploy webhook          -> HTTP %%{http_code} (want 401, no secret sent - means it's active)\n" -X POST http://localhost:5678/webhook/deploy-file
+curl -s -o nul -w "  n8n deploy webhook          -> HTTP %%{http_code} (want 403, no secret sent - means it's active)\n" -X POST http://localhost:5678/webhook/deploy-file
 
 echo.
 echo ============================================

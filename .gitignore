@@ -48,3 +48,4 @@ sector-intel/logs/
 # secrets - never commit (n8n deploy webhook credential, stray debug log)
 deploy/*/remote_deploy_credentials.json
 webhook_test2.log
+deploy/webhook_audit.log
