@@ -131,3 +131,19 @@ if ($failCount -eq 0) {
 } else {
     Write-Host "$failCount CHECK(S) FAILED - see table above"
 }
+
+# Leave a durable record - "nothing in the record shows a tested restore" was
+# the whole reason this script exists (Stage 1 item 4), so the drill needs to
+# actually show up in the record, not just print to a console someone closes.
+$logDir = Join-Path $RepoRoot "logs"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$logEntry = [pscustomobject]@{
+    ts             = (Get-Date).ToString("o")
+    archive        = $Archive
+    elapsed_sec    = [math]::Round($elapsed.TotalSeconds, 1)
+    checks_total   = $results.Count
+    checks_failed  = $failCount
+    passed         = ($failCount -eq 0)
+    checks         = $results
+}
+Add-Content -Path (Join-Path $logDir "restore_drill.jsonl") -Value ($logEntry | ConvertTo-Json -Depth 6 -Compress)
