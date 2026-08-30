@@ -4,12 +4,14 @@ REM ============================================================
 REM  Command Centre update - 16 Aug 2026 (v2 - fixes an incomplete
 REM  Governance/Memory nav merge, and logs everything to a file so
 REM  we can see what happened even if this window closes)
-REM  Run this ON wijerco (double-click, or from an elevated
-REM  PowerShell/cmd session). Safe to re-run.
+REM  Run this on wijwork OR wijerco (double-click, or from an elevated
+REM  PowerShell/cmd session). Safe to re-run. REPO auto-detects each
+REM  machine's clone path below; pass a path as the first argument to
+REM  override.
 REM
 REM  What it does:
 REM   1. Copies the updated command_centre.html + sw.js into
-REM      C:\dev\agentic-rag\ui\  (Governance and Memory are now
+REM      %REPO%\ui\  (Governance and Memory are now
 REM      fully folded into Operating / Knowledge base - the first
 REM      version of this file missed a second nav list, this one
 REM      doesn't)
@@ -25,7 +27,16 @@ REM  Everything this window prints is also saved to deploy_log.txt
 REM  next to this file. If anything looks wrong, send me that file.
 REM ============================================================
 
-set REPO=C:\dev\agentic-rag
+REM  REPO auto-detects between wijwork's clone (C:\dev\agentic-rag) and
+REM  wijerco's clone (C:\dev\agentic-rag-ecosystem) so this script runs
+REM  unmodified on either machine. Pass a path as %1 to override.
+if not "%~1"=="" (
+    set REPO=%~1
+) else if exist "C:\dev\agentic-rag-ecosystem\docker-compose.yml" (
+    set REPO=C:\dev\agentic-rag-ecosystem
+) else (
+    set REPO=C:\dev\agentic-rag
+)
 set SRC=%~dp0
 set LOG=%SRC%deploy_log.txt
 
@@ -40,6 +51,7 @@ goto :eof
 :main
 echo ============================================
 echo  Command Centre deploy - started %DATE% %TIME%
+echo  Repo: %REPO%
 echo ============================================
 
 echo.
