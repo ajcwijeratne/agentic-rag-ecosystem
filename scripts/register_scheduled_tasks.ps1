@@ -3,7 +3,13 @@
 # deploy/install.sh:
 #   rag-watchdog.timer    -> every 5 minutes  -> scripts\watchdog.ps1
 #   rag-rehearsal.timer   -> Mon 05:30        -> scripts\rehearsal.ps1
+#   (new) weekly live eval -> Mon 05:00       -> scripts\weekly_live_eval.ps1
 #   autostart on logon    -> Start RAG Ecosystem.bat (optional, -Autostart)
+#
+# The live eval runs 30 minutes before the rehearsal task, not because they
+# depend on each other, but so both weekly checks land before anyone's likely
+# to be looking at the cockpit on a Monday morning, without racing the same
+# Ollama instance against itself.
 #
 # THIS SCRIPT IS NOT RUN AUTOMATICALLY BY ANYTHING - it must be run
 # deliberately, by hand, on the machine that should carry these tasks
@@ -13,7 +19,7 @@
 #
 # Usage (run as the user who should own the tasks, elevated PowerShell not
 # required - these are per-user scheduled tasks):
-#   .\scripts\register_scheduled_tasks.ps1                # watchdog + rehearsal only
+#   .\scripts\register_scheduled_tasks.ps1                # watchdog + rehearsal + live eval
 #   .\scripts\register_scheduled_tasks.ps1 -Autostart      # also register boot autostart
 #   .\scripts\register_scheduled_tasks.ps1 -WhatIf         # show what would be created, change nothing
 #
@@ -51,6 +57,13 @@ $watchdogTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInte
     -RepetitionDuration ([TimeSpan]::MaxValue)
 Register-OrPreview "RAG Watchdog" $watchdogAction $watchdogTrigger `
     "Port liveness, daemon heartbeat, and deep health check every 5 minutes. Windows equivalent of deploy/watchdog.sh + rag-watchdog.timer."
+
+# --- Weekly live eval: golden + recall, every Monday 05:00 -------------------
+$liveEvalAction = New-ScheduledTaskAction -Execute "powershell.exe" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ProjectRoot\scripts\weekly_live_eval.ps1`""
+$liveEvalTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At "05:00"
+Register-OrPreview "RAG Weekly Live Eval" $liveEvalAction $liveEvalTrigger `
+    "Golden + recall live retrieval eval, Monday 05:00, so a regression surfaces within days rather than at the next debugging session (Stage 1 item 15)."
 
 # --- Rehearsal: every Monday 05:30 ------------------------------------------
 $rehearsalAction = New-ScheduledTaskAction -Execute "powershell.exe" `
