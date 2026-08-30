@@ -159,6 +159,14 @@ Say "`n=== 3/4  Python services ===" "Cyan"
 Wait-ForUrl "http://localhost:8000/docs" "Orchestrator API" | Out-Null
 
 # ---------------------------------------------------------------------------
+# 3b. Daemon + Telegram/email channels — delegates to start_channels.ps1
+#     (kept separate from start_all.ps1; see that script's own comments on
+#     why the daemon and channel workers are tracked separately)
+# ---------------------------------------------------------------------------
+Say "`n=== 3b/4  Daemon + channels ===" "Cyan"
+& "$PSScriptRoot\start_channels.ps1"
+
+# ---------------------------------------------------------------------------
 # 4. Command Centre UI
 # ---------------------------------------------------------------------------
 Say "`n=== 4/4  Command Centre ===" "Cyan"
