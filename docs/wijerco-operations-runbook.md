@@ -90,7 +90,18 @@ The voice and avatar clone workers (ports 8020/7861) are not operational on wijw
 
 ## 10. Tailnet performance
 
+**Update (31 Aug, both machines online simultaneously):** the "relayed through syd, not direct" reading in the original note below turned out to be a stale/idle artifact, not the real picture. `tailscale status --json` shows `Relay: "syd"` for the wijerco peer at rest, but that field just reports the last-negotiated fallback and doesn't update in real time — the field that matters is `CurAddr`. Right after `tailscale ping wijerco`, `CurAddr` populated as `192.168.68.107:41641` — a LAN address, because wijwork and wijerco sit on the same home subnet. Once that direct path was warm, four back-to-back `curl` requests to the cockpit (port 8080) came back in 20-190ms each, not 11 seconds. So the direct path works fine and is fast; it just needs a packet to flow before Tailscale bothers to re-establish it after a period of idleness, and `tailscale status` alone (with no recent traffic) makes it look permanently relayed when it isn't.
+
+Separately, and not the same issue: port 8000 (the orchestrator) is not reachable at all from wijwork over the tailnet — four `curl` attempts each hit the 15s timeout with `connect: 0.000000s` (a dropped SYN, i.e. a firewall silently dropping the packet, not a slow response or an active refusal). This matches the plan's own item-4 finding that `wijerco:8000` is unreachable directly and access is meant to go through Tailscale Serve instead — expected behaviour, not a bug, and not the same "11 second page load" symptom as above (which was about the cockpit UI, not the orchestrator API).
+
+Net effect: the direct-connection path is healthy and fast now that both machines are up together. If the 11-second page loads recur, the next things to check are (a) whether it's specifically the *first* load after a period of idleness (consistent with the warm-up cost above, and not really fixable beyond "the second click is fast"), or (b) something at the application layer — payload size, a cold container, a slow upstream call the cockpit's first request triggers — since DERP/relay latency alone was never a plausible explanation for multi-second loads. `tailscale netcheck` on wijerco itself is still the right tool if a *cold* direct connection turns out to be slow to establish (as opposed to just not yet established), but that remains out of reach from this session (no device bridge to wijerco) and wasn't needed to explain what was actually observed here.
+
+<details>
+<summary>Original note (before wijerco came back online)</summary>
+
 wijwork ↔ wijerco is relayed through the Sydney DERP server, not direct (`tailscale status --json` shows `CurAddr: ""`, `Relay: "syd"` for the wijerco peer). `tailscale netcheck` on wijwork shows a healthy, NAT-friendly picture — UPnP port mapping active, a consistent public mapping regardless of destination, 22ms to the Sydney DERP — so wijwork is not the side blocking a direct connection. wijerco's own `netcheck` hasn't been captured (it was offline at time of writing); if page loads are still slow, the next step is running `tailscale netcheck` on wijerco itself to check for symmetric NAT, a missing UPnP/NAT-PMP mapping, or a firewall blocking the UDP range Tailscale uses for hole-punching. Note that DERP relay latency alone (tens of milliseconds) doesn't obviously explain multi-second page loads, so a slow direct connection may not be the whole story — worth checking for a second contributing cause (large asset payloads, cold-start latency in a proxied service) before assuming DERP is the sole culprit.
+
+</details>
 
 ## 11. Known gotchas (quick reference)
 
