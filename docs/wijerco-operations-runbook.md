@@ -78,6 +78,8 @@ Both are new as of this session (Stage 1 item 14) and mirror the Linux `deploy/w
 
 Neither is registered as a running Task Scheduler job yet — `scripts\register_scheduled_tasks.ps1` (no `-Autostart` flag) creates both. This has been written and tested but deliberately not run, pending a decision on when to turn on standing automation on the production machine.
 
+**Full live suite status (Stage 1 item 7, verified 31 Aug):** `.venv\Scripts\python.exe -m pytest -m live -v` — all 12 live-marked tests pass (the 10 golden-answer cases, the live recall test, and `test_query_cost_latency_baseline`), up from 6/12 recorded on 26 July. `logs\perf_baseline.json` already holds a recorded baseline (from 30 Aug) rather than being unset, and the cost/latency test's regression check against it passed — current query latency and cost are within the 1.5x tolerance of that baseline, so nothing has silently regressed since it was last recorded. No further action needed here unless a future run fails that check.
+
 ## 8. Sector Intel data pipeline
 
 Real DoE/QILT source URLs replaced the fixture-era placeholders and the pipeline has been run against them (Stage 1 item 5): `sector-intel/data/published/sector_intel.json` has `meta.sample: false`, so the "indicative sample data" banner in the Command Centre correctly does not show.
