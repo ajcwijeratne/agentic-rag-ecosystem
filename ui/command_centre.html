@@ -370,6 +370,53 @@ class PCMTap extends AudioWorkletProcessor {
 registerProcessor('pcm-tap', PCMTap);
 `;
 
+// Speech out. The browser's own synthesiser is used rather than a server TTS:
+// on Windows these are local SAPI voices, so a spoken reply costs nothing, adds
+// no latency, needs no key, and keeps the loop as offline as the rest of the
+// stack. media/generate/voice.py (Piper/ElevenLabs) stays for produced assets,
+// which are a different job: those are files that get registered, not replies.
+const pickVoice = () => {
+  const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+  if (!voices.length) return null;
+  const want = localStorage.getItem("cc_tts_voice");
+  return voices.find(v => v.name === want)
+      || voices.find(v => /en-AU/i.test(v.lang))
+      || voices.find(v => /en-GB/i.test(v.lang))
+      || voices.find(v => /^en/i.test(v.lang))
+      || voices[0];
+};
+
+// Strip what should not be read aloud: code fences, markdown emphasis, link
+// URLs, and bullet markers. Reading raw markdown out loud is unbearable.
+const speakableText = md => (md || "")
+  .replace(/```[\s\S]*?```/g, " (code block omitted) ")
+  .replace(/`([^`]+)`/g, "$1")
+  .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+  .replace(/^#{1,6}\s+/gm, "")
+  .replace(/^\s*[-*+]\s+/gm, "")
+  .replace(/\*\*([^*]+)\*\*/g, "$1")
+  .replace(/(^|\W)[*_]([^*_]+)[*_](\W|$)/g, "$1$2$3")
+  .replace(/\s+/g, " ")
+  .trim();
+
+// Speak `text`, resolving when finished or cancelled. Never rejects: a failed
+// utterance must not strand the hands-free loop with the mic still muted.
+const speakText = (text, {maxChars = 1200} = {}) => new Promise(resolve => {
+  if (!window.speechSynthesis) return resolve("unsupported");
+  const clean = speakableText(text).slice(0, maxChars);
+  if (!clean) return resolve("empty");
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean);
+    const v = pickVoice();
+    if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = parseFloat(localStorage.getItem("cc_tts_rate") || "1.05");
+    u.onend = () => resolve("done");
+    u.onerror = () => resolve("error");
+    speechSynthesis.speak(u);
+  } catch { resolve("error"); }
+});
+
 const floatToPCM16 = f32 => {
   const out = new Int16Array(f32.length);
   for (let i = 0; i < f32.length; i++) {
@@ -4303,10 +4350,23 @@ function App() {
   const [partial,setPartial]       = useState('');     // live VOSK hypothesis
   const [voiceErr,setVoiceErr]     = useState('');
   const [voiceEngines,setVoiceEngines] = useState(null);
+  const [handsFree,setHandsFree]   = useState(false);  // speak -> answer -> keep listening
+  const [speakReplies,setSpeakReplies] = useState(true);
+  const [speaking,setSpeaking]     = useState(false);  // TTS is talking
+  const [thinking,setThinking]     = useState(false);  // agent is working
   const bottomRef = useRef(null);
   const abortRef  = useRef(null);
   const fileRef   = useRef(null);
   const voiceRef  = useRef({});   // {ws, stream, ctx, node, source}
+  // While the assistant is talking we stop feeding the socket. Without this the
+  // mic hears the reply, VAD marks it as speech, Whisper transcribes it, and
+  // hands-free answers itself forever. A ref, not state: the audio callback
+  // fires every few ms and must see the current value, not a stale closure.
+  const mutedRef  = useRef(false);
+  const handsFreeRef = useRef(false);
+  const speakRepliesRef = useRef(true);
+  useEffect(()=>{ handsFreeRef.current = handsFree; },[handsFree]);
+  useEffect(()=>{ speakRepliesRef.current = speakReplies; },[speakReplies]);
 
   useEffect(()=>{
     fetch(`${API}/models`).then(r=>r.json()).then(setModels).catch(()=>{});
@@ -4403,6 +4463,10 @@ function App() {
 
   const stopVoice = useCallback((graceful=true) => {
     const v = voiceRef.current;
+    try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
+    mutedRef.current = false;
+    setSpeaking(false);
+    setThinking(false);
     try { if (graceful && v.ws?.readyState === 1) v.ws.send(JSON.stringify({type:'stop'})); } catch {}
     try { v.node?.disconnect(); v.source?.disconnect(); } catch {}
     try { v.stream?.getTracks().forEach(t=>t.stop()); } catch {}
@@ -4413,6 +4477,7 @@ function App() {
     setPartial('');
   }, []);
 
+  const startVoiceRef = useRef(null);
   const startVoice = useCallback(async () => {
     if (recording) { stopVoice(true); return; }
     setVoiceErr('');
@@ -4435,7 +4500,11 @@ function App() {
     ws.binaryType = 'arraybuffer';
     voiceRef.current = {ws, stream, ctx, source};
 
-    const pump = f32 => { if (ws.readyState === 1) ws.send(floatToPCM16(f32)); };
+    // Drop frames while the assistant is speaking, so it never hears itself.
+    const pump = f32 => {
+      if (mutedRef.current) return;
+      if (ws.readyState === 1) ws.send(floatToPCM16(f32));
+    };
 
     ws.onopen = async () => {
       ws.send(JSON.stringify({
@@ -4443,7 +4512,7 @@ function App() {
         sample_rate: Math.round(ctx.sampleRate),   // server resamples to 16 kHz
         vad_backend: 'auto',
         partials:    true,
-        auto_query:  false,                        // review before sending
+        auto_query:  handsFreeRef.current,          // hands-free answers each utterance
         session_id:  sessionId,
       }));
 
@@ -4465,19 +4534,74 @@ function App() {
       setVoiceState('listening');
     };
 
-    ws.onmessage = ev => {
+    ws.onmessage = async ev => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
+
       if (m.type === 'speech_start') setVoiceState('speaking');
       else if (m.type === 'speech_end') setVoiceState(r => r === 'speaking' ? 'listening' : r);
       else if (m.type === 'partial') setPartial(m.text);
+
       else if (m.type === 'final') {
         setPartial('');
-        // Append each finished utterance so a long dictation accumulates.
-        setInput(prev => (prev ? prev.replace(/\s+$/,'') + ' ' : '') + m.text);
-      } else if (m.type === 'transcript') {
+        if (handsFreeRef.current) {
+          // Hands-free: the utterance is a turn in the conversation, so it
+          // belongs in the transcript, not the composer.
+          setMessages(prev => [...prev, {id: Date.now(), role: 'user', content: m.text}]);
+        } else {
+          setInput(prev => (prev ? prev.replace(/\s+$/,'') + ' ' : '') + m.text);
+        }
+      }
+
+      else if (m.type === 'thinking') { setThinking(true); }
+
+      else if (m.type === 'skipped') {
+        // Heard, but deliberately not sent to a model. Say so rather than
+        // looking like it silently ignored the user.
         setPartial('');
-        try { ws.close(); } catch {}
-      } else if (m.type === 'error') {
+        setVoiceErr(m.reason === 'busy'
+          ? 'Still answering the previous question — that one was skipped.'
+          : `Too short to be a question: "${m.text}"`);
+        setTimeout(() => setVoiceErr(''), 3000);
+      }
+
+      else if (m.type === 'answer') {
+        setThinking(false);
+        // An empty answer is a real outcome (the RAG services can be down), and
+        // in hands-free it would otherwise be indistinguishable from the thing
+        // being broken: you speak, and nothing ever happens. Say so instead.
+        const empty = !(m.answer || '').trim();
+        const text = empty
+          ? 'I did not get an answer back. The retrieval or model services may be offline.'
+          : m.answer;
+        setMessages(prev => [...prev, {
+          id: Date.now(), role: 'assistant', content: empty ? `⚠️ ${text}` : text,
+          modelLabel: m.model || '', cost_usd: m.cost_usd || 0, streaming: false,
+        }]);
+        if (speakRepliesRef.current) {
+          mutedRef.current = true;          // stop feeding the mic
+          setSpeaking(true);
+          setVoiceState('replying');
+          await speakText(text);
+          setSpeaking(false);
+          // Let the speakers settle, clear whatever the recogniser buffered,
+          // then listen again.
+          setTimeout(() => {
+            try { if (ws.readyState === 1) ws.send(JSON.stringify({type:'reset'})); } catch {}
+            mutedRef.current = false;
+            setVoiceState(r => r === 'replying' ? 'listening' : r);
+          }, 250);
+        }
+      }
+
+      else if (m.type === 'transcript') {
+        setPartial('');
+        // Hands-free keeps the socket open for the next turn; one-shot dictation
+        // is finished once the transcript lands.
+        if (!handsFreeRef.current) { try { ws.close(); } catch {} }
+      }
+
+      else if (m.type === 'error') {
+        setThinking(false);
         setVoiceErr(m.message || 'Voice service error');
         setVoiceState('error');
       }
@@ -4490,9 +4614,40 @@ function App() {
     };
     ws.onclose = () => { if (voiceRef.current.node) stopVoice(false); };
   }, [recording, sessionId, voiceEngines, stopVoice]);
+  useEffect(()=>{ startVoiceRef.current = startVoice; },[startVoice]);
 
-  // Never leave the mic live if the component goes away.
-  useEffect(() => () => stopVoice(false), [stopVoice]);
+  // Barge-in: Escape cuts the spoken reply short and hands the mic straight
+  // back. With the mic gated during playback the assistant cannot hear you
+  // interrupt, so there has to be a deliberate way to take the floor.
+  const shutUp = useCallback(() => {
+    try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
+    setSpeaking(false);
+    const ws = voiceRef.current.ws;
+    try { if (ws && ws.readyState === 1) ws.send(JSON.stringify({type:'reset'})); } catch {}
+    mutedRef.current = false;
+    setVoiceState(r => r === 'replying' ? 'listening' : r);
+  }, []);
+
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape' && speaking) { e.preventDefault(); shutUp(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [speaking, shutUp]);
+
+  // auto_query is fixed when the socket opens, so flipping hands-free mid-call
+  // has to re-handshake for the server to honour it.
+  const toggleHandsFree = useCallback(() => {
+    const next = !handsFree;
+    setHandsFree(next);
+    handsFreeRef.current = next;
+    if (recording) { stopVoice(true); setTimeout(() => startVoiceRef.current?.(), 400); }
+  }, [handsFree, recording, stopVoice]);
+
+  // Never leave the mic live, or the assistant talking, if the view goes away.
+  useEffect(() => () => {
+    try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
+    stopVoice(false);
+  }, [stopVoice]);
 
   const onPickFile = () => fileRef.current?.click();
 
@@ -4736,6 +4891,20 @@ function App() {
               <button onClick={clearAttached} style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:11}}>clear</button>
             </div>
           )}
+          {(speaking||thinking) && !voiceErr && (
+            <div style={{maxWidth:900,margin:'0 auto 8px',padding:'7px 12px',borderRadius:9,fontSize:12.5,
+              display:'flex',justifyContent:'space-between',alignItems:'center',
+              background:'var(--pine-tint)',border:'1px solid #bcd6c8',color:'var(--pine)'}}>
+              <span>{thinking ? '◍ working on that…' : '🔊 replying — microphone paused so it does not hear itself'}</span>
+              {speaking && (
+                <button onClick={shutUp}
+                  style={{fontSize:11,padding:'2px 8px',borderRadius:6,cursor:'pointer',
+                    background:'var(--surface)',border:'1px solid #bcd6c8',color:'var(--pine)'}}>
+                  Stop (Esc)
+                </button>
+              )}
+            </div>
+          )}
           {(partial||voiceErr) && (
             <div style={{maxWidth:900,margin:'0 auto 8px',padding:'7px 12px',borderRadius:9,fontSize:12.5,
               background: voiceErr?'#fdeceb':'var(--gold-tint)',
@@ -4774,8 +4943,28 @@ function App() {
                 {voiceState==='connecting' ? '…' : recording ? '■' : '🎙'}
               </button>
               <span style={{fontSize:9,color:'var(--muted)',letterSpacing:'.04em'}}>
-                {voiceState==='speaking' ? 'speech' : voiceState==='listening' ? 'listening' : 'voice'}
+                {thinking ? 'thinking'
+                  : speaking ? 'replying'
+                  : voiceState==='speaking' ? 'speech'
+                  : voiceState==='listening' ? 'listening' : 'voice'}
               </span>
+              <button onClick={toggleHandsFree}
+                title={handsFree
+                  ? 'Hands-free on — each utterance is answered automatically'
+                  : 'Hands-free off — dictation only, you press Send'}
+                style={{fontSize:9,padding:'2px 5px',borderRadius:5,cursor:'pointer',
+                  background:handsFree?'var(--gold-tint)':'var(--bg3)',
+                  border:'1px solid '+(handsFree?'#e2cf8f':'var(--border)'),
+                  color:handsFree?'#8a630f':'var(--muted)',letterSpacing:'.04em'}}>
+                {handsFree?'hands-free':'dictate'}
+              </button>
+              <button onClick={()=>{ if(speaking) shutUp(); setSpeakReplies(v=>!v); }}
+                title={speakReplies?'Spoken replies on (Esc interrupts)':'Spoken replies off'}
+                style={{fontSize:9,padding:'2px 5px',borderRadius:5,cursor:'pointer',
+                  background:'var(--bg3)',border:'1px solid var(--border)',
+                  color:speakReplies?'var(--text)':'var(--muted)',letterSpacing:'.04em'}}>
+                {speakReplies?'🔊 on':'🔇 off'}
+              </button>
             </div>
             <textarea
               value={input}
@@ -4800,6 +4989,7 @@ function App() {
             {routeMode==='auto'?'🔀 Auto-routing · ':routeMode==='rag'?'🔍 RAG-only · ':'🏢 WijerCo · '}
             {pinnedModel?`📌 ${models[pinnedModel]?.label||pinnedModel}`:'🤖 Optimal model auto-selected'}
             {' · Conversations saved automatically'}
+            {handsFree ? ' · 🔁 hands-free: speak and it answers' : ''}
           </div>
         </div>
         </>}

@@ -18,9 +18,11 @@ Two execution modes, chosen automatically:
                package imports cleanly, so a single-process dev run still works.
 
 The websocket is a transparent proxy to the voice service socket, with one
-addition: when `auto_query` is set and the stream ends with a non-empty
-transcript, the orchestrator runs the transcript through /hybrid and pushes the
-answer back down the same socket. Speak, stop, get an answer.
+addition: when `auto_query` is set, every completed utterance is run through
+/hybrid as it lands and the answer is pushed back down the same socket. That is
+what makes the loop hands-free — speak, get an answer, keep talking — rather
+than one-shot. Queries are serialised, and utterances too short to be a real
+question are dropped before they cost anything.
 
 Auth follows the house rules. The HTTP routes inherit the app-level
 require_api_key dependency; /voice/ask additionally requires the `operator`
@@ -47,6 +49,10 @@ VOICE_SERVICE_URL: str = os.getenv("VOICE_SERVICE_URL", "http://localhost:8009")
 VOICE_ENGINE:      str = os.getenv("ASR_ENGINE", "whisper")
 VOICE_TIMEOUT:     float = float(os.getenv("VOICE_TIMEOUT_S", "300"))
 VOICE_ALLOW_LOCAL: bool = os.getenv("VOICE_ALLOW_LOCAL", "true").lower() in ("1", "true", "yes")
+
+# Hands-free: utterances shorter than this never reach a model. Filler words and
+# a cough that clears VAD would otherwise each cost a paid call.
+AUTO_QUERY_MIN_CHARS: int = int(os.getenv("VOICE_AUTO_QUERY_MIN_CHARS", "8"))
 
 _ws_url = VOICE_SERVICE_URL.replace("https://", "wss://").replace("http://", "ws://")
 VOICE_WS_URL: str = f"{_ws_url.rstrip('/')}/ws/transcribe"
@@ -279,6 +285,7 @@ async def voice_ws(client: WebSocket):
     auto_query  = bool(config.pop("auto_query", False))
     session_id  = str(config.pop("session_id", "") or uuid.uuid4())
     force_route = config.pop("force_route", None)
+    auto_query_min_chars = int(config.pop("auto_query_min_chars", AUTO_QUERY_MIN_CHARS))
 
     key = os.getenv("API_KEY", "").strip()
     upstream_url = f"{VOICE_WS_URL}?api_key={key}" if key else VOICE_WS_URL
@@ -304,31 +311,65 @@ async def voice_ws(client: WebSocket):
             elif message.get("text") is not None:
                 await upstream.send(message["text"])
 
+    # Hands-free state. `in_flight` serialises queries: a second utterance that
+    # lands while the agent is still answering is skipped rather than queued, so
+    # a burst of speech cannot fan out into parallel paid model calls.
+    in_flight = {"busy": False}
+
+    async def answer_utterance(text: str) -> None:
+        """Run one spoken utterance through the pipeline and return the answer."""
+        if in_flight["busy"]:
+            await client.send_json({
+                "type": "skipped", "reason": "busy", "text": text,
+                "detail": "Still answering the previous question.",
+            })
+            return
+
+        in_flight["busy"] = True
+        try:
+            await client.send_json({"type": "thinking", "query": text, "session_id": session_id})
+            answer = await _run_hybrid(text, session_id, force_route)
+            await client.send_json({"type": "answer", "session_id": session_id, **answer})
+        except Exception as exc:  # noqa: BLE001 — keep the socket alive
+            await client.send_json({"type": "error", "message": f"Query failed: {exc}"})
+        finally:
+            in_flight["busy"] = False
+
     async def pump_down() -> None:
-        """Voice service -> browser, answering the query when the stream ends."""
+        """
+        Voice service -> browser.
+
+        In hands-free mode each completed utterance is answered as it lands,
+        rather than waiting for the stream to end — that is what makes the loop
+        conversational instead of one-shot. Utterances shorter than
+        `auto_query_min_chars` are treated as noise ("um", "yeah", a cough that
+        cleared VAD) and never reach a model.
+        """
         async for raw in upstream:
             if isinstance(raw, bytes):
                 continue
             await client.send_text(raw)
+
+            if not auto_query:
+                continue
 
             try:
                 event = json.loads(raw)
             except json.JSONDecodeError:
                 continue
 
-            if event.get("type") != "transcript":
+            if event.get("type") != "final":
                 continue
 
             text = (event.get("text") or "").strip()
-            if not (auto_query and text):
+            if len(text) < auto_query_min_chars:
+                await client.send_json({
+                    "type": "skipped", "reason": "too_short", "text": text,
+                    "detail": f"Under {auto_query_min_chars} characters; treated as noise.",
+                })
                 continue
 
-            await client.send_json({"type": "thinking", "query": text, "session_id": session_id})
-            try:
-                answer = await _run_hybrid(text, session_id, force_route)
-                await client.send_json({"type": "answer", "session_id": session_id, **answer})
-            except Exception as exc:  # noqa: BLE001 — keep the socket alive
-                await client.send_json({"type": "error", "message": f"Query failed: {exc}"})
+            await answer_utterance(text)
 
     try:
         await client.send_json({"type": "connected", "session_id": session_id, "auto_query": auto_query})

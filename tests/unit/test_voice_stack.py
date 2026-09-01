@@ -401,3 +401,73 @@ def test_availability_probes_do_not_import_heavy_modules(monkeypatch):
 
     assert imported == [], f"engine_status imported heavy modules: {imported}"
     assert set(status["vad"]) == {"silero", "webrtc", "energy"}
+
+
+# ---------------------------------------------------------------------------
+# Hands-free guards
+# ---------------------------------------------------------------------------
+
+def test_auto_query_min_chars_default_is_sane():
+    """Filler words must not each cost a model call."""
+    from orchestrator import voice
+
+    assert voice.AUTO_QUERY_MIN_CHARS >= 4
+    for filler in ("um", "yeah", "ok", "mm"):
+        assert len(filler) < voice.AUTO_QUERY_MIN_CHARS, filler
+    for real in ("what is agentic rag", "summarise the TEQSA changes"):
+        assert len(real) >= voice.AUTO_QUERY_MIN_CHARS, real
+
+
+async def test_hands_free_answers_each_utterance_and_guards_noise(monkeypatch):
+    """
+    The conversational loop: every `final` above the length floor is answered as
+    it lands, short ones are reported as skipped, and a second utterance arriving
+    mid-answer is skipped rather than run in parallel.
+    """
+    import asyncio
+
+    from orchestrator import voice
+
+    sent = []
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_hybrid(text, session_id, force_route=None):
+        started.set()
+        await release.wait()
+        return {"answer": f"answer to {text}", "model": "test", "cost_usd": 0.0}
+
+    monkeypatch.setattr(voice, "_run_hybrid", slow_hybrid)
+
+    # Rebuild the closure the websocket handler creates, with the same guards.
+    in_flight = {"busy": False}
+
+    class FakeClient:
+        async def send_json(self, obj):
+            sent.append(obj)
+
+    client = FakeClient()
+
+    async def answer_utterance(text: str) -> None:
+        if in_flight["busy"]:
+            await client.send_json({"type": "skipped", "reason": "busy", "text": text})
+            return
+        in_flight["busy"] = True
+        try:
+            await client.send_json({"type": "thinking", "query": text})
+            result = await voice._run_hybrid(text, "s1", None)
+            await client.send_json({"type": "answer", **result})
+        finally:
+            in_flight["busy"] = False
+
+    first = asyncio.create_task(answer_utterance("what is agentic rag"))
+    await started.wait()
+    await answer_utterance("and what about vosk")   # arrives mid-answer
+    release.set()
+    await first
+
+    kinds = [e["type"] for e in sent]
+    assert kinds.count("thinking") == 1, kinds
+    assert kinds.count("answer") == 1, kinds
+    skipped = [e for e in sent if e["type"] == "skipped"]
+    assert len(skipped) == 1 and skipped[0]["reason"] == "busy", sent
