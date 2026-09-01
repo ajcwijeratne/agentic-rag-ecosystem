@@ -2891,6 +2891,10 @@ function SectorIntelView(){
       {sample&&<div className="card" style={{marginTop:14,borderColor:'#e2cf8f',background:'var(--gold-tint)',color:'#8a630f',fontSize:12.5,display:'flex',gap:10,alignItems:'center'}}>
         <b>Indicative sample data.</b><span>Not real DoE/QILT figures — placeholder values so the module runs. Swap in the Phase 2 pipeline output (sector_intel.json) to go live.</span>
       </div>}
+      {!sample&&data&&data.meta&&data.meta.data_sources&&<div className="card" style={{marginTop:14,fontSize:11.5,color:'var(--muted)',lineHeight:1.6}}>
+        {data.meta.data_sources.map((s,i)=>(<div key={i}>{s.attribution}{s.licence&&!s.licence.startsWith('CC BY')?' — reuse pending permission':''}</div>))}
+        <div style={{marginTop:4}}>{data.meta.rights}</div>
+      </div>}
       {toast&&<div className="card" style={{marginTop:14,borderColor:'var(--line)',background:'var(--pine-tint)',color:'var(--pine)',fontSize:13}}>{toast}</div>}
 
       {!data&&tab!=='feed'&&<div className="card" style={{marginTop:16}}><div className="mini">Loading sector dataset…</div></div>}

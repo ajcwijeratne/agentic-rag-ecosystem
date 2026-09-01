@@ -74,6 +74,39 @@ def run(rows: list[dict], ref: dict, fixture: bool = False) -> dict:
     for m in metrics.values():
         if m["domain"] not in domains:
             domains.append(m["domain"])
+    # Attribution framework, modelled on how CoreBridge Intelligence (the named
+    # UK reference competitor) cites its own open-government sources: name the
+    # publisher and licence next to every figure, claim the derived analysis as
+    # WijerCo's own, and tell the reader to verify against the original before
+    # relying on any single number. See docs from the Stage 2.3 data-rights
+    # review (31 Aug/1 Sep 2026) for the underlying licence research.
+    #
+    # QILT's licence line is deliberately not marked as cleared: QILT publishes
+    # no open licence for its report tables (unlike DoE's CC BY 4.0) and its
+    # copyright page directs reuse requests to qilt@srcentre.com.au. Update the
+    # licence string below once that permission is actually granted or denied
+    # — do not silently upgrade it based on assumption.
+    data_sources = [
+        {
+            "publisher": "Department of Education, Australian Government",
+            "collection": "Selected Higher Education Statistics (student, finance, staff data)",
+            "licence": "CC BY 4.0 — commercial reuse and derivative works permitted with attribution",
+            "attribution": "© Commonwealth of Australia, Department of Education, CC BY 4.0",
+            "source_url": "https://www.education.gov.au/higher-education-statistics",
+        },
+        {
+            "publisher": "QILT (Social Research Centre, on behalf of the Department of Education)",
+            "collection": "Student Experience Survey (SES) national report tables",
+            "licence": "No open licence published — commercial reuse requires permission from QILT/SRC (requested, not yet confirmed as of 1 Sep 2026)",
+            "attribution": "Source: QILT, qilt.edu.au",
+            "source_url": "https://www.qilt.edu.au/",
+        },
+    ]
+    rights_note = ("Derived metrics, benchmarks and comparisons in this dataset are WijerCo's own "
+                   "analysis. Underlying figures are sourced under the licence terms listed in "
+                   "data_sources; verify an individual figure against its original source before "
+                   "relying on it.")
+
     dataset = {
         "meta": {
             "title": "WijerCo Sector Intel",
@@ -86,6 +119,8 @@ def run(rows: list[dict], ref: dict, fixture: bool = False) -> dict:
             "years": years, "groups": ["Go8", "ATN", "IRU", "RUN", "Unaligned"],
             "institution_count": len({r["institution_id"] for r in rows}),
             "metric_count": len(mids), "row_count": len(rows),
+            "data_sources": data_sources,
+            "rights": rights_note,
         },
         "metrics": [{"metric_id": m["metric_id"], "metric_name": m["metric_name"],
                      "domain": m["domain"], "unit": m["unit"], "direction": m["direction"],
