@@ -45,6 +45,19 @@ faster-whisper~=1.0.0
 moviepy~=1.0.3
 
 # ---------------------------------------------------------------------------
+# Voice: activity detection + speech recognition
+# ---------------------------------------------------------------------------
+numpy>=1.26               # canonical PCM handling (media/audio.py)
+websockets>=12.0          # live mic proxy: /voice/ws -> voice service
+vosk~=0.3.45              # offline streaming ASR (models downloaded separately)
+silero-vad~=5.1           # neural VAD backend (needs torch; falls back if absent)
+# Fast frame-level VAD backend. Upstream webrtcvad ships no Windows wheel and
+# needs MSVC to build, so Windows takes the prebuilt fork - same `webrtcvad`
+# import, same API.
+webrtcvad-wheels~=2.0.14; sys_platform == "win32"
+webrtcvad~=2.0.10; sys_platform != "win32"
+
+# ---------------------------------------------------------------------------
 # Multimodal expansion (Phase 2) — image ingestion + visual search
 #   torch + open_clip back the self-hosted visual embedder (media_visual).
 #   Pillow reads image dimensions; pytesseract does OCR (needs the system

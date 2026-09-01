@@ -1,0 +1,351 @@
+"""
+Voice stack: VAD segmentation, engine selection, registry integration, and the
+security posture of the new service.
+
+No live services and no real models — the engines are stubbed so these stay
+fast. Real-model behaviour is covered by the live suite.
+"""
+
+from __future__ import annotations
+
+import importlib
+import json
+
+import numpy as np
+import pytest
+
+from media.audio import SAMPLE_RATE, duration_s, float32_to_pcm, resample_pcm, write_wav
+from media.vad import (
+    EnergyVAD,
+    SegmenterConfig,
+    SpeechSegmenter,
+    available_backends,
+    create_vad,
+    segment_pcm,
+)
+
+rng = np.random.default_rng(7)
+
+
+def _silence(seconds: float) -> bytes:
+    """A quiet room, not digital silence, so the adaptive gate has a floor to track."""
+    return float32_to_pcm(rng.normal(0, 0.0008, int(SAMPLE_RATE * seconds)).astype(np.float32))
+
+
+def _speech(seconds: float, f0: float = 140.0) -> bytes:
+    """Voiced-sounding tone: harmonic stack modulated at a syllable rate."""
+    t = np.arange(int(SAMPLE_RATE * seconds)) / SAMPLE_RATE
+    sig = sum(np.sin(2 * np.pi * f0 * k * t) / k for k in range(1, 12))
+    sig = sig * (0.6 + 0.4 * np.sin(2 * np.pi * 4 * t))
+    sig = sig / np.max(np.abs(sig)) * 0.35 + rng.normal(0, 0.01, sig.size)
+    return float32_to_pcm(sig.astype(np.float32))
+
+
+@pytest.fixture()
+def two_utterances() -> bytes:
+    """Silence, speech, silence, speech, silence — two clear utterances."""
+    return _silence(0.8) + _speech(1.4) + _silence(1.0) + _speech(1.1, 190.0) + _silence(0.7)
+
+
+# ---------------------------------------------------------------------------
+# Audio plumbing
+# ---------------------------------------------------------------------------
+
+def test_wav_roundtrip_is_lossless(tmp_path, two_utterances):
+    """The WAV fast path must not need ffmpeg and must not alter samples."""
+    from media.audio import decode_to_pcm
+
+    path = write_wav(two_utterances, tmp_path / "sample.wav")
+    assert decode_to_pcm(path) == two_utterances
+
+
+def test_resample_preserves_duration():
+    one_second_48k = float32_to_pcm(rng.normal(0, 0.1, 48_000).astype(np.float32))
+    out = resample_pcm(one_second_48k, 48_000, SAMPLE_RATE)
+    assert abs(duration_s(out) - 1.0) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# Voice activity detection
+# ---------------------------------------------------------------------------
+
+def test_energy_vad_finds_both_utterances(two_utterances):
+    segments = segment_pcm(two_utterances, EnergyVAD())
+    assert len(segments) == 2
+    assert 0.4 < segments[0].start_s < 1.3
+    assert 3.0 < segments[1].start_s < 4.2
+    assert all(s.duration_s > 0.5 for s in segments)
+
+
+def test_streaming_matches_offline(two_utterances):
+    """Chunk boundaries must not change the result — the browser sends any size."""
+    offline = segment_pcm(two_utterances, EnergyVAD())
+
+    segmenter = SpeechSegmenter(EnergyVAD())
+    streamed = []
+    step = 1777                          # deliberately not a frame multiple
+    for i in range(0, len(two_utterances), step):
+        streamed.extend(segmenter.feed(two_utterances[i:i + step]))
+    streamed.extend(segmenter.flush())
+
+    assert len(streamed) == len(offline)
+    for a, b in zip(streamed, offline):
+        assert a.start_s == pytest.approx(b.start_s, abs=0.05)
+        assert a.end_s == pytest.approx(b.end_s, abs=0.05)
+
+
+def test_short_blip_is_rejected_as_noise():
+    blip = _silence(0.5) + _speech(0.10) + _silence(0.8)
+    assert segment_pcm(blip, EnergyVAD()) == []
+
+
+def test_max_duration_force_closes_a_long_utterance():
+    config = SegmenterConfig(max_speech_ms=1000, silence_ms=400)
+    segments = segment_pcm(_silence(0.4) + _speech(3.0) + _silence(0.8), EnergyVAD(), config)
+    assert len(segments) >= 2
+    assert any(s.truncated for s in segments)
+
+
+def test_silence_only_produces_nothing():
+    assert segment_pcm(_silence(3.0), EnergyVAD()) == []
+
+
+def test_auto_backend_always_resolves():
+    """Whatever is installed, `auto` must return a usable detector."""
+    vad = create_vad("auto")
+    assert vad.name in ("silero", "webrtc", "energy")
+    assert available_backends()["energy"] is True
+
+
+def test_unknown_backend_raises():
+    with pytest.raises(ValueError):
+        create_vad("telepathy")
+
+
+# ---------------------------------------------------------------------------
+# Engine selection
+# ---------------------------------------------------------------------------
+
+def test_engine_falls_back_when_vosk_missing(monkeypatch):
+    from media import asr, vosk_engine
+
+    monkeypatch.setattr(vosk_engine, "is_available", lambda: False)
+    assert asr.resolve_engine("vosk") == "whisper"
+    assert asr.resolve_engine("hybrid") == "whisper"
+
+
+def test_unknown_engine_raises():
+    from media import asr
+
+    with pytest.raises(ValueError):
+        asr.resolve_engine("dictaphone")
+
+
+def test_engine_status_reports_all_backends():
+    from media.asr import engine_status
+
+    status = engine_status()
+    assert set(status) >= {"whisper", "vosk", "hybrid", "vad", "default_engine"}
+    assert set(status["vad"]) == {"silero", "webrtc", "energy"}
+
+
+# ---------------------------------------------------------------------------
+# Registry integration
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def stub_asr(monkeypatch, two_utterances, tmp_path):
+    """Replace Whisper with a stub that reports how much audio it received."""
+    from media import asr
+
+    def fake_whisper(pcm, language=None, model=None, beam_size=5,
+                     word_timestamps=False, offset_s=0.0):
+        secs = len(pcm) / (SAMPLE_RATE * 2)
+        return ([asr.TranscriptSegment(
+            text=f"heard {secs:.2f}s", start_s=offset_s, end_s=offset_s + secs,
+            confidence=0.9)], "en")
+
+    monkeypatch.setattr(asr, "load_whisper", lambda *a, **k: object())
+    monkeypatch.setattr(asr, "whisper_transcribe_pcm", fake_whisper)
+    return write_wav(two_utterances, tmp_path / "asset.wav")
+
+
+def test_transcribe_segments_matches_registry_shape(stub_asr):
+    """The ingestion worker hands this straight to registry.add_transcript."""
+    from media.asr import transcribe_segments
+
+    result = transcribe_segments(stub_asr, language="en", engine="whisper", vad_backend="energy")
+
+    assert result["status"] == "ok"
+    assert result["language"] == "en"
+    assert isinstance(result["duration"], float)
+    assert result["text"]
+    assert result["segments"]
+    for seg in result["segments"]:
+        assert set(seg) == {"start", "end", "text", "speaker"}
+        assert seg["speaker"] is None
+        assert seg["start"] <= seg["end"]
+    # JSON-serialisable, because the registry stores it as a JSON column.
+    json.dumps(result["segments"])
+
+
+def test_transcribe_segments_reports_missing_file(tmp_path):
+    from media.asr import transcribe_segments
+
+    result = transcribe_segments(tmp_path / "nope.wav")
+    assert result["status"] == "error"
+    assert "not found" in result["message"].lower()
+
+
+def test_vad_reduces_audio_sent_to_the_model(stub_asr):
+    """The whole point of the VAD gate: the model sees less than the recording."""
+    from media.asr import transcribe_pcm
+    from media.audio import decode_to_pcm
+
+    pcm = decode_to_pcm(stub_asr)
+    gated = transcribe_pcm(pcm, engine="whisper", use_vad=True, vad_backend="energy")
+    ungated = transcribe_pcm(pcm, engine="whisper", use_vad=False)
+
+    assert gated.duration_s == pytest.approx(ungated.duration_s, abs=0.01)
+    assert gated.speech_s < ungated.speech_s
+
+
+def test_ingest_worker_writes_transcript_to_registry(tmp_path, monkeypatch, two_utterances):
+    """End to end through the registry, with the recogniser stubbed out."""
+    monkeypatch.setenv("MEDIA_DB_PATH", str(tmp_path / "media.db"))
+    from media import registry
+    importlib.reload(registry)
+
+    from media.ingest import audio as ingest_audio
+    importlib.reload(ingest_audio)
+
+    path = write_wav(two_utterances, tmp_path / "asset.wav")
+    asset_id = registry.add_asset("audio", str(path), "test", rights="owned")
+
+    monkeypatch.setattr(ingest_audio, "_transcriber", lambda: (
+        lambda p, language=None: {
+            "status": "ok", "language": "en", "duration": 5.0,
+            "segments": [{"start": 0.8, "end": 2.2, "text": "hello", "speaker": None}],
+            "text": "hello", "engine": "whisper", "speech_s": 1.4,
+        },
+        "asr",
+    ))
+
+    result = ingest_audio.enrich(asset_id, str(path))
+    assert result["status"] == "ready"
+    assert result["segments"] == 1
+    assert result["engine"] == "whisper"
+
+    asset = registry.get_asset(asset_id)
+    assert asset["status"] == "ready"
+    assert asset["transcript_id"]
+
+
+def test_ingest_worker_marks_failed_when_file_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEDIA_DB_PATH", str(tmp_path / "media.db"))
+    from media import registry
+    importlib.reload(registry)
+    from media.ingest import audio as ingest_audio
+    importlib.reload(ingest_audio)
+
+    asset_id = registry.add_asset("audio", str(tmp_path / "gone.wav"), "test", rights="owned")
+    result = ingest_audio.enrich(asset_id, str(tmp_path / "gone.wav"))
+
+    assert result["status"] == "failed"
+    assert registry.get_asset(asset_id)["status"] == "failed"
+
+
+# ---------------------------------------------------------------------------
+# Service security
+# ---------------------------------------------------------------------------
+
+def test_voice_service_paths_are_confined(tmp_path, monkeypatch):
+    """A path outside the media roots must be refused, not read."""
+    from fastapi import HTTPException
+
+    from common.security import confine_to_roots
+
+    root = tmp_path / "media_input"
+    root.mkdir()
+    inside = root / "ok.wav"
+    inside.write_bytes(b"")
+
+    assert confine_to_roots(str(inside), [root]) == inside.resolve()
+    with pytest.raises(HTTPException) as exc:
+        confine_to_roots(str(tmp_path / "escape.wav"), [root])
+    assert exc.value.status_code == 403
+
+
+def test_voice_service_requires_api_key_dependency():
+    """The app must carry the house-wide auth dependency, like every service."""
+    from common.security import require_api_key
+    from media.voice_service import app
+
+    deps = [d.dependency for d in app.router.dependencies]
+    assert require_api_key in deps
+
+
+def _ws_conn(host: str, headers=None, query=""):
+    """A real starlette HTTPConnection with a websocket scope."""
+    from starlette.requests import HTTPConnection
+
+    raw_headers = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
+    return HTTPConnection({
+        "type":         "websocket",
+        "client":       (host, 12345),
+        "headers":      raw_headers,
+        "query_string": query.encode(),
+        "scheme":       "ws",
+        "path":         "/ws/transcribe",
+    })
+
+
+def test_auth_dependency_resolves_on_a_websocket_scope():
+    """
+    require_api_key must be typed HTTPConnection, not Request: an app-level
+    dependency also guards websocket routes, and a Request cannot be resolved
+    there. Regression test for a TypeError at connection time.
+    """
+    from common.security import require_api_key
+
+    require_api_key(_ws_conn("127.0.0.1"))       # loopback: no raise
+
+
+def test_ws_auth_rejects_remote_without_key(monkeypatch):
+    from fastapi import HTTPException
+
+    from common.security import require_api_key
+
+    monkeypatch.setenv("API_KEY", "secret-key")
+    monkeypatch.delenv("ADMIN_API_KEY", raising=False)
+    monkeypatch.delenv("RBAC_ROLE_KEYS", raising=False)
+
+    with pytest.raises(HTTPException) as exc:
+        require_api_key(_ws_conn("10.0.0.5"))
+    assert exc.value.status_code == 401
+
+
+def test_ws_auth_accepts_remote_with_query_key(monkeypatch):
+    """Browsers cannot set headers on a WS handshake, so ?api_key= is allowed."""
+    from common.security import require_api_key
+
+    monkeypatch.setenv("API_KEY", "secret-key")
+    require_api_key(_ws_conn("10.0.0.5", query="api_key=secret-key"))
+
+
+def test_http_auth_still_rejects_query_key(monkeypatch):
+    """The query-param allowance is websocket-only; HTTP must still need a header."""
+    from fastapi import HTTPException
+
+    from common.security import require_api_key
+    from starlette.requests import HTTPConnection
+
+    monkeypatch.setenv("API_KEY", "secret-key")
+    http_conn = HTTPConnection({
+        "type": "http", "client": ("10.0.0.5", 1), "headers": [],
+        "query_string": b"api_key=secret-key", "scheme": "http",
+        "method": "GET", "path": "/engines",
+    })
+    with pytest.raises(HTTPException) as exc:
+        require_api_key(http_conn)
+    assert exc.value.status_code == 401

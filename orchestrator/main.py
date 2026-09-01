@@ -80,6 +80,10 @@ app.include_router(dashboard_router)
 from .inbox import router as inbox_router
 app.include_router(inbox_router)
 
+# Voice: VAD-gated speech recognition (Whisper + VOSK), file and live socket
+from .voice import router as voice_router
+app.include_router(voice_router)
+
 # ---------------------------------------------------------------------------
 # Command Centre UI (installable PWA)
 # Served same-origin as the API so the installed app and its fetch() calls both

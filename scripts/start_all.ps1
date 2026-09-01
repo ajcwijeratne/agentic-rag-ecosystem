@@ -39,7 +39,7 @@ New-Item -ItemType Directory -Force -Path "logs" | Out-Null
 # Without this, a leftover process holds the port, the new one fails to bind
 # (Errno 10048) and dies silently, leaving old code running.
 # ---------------------------------------------------------------------------
-$ports = 8000,8001,8002,8003,8004,8005,8006
+$ports = 8000,8001,8002,8003,8004,8005,8006,8009
 foreach ($p in $ports) {
     try {
         $owners = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue |
@@ -56,7 +56,7 @@ foreach ($p in $ports) {
 # are separate long-lived services and must retain their tracking files.
 $managedServices = @(
     "orchestrator", "local_data_agent", "search_agent", "cloud_agent",
-    "indexer", "retriever", "notifier"
+    "indexer", "retriever", "notifier", "voice_service"
 )
 foreach ($serviceName in $managedServices) {
     Remove-Item "logs\$serviceName.pid" -Force -ErrorAction SilentlyContinue
@@ -86,6 +86,9 @@ Start-Service "cloud_agent"      "agents.cloud_agent"
 Start-Service "indexer"          "rag.indexer --serve"
 Start-Service "retriever"        "rag.retriever"
 Start-Service "notifier"         "notifications.notifier --serve"
+
+# Voice: VAD + Whisper + VOSK (REST + live websocket) on port 8009
+Start-Service "voice_service"    "media.voice_service --serve"
 
 # Media services (uncomment to autostart)
 # Start-Service "whisper"  "media.whisper_pipeline --serve"

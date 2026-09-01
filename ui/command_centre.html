@@ -350,6 +350,35 @@ window.fetch = (input, init = {}) => {
   return nativeFetch(input, {...init, headers});
 };
 
+// Voice: the WS handshake cannot carry headers, so the API key rides as a
+// query parameter, which common.security accepts on websocket connections.
+const WS_API = API.replace(/^http/, "ws");
+const voiceWsUrl = () => `${WS_API}/voice/ws` +
+  (COMMAND_CENTRE_API_KEY ? `?api_key=${encodeURIComponent(COMMAND_CENTRE_API_KEY)}` : "");
+
+// Mic capture: float32 frames from the browser -> 16-bit PCM for the voice
+// service. An AudioWorklet keeps capture off the main thread; ScriptProcessor
+// is the fallback for browsers that refuse the Blob-URL worklet.
+const PCM_WORKLET = `
+class PCMTap extends AudioWorkletProcessor {
+  process(inputs){
+    const ch = inputs[0] && inputs[0][0];
+    if (ch && ch.length) this.port.postMessage(new Float32Array(ch));
+    return true;
+  }
+}
+registerProcessor('pcm-tap', PCMTap);
+`;
+
+const floatToPCM16 = f32 => {
+  const out = new Int16Array(f32.length);
+  for (let i = 0; i < f32.length; i++) {
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return out.buffer;
+};
+
 const PROVIDER_COLORS = {anthropic:"#7c3aed",openai:"#059669",google:"#2563eb",ollama:"#ea580c",deepseek:"#db2777",none:"#64748b"};
 const DEPT_EMOJI = {learning_design:"📚",academic_development:"🎓",marketing_sales:"📣",operations:"⚙️",research_intelligence:"🔬",support:"🛟",rag:"🔍",hybrid:"🔀"};
 
@@ -4269,13 +4298,20 @@ function App() {
   const [wjDept,setWjDept]         = useState(null);      // selected department obj
   const [wjAgent,setWjAgent]       = useState(null);      // selected employee obj
   const [useTools,setUseTools]     = useState(true);      // let agents call n8n workflows
+  const [recording,setRecording]   = useState(false);
+  const [voiceState,setVoiceState] = useState('idle'); // idle|connecting|listening|speaking|error
+  const [partial,setPartial]       = useState('');     // live VOSK hypothesis
+  const [voiceErr,setVoiceErr]     = useState('');
+  const [voiceEngines,setVoiceEngines] = useState(null);
   const bottomRef = useRef(null);
   const abortRef  = useRef(null);
   const fileRef   = useRef(null);
+  const voiceRef  = useRef({});   // {ws, stream, ctx, node, source}
 
   useEffect(()=>{
     fetch(`${API}/models`).then(r=>r.json()).then(setModels).catch(()=>{});
     fetch(`${API}/wijerco/roster`).then(r=>r.json()).then(setRoster).catch(()=>{});
+    fetch(`${API}/voice/engines`).then(r=>r.json()).then(setVoiceEngines).catch(()=>setVoiceEngines(null));
   },[]);
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}); },[messages]);
@@ -4358,6 +4394,105 @@ function App() {
   };
 
   const stop=()=>{ abortRef.current?.abort(); setStreaming(false); };
+
+  // -------------------------------------------------------------------------
+  // Voice capture: mic -> /voice/ws -> live transcript in the composer.
+  // The finished transcript lands in the input box rather than sending itself,
+  // so a misheard question can be corrected before it costs a model call.
+  // -------------------------------------------------------------------------
+
+  const stopVoice = useCallback((graceful=true) => {
+    const v = voiceRef.current;
+    try { if (graceful && v.ws?.readyState === 1) v.ws.send(JSON.stringify({type:'stop'})); } catch {}
+    try { v.node?.disconnect(); v.source?.disconnect(); } catch {}
+    try { v.stream?.getTracks().forEach(t=>t.stop()); } catch {}
+    try { v.ctx?.close(); } catch {}
+    voiceRef.current = {ws: v.ws};   // keep the socket open for the closing transcript
+    setRecording(false);
+    setVoiceState('idle');
+    setPartial('');
+  }, []);
+
+  const startVoice = useCallback(async () => {
+    if (recording) { stopVoice(true); return; }
+    setVoiceErr('');
+    setVoiceState('connecting');
+
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({audio:{
+        channelCount:1, echoCancellation:true, noiseSuppression:true, autoGainControl:true,
+      }});
+    } catch (e) {
+      setVoiceErr('Microphone access denied. Allow it in the browser, and note that getUserMedia needs https:// or localhost.');
+      setVoiceState('error');
+      return;
+    }
+
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const source = ctx.createMediaStreamSource(stream);
+    const ws = new WebSocket(voiceWsUrl());
+    ws.binaryType = 'arraybuffer';
+    voiceRef.current = {ws, stream, ctx, source};
+
+    const pump = f32 => { if (ws.readyState === 1) ws.send(floatToPCM16(f32)); };
+
+    ws.onopen = async () => {
+      ws.send(JSON.stringify({
+        engine:      voiceEngines?.hybrid?.available ? 'hybrid' : 'whisper',
+        sample_rate: Math.round(ctx.sampleRate),   // server resamples to 16 kHz
+        vad_backend: 'auto',
+        partials:    true,
+        auto_query:  false,                        // review before sending
+        session_id:  sessionId,
+      }));
+
+      let node;
+      try {
+        const url = URL.createObjectURL(new Blob([PCM_WORKLET], {type:'application/javascript'}));
+        await ctx.audioWorklet.addModule(url);
+        URL.revokeObjectURL(url);
+        node = new AudioWorkletNode(ctx, 'pcm-tap');
+        node.port.onmessage = e => pump(e.data);
+      } catch {
+        node = ctx.createScriptProcessor(4096, 1, 1);
+        node.onaudioprocess = e => pump(e.inputBuffer.getChannelData(0));
+        node.connect(ctx.destination);            // ScriptProcessor needs a sink to tick
+      }
+      source.connect(node);
+      voiceRef.current.node = node;
+      setRecording(true);
+      setVoiceState('listening');
+    };
+
+    ws.onmessage = ev => {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.type === 'speech_start') setVoiceState('speaking');
+      else if (m.type === 'speech_end') setVoiceState(r => r === 'speaking' ? 'listening' : r);
+      else if (m.type === 'partial') setPartial(m.text);
+      else if (m.type === 'final') {
+        setPartial('');
+        // Append each finished utterance so a long dictation accumulates.
+        setInput(prev => (prev ? prev.replace(/\s+$/,'') + ' ' : '') + m.text);
+      } else if (m.type === 'transcript') {
+        setPartial('');
+        try { ws.close(); } catch {}
+      } else if (m.type === 'error') {
+        setVoiceErr(m.message || 'Voice service error');
+        setVoiceState('error');
+      }
+    };
+
+    ws.onerror = () => {
+      setVoiceErr('Could not reach the voice service. Start it with: python -m media.voice_service --serve');
+      setVoiceState('error');
+      stopVoice(false);
+    };
+    ws.onclose = () => { if (voiceRef.current.node) stopVoice(false); };
+  }, [recording, sessionId, voiceEngines, stopVoice]);
+
+  // Never leave the mic live if the component goes away.
+  useEffect(() => () => stopVoice(false), [stopVoice]);
 
   const onPickFile = () => fileRef.current?.click();
 
@@ -4601,6 +4736,16 @@ function App() {
               <button onClick={clearAttached} style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:11}}>clear</button>
             </div>
           )}
+          {(partial||voiceErr) && (
+            <div style={{maxWidth:900,margin:'0 auto 8px',padding:'7px 12px',borderRadius:9,fontSize:12.5,
+              background: voiceErr?'#fdeceb':'var(--gold-tint)',
+              border:'1px solid '+(voiceErr?'#f0c4c0':'#e2cf8f'),
+              color: voiceErr?'#8a2a22':'#8a630f'}}>
+              {voiceErr
+                ? <><b>Voice</b> · {voiceErr}</>
+                : <><span style={{opacity:.6}}>hearing…</span> {partial}</>}
+            </div>
+          )}
           <div style={{display:'flex',gap:10,alignItems:'flex-end',maxWidth:900,margin:'0 auto'}}>
             {/* Upload + mode */}
             <div style={{display:'flex',flexDirection:'column',gap:4,alignItems:'center'}}>
@@ -4615,6 +4760,22 @@ function App() {
                 <option value="chat">this chat</option>
                 <option value="kb">to KB</option>
               </select>
+            </div>
+
+            {/* Voice: hold a live mic stream open; transcript lands in the box */}
+            <div style={{display:'flex',flexDirection:'column',gap:4,alignItems:'center'}}>
+              <button onClick={startVoice}
+                title={recording?'Stop dictation':'Dictate — speech is transcribed into the box'}
+                style={{padding:'10px 12px',
+                  background: recording ? (voiceState==='speaking'?'var(--red)':'var(--gold-tint)') : 'var(--bg3)',
+                  border:'1px solid '+(recording?(voiceState==='speaking'?'var(--red)':'#e2cf8f'):'var(--border)'),
+                  borderRadius:10,color:recording&&voiceState==='speaking'?'#fff':'var(--text)',
+                  cursor:'pointer',fontSize:16,lineHeight:1,transition:'all .15s'}}>
+                {voiceState==='connecting' ? '…' : recording ? '■' : '🎙'}
+              </button>
+              <span style={{fontSize:9,color:'var(--muted)',letterSpacing:'.04em'}}>
+                {voiceState==='speaking' ? 'speech' : voiceState==='listening' ? 'listening' : 'voice'}
+              </span>
             </div>
             <textarea
               value={input}
