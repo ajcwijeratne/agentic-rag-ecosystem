@@ -164,24 +164,33 @@ def load_model(path: str | Path | None = None):
     return _model_cache[key]
 
 
+def _package_installed() -> bool:
+    """Is `vosk` importable? Checked with find_spec so we do not pay the import."""
+    from importlib.util import find_spec
+
+    try:
+        return find_spec("vosk") is not None
+    except (ImportError, ValueError):
+        return False
+
+
 def is_available() -> bool:
     """True when both the `vosk` package and a model are present."""
-    try:
-        import vosk  # noqa: F401
-    except Exception:
-        return False
-    return resolve_model_path() is not None
+    return _package_installed() and resolve_model_path() is not None
 
 
 def status() -> dict:
     """Diagnostic summary for the /engines endpoint."""
-    try:
-        import vosk  # type: ignore
+    installed = _package_installed()
+    version = None
+    if installed:
+        # Read the version from package metadata rather than importing vosk.
+        from importlib.metadata import PackageNotFoundError, version as pkg_version
 
-        installed = True
-        version = getattr(vosk, "__version__", "unknown")
-    except Exception:
-        installed, version = False, None
+        try:
+            version = pkg_version("vosk")
+        except PackageNotFoundError:
+            version = "unknown"
 
     model = resolve_model_path()
     return {

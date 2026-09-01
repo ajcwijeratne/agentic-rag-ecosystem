@@ -251,21 +251,26 @@ class EnergyVAD:
 # ---------------------------------------------------------------------------
 
 def available_backends() -> dict:
-    """Which VAD backends can actually be constructed on this machine."""
-    status = {"energy": True, "webrtc": False, "silero": False}
-    try:
-        import webrtcvad  # noqa: F401
+    """
+    Which VAD backends can be constructed on this machine.
 
-        status["webrtc"] = True
-    except Exception:
-        pass
-    try:
-        import torch  # noqa: F401
+    Probes with find_spec rather than importing: importing torch costs tens of
+    seconds cold, and this runs on every /engines call, which the Command Centre
+    hits on mount. Locating the module is enough to know it is installed.
+    """
+    from importlib.util import find_spec
 
-        status["silero"] = True
-    except Exception:
-        pass
-    return status
+    def installed(name: str) -> bool:
+        try:
+            return find_spec(name) is not None
+        except (ImportError, ValueError):
+            return False
+
+    return {
+        "energy": True,                     # pure numpy, always available
+        "webrtc": installed("webrtcvad"),
+        "silero": installed("torch"),
+    }
 
 
 def create_vad(backend: str = VAD_BACKEND, **kwargs) -> VADBackend:

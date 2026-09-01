@@ -197,11 +197,13 @@ def engine_status() -> dict:
     from . import vosk_engine
     from .vad import available_backends
 
-    try:
-        import faster_whisper  # noqa: F401
+    # find_spec, not import: engine_status runs on every /engines call and
+    # importing faster_whisper (and torch behind it) costs tens of seconds cold.
+    from importlib.util import find_spec
 
-        whisper_ok = True
-    except Exception:
+    try:
+        whisper_ok = find_spec("faster_whisper") is not None
+    except (ImportError, ValueError):
         whisper_ok = False
 
     vosk_state = vosk_engine.status()

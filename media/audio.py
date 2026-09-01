@@ -16,6 +16,7 @@ uses ffmpeg, which the project already requires for the video pipeline.
 
 from __future__ import annotations
 
+import io
 import shutil
 import subprocess
 import wave
@@ -122,11 +123,36 @@ def decode_to_pcm(path: Path | str, sample_rate: int = SAMPLE_RATE) -> bytes:
     return decode_bytes_to_pcm(path.read_bytes(), sample_rate=sample_rate)
 
 
+def _wav_bytes_to_pcm(data: bytes, sample_rate: int) -> bytes | None:
+    """
+    Decode an in-memory WAV without ffmpeg. Returns None when the blob is not a
+    plain PCM WAV, so the caller falls through to ffmpeg.
+    """
+    if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return None
+    try:
+        with wave.open(io.BytesIO(data), "rb") as wf:
+            if wf.getsampwidth() != SAMPLE_WIDTH:
+                return None            # a-law/µ-law/24-bit: let ffmpeg handle it
+            raw = wf.readframes(wf.getnframes())
+    except (wave.Error, EOFError):
+        return None
+    return resample_pcm(to_mono(raw, wf.getnchannels()), wf.getframerate(), sample_rate)
+
+
 def decode_bytes_to_pcm(data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
     """
     Decode an in-memory audio blob (an upload, a browser MediaRecorder chunk)
-    to canonical PCM by piping it through ffmpeg on stdin/stdout.
+    to canonical PCM.
+
+    A plain PCM WAV is decoded in-process, so uploads work on a machine with no
+    ffmpeg. Everything else (webm/opus from MediaRecorder, mp3, m4a) is piped
+    through ffmpeg, which those formats genuinely require.
     """
+    wav = _wav_bytes_to_pcm(data, sample_rate)
+    if wav is not None:
+        return wav
+
     if not ffmpeg_available():
         raise RuntimeError(
             "ffmpeg is required to decode this audio format. "

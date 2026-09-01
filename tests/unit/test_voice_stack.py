@@ -349,3 +349,55 @@ def test_http_auth_still_rejects_query_key(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         require_api_key(http_conn)
     assert exc.value.status_code == 401
+
+# ---------------------------------------------------------------------------
+# Regressions found by live testing
+# ---------------------------------------------------------------------------
+
+def test_uploaded_wav_decodes_without_ffmpeg(monkeypatch, two_utterances, tmp_path):
+    """
+    /transcribe/upload used to demand ffmpeg for every blob, so a WAV upload
+    failed on a machine without it. A plain PCM WAV must decode in-process.
+    """
+    from media import audio
+
+    monkeypatch.setattr(audio, "ffmpeg_available", lambda: False)
+    path = write_wav(two_utterances, tmp_path / "upload.wav")
+    decoded = audio.decode_bytes_to_pcm(path.read_bytes())
+
+    assert decoded == two_utterances
+
+
+def test_non_wav_upload_without_ffmpeg_reports_clearly(monkeypatch):
+    """A webm/opus blob genuinely needs ffmpeg; the error must say so."""
+    from media import audio
+
+    monkeypatch.setattr(audio, "ffmpeg_available", lambda: False)
+    with pytest.raises(RuntimeError, match="ffmpeg"):
+        audio.decode_bytes_to_pcm(bytes([0x1A, 0x45, 0xDF, 0xA3]) + b"not a wav at all")
+
+
+def test_availability_probes_do_not_import_heavy_modules(monkeypatch):
+    """
+    engine_status runs on every /engines call, which the UI hits on mount.
+    Importing torch/faster_whisper there cost tens of seconds cold and timed the
+    endpoint out, so availability must be probed with find_spec instead.
+    """
+    import builtins
+
+    from media.asr import engine_status
+
+    real_import = builtins.__import__
+    heavy = {"torch", "faster_whisper", "vosk", "webrtcvad"}
+    imported = []
+
+    def tracking_import(name, *args, **kwargs):
+        if name.split(".")[0] in heavy:
+            imported.append(name)
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", tracking_import)
+    status = engine_status()
+
+    assert imported == [], f"engine_status imported heavy modules: {imported}"
+    assert set(status["vad"]) == {"silero", "webrtc", "energy"}
