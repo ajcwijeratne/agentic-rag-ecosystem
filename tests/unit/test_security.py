@@ -45,6 +45,10 @@ def _client_with_admin_route(monkeypatch, client_host: str):
     """Build an app with a require_admin-protected route and a fixed client host."""
     monkeypatch.setenv("ADMIN_API_KEY", "secret-admin")
     monkeypatch.setenv("API_KEY", "secret-user")
+    # RBAC_ROLE_KEYS is a third source of valid keys (common/security.py reads
+    # it directly), so leaving the machine's real value in place would let a
+    # developer's .env decide what these assertions see.
+    monkeypatch.delenv("RBAC_ROLE_KEYS", raising=False)
     import common.security as sec
     importlib.reload(sec)
 
@@ -104,6 +108,9 @@ def test_admin_allows_loopback(monkeypatch):
 def test_admin_503_when_no_key_configured(monkeypatch):
     monkeypatch.delenv("ADMIN_API_KEY", raising=False)
     monkeypatch.delenv("API_KEY", raising=False)
+    # "No key configured" has to mean no key from ANY source, or this asserts
+    # 503 on a machine where RBAC_ROLE_KEYS supplies an admin key and gets 403.
+    monkeypatch.delenv("RBAC_ROLE_KEYS", raising=False)
     import common.security as sec
     importlib.reload(sec)
 
