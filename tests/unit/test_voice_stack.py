@@ -737,3 +737,99 @@ def test_env_example_has_no_comment_as_value():
             if v and v.lstrip().startswith("#")
         }
         assert not bad, f"{name}: value is actually a comment: {bad}"
+
+
+# ---------------------------------------------------------------------------
+# Screen awareness
+# ---------------------------------------------------------------------------
+
+def test_screen_capture_is_off_by_default(monkeypatch):
+    """A screenshot is the most sensitive thing here. Opt in, never default."""
+    from media import screen
+
+    monkeypatch.setattr(screen, "SCREEN_ENABLED", False)
+    with pytest.raises(screen.ScreenCaptureError, match="off"):
+        screen.capture()
+
+
+def test_screen_blocklist_refuses_sensitive_windows(monkeypatch):
+    from media import screen
+
+    monkeypatch.setattr(screen, "SCREEN_ENABLED", True)
+    monkeypatch.setattr(screen, "active_window",
+                        lambda: {"title": "1Password - Personal", "app": "1Password.exe", "pid": 1})
+    with pytest.raises(screen.ScreenCaptureError, match="blocklist"):
+        screen.capture(enabled=True)
+
+
+def test_blocklist_matching():
+    from media.screen import is_blocked
+
+    assert is_blocked("1Password - Personal Vault") == "1password"
+    # Which entry matched is incidental — several can overlap. What matters is
+    # that a banking window is refused and an ordinary one is not.
+    assert is_blocked("Chase Internet Banking") is not None
+    assert is_blocked("main.py - Visual Studio Code") is None
+
+
+def test_screen_intent_separates_looking_from_retrieval():
+    """A screen question must not be answered out of the vault, and vice versa."""
+    from media.screen import region_for, wants_screen
+
+    for q in ("what is on my screen", "what am I looking at",
+              "summarise this page", "read this window", "what does this say"):
+        assert wants_screen(q), q
+    for q in ("what is the WijerCo diagnostic sprint",
+              "summarise the TEQSA requirements", "what is agentic RAG"):
+        assert not wants_screen(q), q
+
+    assert region_for("read this window") == "window"
+    assert region_for("what is on my screen") == "screen"
+
+
+async def test_voice_falls_through_when_not_a_screen_question():
+    """Normal questions must still reach retrieval."""
+    from orchestrator.screen import answer_about_screen
+
+    assert await answer_about_screen("what is the diagnostic sprint") is None
+
+
+async def test_voice_explains_itself_when_capture_is_refused(monkeypatch):
+    """
+    Asked about the screen with the capability off, it must say so out loud
+    rather than fail silently or fall through to an unrelated vault answer.
+    """
+    from media import screen
+    from orchestrator.screen import answer_about_screen
+
+    monkeypatch.setattr(screen, "SCREEN_ENABLED", False)
+    result = await answer_about_screen("what is on my screen")
+
+    assert result is not None
+    assert result["route"] == "screen"
+    assert "off" in result["answer"].lower()
+    assert result["screen"]["captured"] is False
+
+
+def test_vision_status_reports_whether_images_stay_local():
+    """The UI must be able to tell the user if screenshots leave the machine."""
+    from media.vision import status
+
+    s = status()
+    assert set(s) >= {"available", "local_model", "cloud_provider", "stays_local"}
+    assert isinstance(s["stays_local"], bool)
+
+
+def test_screen_module_cannot_act_on_the_desktop():
+    """
+    Guard the read-only promise: no click, type, or launch primitives may appear
+    in the screen module, whatever a future edit adds.
+    """
+    import inspect
+
+    from media import screen
+
+    source = inspect.getsource(screen)
+    for forbidden in ("pyautogui", "SendInput", "keybd_event", "mouse_event",
+                      "subprocess", "os.system", "ShellExecute"):
+        assert forbidden not in source, f"screen.py must stay read-only: found {forbidden}"

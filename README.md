@@ -289,6 +289,45 @@ Test it without speaking by replaying a file through the whole pipeline:
 python -m media.voice_daemon --wav sample.wav --fast --no-speak --max-turns 1
 ```
 
+### Screen awareness
+
+The assistant can look at the display and answer about it — *"what's on my
+screen?"*, *"what does this error say?"*, *"summarise this page"*. Spoken screen
+questions are detected and answered by looking, instead of being sent to
+retrieval where they have no answer.
+
+**Read-only by design.** It can see; it cannot click, type, or launch anything.
+A test asserts no input-synthesis or process-spawning call ever appears in
+`media/screen.py`.
+
+**Privacy.** Everything else in the voice stack runs locally — VAD, VOSK,
+Whisper, the wake word — and no audio leaves the machine. A screenshot is
+different: it is the most sensitive thing this system can transmit. So:
+
+- Off unless `SCREEN_AWARENESS_ENABLED=true`.
+- Never automatic. Every capture answers a request made at that moment.
+- Every capture is written to the audit log, and sending one to a cloud provider
+  is logged separately as `vision.cloud_upload`.
+- Windows matching `SCREEN_BLOCKLIST` (password managers, banking) are refused.
+- A local vision model is preferred, and then the image never leaves at all:
+
+```bash
+ollama pull llama3.2-vision      # or llava, qwen2.5vl, moondream
+```
+
+`GET /screen/status` reports which path is in use and says plainly whether
+screenshots stay on the machine.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/screen/status` | Capability + whether images stay local |
+| GET | `/screen/window` | Foreground window title and app — no pixels captured |
+| POST | `/screen/describe` | Capture and answer a question (operator role) |
+
+`/screen/window` is deliberately outside the capture gate: it reads only the
+window title, which is often enough to know what someone is working on and costs
+nothing.
+
 ### Ingestion
 
 `media/ingest/audio.py` transcribes through `media.asr` (VAD-gated, engine

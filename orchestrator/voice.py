@@ -234,6 +234,14 @@ async def _run_hybrid(
     """
     from .main import HybridRequest, run_hybrid
 
+    # "What's on my screen?" cannot be answered from the vault. Look instead.
+    if spoken:
+        from .screen import answer_about_screen
+
+        seen = await answer_about_screen(query, spoken=True)
+        if seen is not None:
+            return {"session_id": session_id, "query": query, **seen}
+
     history = [{"role": "system", "content": voice_system_prompt()}] if spoken else []
     return await run_hybrid(
         HybridRequest(

@@ -62,6 +62,10 @@ webrtcvad~=2.0.10; sys_platform != "win32"
 sounddevice~=0.4          # microphone capture outside the browser
 pyttsx3~=2.90             # local text to speech (SAPI on Windows)
 
+# Screen awareness (media/screen.py). Pillow already ships with moviepy.
+psutil~=5.9               # name the process owning the foreground window
+pywin32; sys_platform == "win32"   # foreground window title and bounds
+
 # ---------------------------------------------------------------------------
 # Multimodal expansion (Phase 2) — image ingestion + visual search
 #   torch + open_clip back the self-hosted visual embedder (media_visual).

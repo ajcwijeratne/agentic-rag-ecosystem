@@ -84,6 +84,10 @@ app.include_router(inbox_router)
 from .voice import router as voice_router
 app.include_router(voice_router)
 
+# Screen awareness: look at the display and describe it. Read-only.
+from .screen import router as screen_router
+app.include_router(screen_router)
+
 # ---------------------------------------------------------------------------
 # Command Centre UI (installable PWA)
 # Served same-origin as the API so the installed app and its fetch() calls both
