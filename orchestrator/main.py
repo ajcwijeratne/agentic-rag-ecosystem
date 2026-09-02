@@ -1501,7 +1501,10 @@ async def run_hybrid(req: HybridRequest):
             "finished": False,
         }
         try:
-            final_state = graph.invoke(initial_state)
+            # ainvoke, not invoke: rag_node and llm_node are async. The sync
+            # entrypoint returns before they have produced anything, so the
+            # payload arrives with no answer and no error to explain it.
+            final_state = await graph.ainvoke(initial_state)
             rag_result = final_state.get("output_payload", {})
         except Exception as exc:
             rag_result = {"error": str(exc), "answer": "", "context_chunks": []}
@@ -1958,7 +1961,8 @@ async def _background_query(query: str) -> None:
         "finished": False,
     }
     try:
-        final_state = graph.invoke(initial_state)
+        # Async nodes: see the note in run_hybrid.
+        final_state = await graph.ainvoke(initial_state)
         payload = final_state.get("output_payload", {})
 
         # Forward result to Apprise notifier

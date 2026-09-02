@@ -56,6 +56,17 @@ WHISPER_COMPUTE: str = os.getenv("WHISPER_COMPUTE", "int8")
 WHISPER_BEAM:    int = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
 WHISPER_LANG:    str = os.getenv("WHISPER_LANGUAGE", "")        # "" = auto-detect
 
+# Vocabulary bias. Whisper accepts an `initial_prompt` that it treats as
+# preceding context, which makes it far likelier to spell domain terms and
+# proper nouns correctly. Without it "WijerCo" is transcribed as "wider code",
+# and the retrieval layer then finds nothing — the assistant mishears the one
+# word the whole knowledge base is organised around.
+WHISPER_PROMPT: str = os.getenv(
+    "WHISPER_PROMPT",
+    "WijerCo, Aaron Wijeratne, TEQSA, AQF, Swinburne, OES, micro-credential, "
+    "agentic RAG, Qdrant, Obsidian, higher education.",
+).strip()
+
 ENGINES = ("whisper", "vosk", "hybrid")
 
 # Audio replayed once the wake word fires, so a question asked in the same
@@ -174,6 +185,7 @@ def whisper_transcribe_pcm(
         language=language or (WHISPER_LANG or None),
         beam_size=beam_size,
         word_timestamps=word_timestamps,
+        initial_prompt=WHISPER_PROMPT or None,
         # Our own VAD already removed the silence; a second pass here would
         # only re-trim audio that is by construction all speech.
         vad_filter=False,
