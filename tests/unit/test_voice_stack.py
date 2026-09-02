@@ -585,3 +585,155 @@ def test_voice_persona_keeps_replies_short():
     assert str(VOICE_MAX_SENTENCES) in prompt
     for banned in ("markdown", "bullet"):
         assert banned in prompt, f"persona should forbid {banned}"
+
+
+def test_wake_detector_ignores_retracted_partials(monkeypatch):
+    """
+    Regression: VOSK grammar-mode partials are unstable. Decoding a sentence with
+    no wake word in it, it briefly proposed "[unk] jarvis" before retracting to
+    "[unk] [unk]" on the final — and the assistant woke on unrelated speech.
+    Only settled results may count.
+    """
+    from media import wake
+
+    monkeypatch.setattr(wake, "WAKE_ON_PARTIAL", False)
+
+    class FakeStream:
+        """Proposes the wake word in a partial, then retracts it."""
+
+        def __init__(self):
+            self.n = 0
+
+        def accept(self, pcm):
+            self.n += 1
+            if self.n == 1:
+                return [wake_result("[unk] jarvis", partial=True)]
+            if self.n == 2:
+                return [wake_result("[unk] [unk]", partial=False)]
+            return []
+
+        def reset(self):
+            pass
+
+    def wake_result(text, partial):
+        from media.vosk_engine import VoskResult
+
+        return VoskResult(text=text, partial=partial)
+
+    detector = wake.WakeWordDetector.__new__(wake.WakeWordDetector)
+    detector.phrases = ["hey jarvis", "jarvis"]
+    detector.available = True
+    detector._stream = FakeStream()
+    detector._last_hit = 0.0
+
+    assert detector.feed(b"\x00" * 3200) is None, "woke on a retracted partial"
+    assert detector.feed(b"\x00" * 3200) is None, "woke on a final with no wake word"
+
+
+def test_wake_detector_fires_on_a_settled_result(monkeypatch):
+    from media import wake
+    from media.vosk_engine import VoskResult
+
+    monkeypatch.setattr(wake, "WAKE_ON_PARTIAL", False)
+
+    class FakeStream:
+        def accept(self, pcm):
+            return [VoskResult(text="[unk] hey jarvis [unk]", partial=False)]
+
+        def reset(self):
+            pass
+
+    detector = wake.WakeWordDetector.__new__(wake.WakeWordDetector)
+    detector.phrases = ["hey jarvis", "jarvis"]
+    detector.available = True
+    detector._stream = FakeStream()
+    detector._last_hit = 0.0
+
+    assert detector.feed(b"\x00" * 3200) == "hey jarvis"
+
+
+def test_wake_ignores_retracted_partial_hypotheses(monkeypatch):
+    """
+    Regression: VOSK grammar mode briefly proposed "[unk] jarvis" while decoding
+    a sentence with no wake word, then retracted it to "[unk] [unk]" on the
+    final. Matching partials woke the assistant on unrelated speech, which in
+    hands-free mode means transcribing and answering a conversation it was never
+    addressed in. Only settled results may count.
+    """
+    from media import vosk_engine, wake
+
+    scripted = [
+        [vosk_engine.VoskResult(text="[unk]", partial=True)],
+        [vosk_engine.VoskResult(text="[unk] jarvis", partial=True)],   # retracted
+        [vosk_engine.VoskResult(text="[unk] [unk]", partial=False)],   # settled truth
+    ]
+
+    class ScriptedStream:
+        def __init__(self, *a, **k):
+            self.i = 0
+
+        def accept(self, pcm):
+            out = scripted[self.i] if self.i < len(scripted) else []
+            self.i += 1
+            return out
+
+        def reset(self):
+            pass
+
+    monkeypatch.setattr(vosk_engine, "VoskStream", ScriptedStream)
+    monkeypatch.setattr(vosk_engine, "is_available", lambda: True)
+    monkeypatch.setattr(vosk_engine, "load_model", lambda *a, **k: object())
+    monkeypatch.setattr(wake, "WAKE_ON_PARTIAL", False)
+
+    detector = wake.WakeWordDetector(["hey jarvis", "jarvis"])
+    assert detector.available
+    hits = [detector.feed(b"\x00" * 3200) for _ in range(3)]
+    assert hits == [None, None, None], f"woke on a retracted partial: {hits}"
+
+
+def test_wake_still_fires_on_a_settled_result(monkeypatch):
+    """The fix must not make the detector deaf to a genuine wake phrase."""
+    from media import vosk_engine, wake
+
+    class ScriptedStream:
+        def __init__(self, *a, **k):
+            self.done = False
+
+        def accept(self, pcm):
+            if self.done:
+                return []
+            self.done = True
+            return [vosk_engine.VoskResult(text="[unk] hey jarvis [unk]", partial=False)]
+
+        def reset(self):
+            pass
+
+    monkeypatch.setattr(vosk_engine, "VoskStream", ScriptedStream)
+    monkeypatch.setattr(vosk_engine, "is_available", lambda: True)
+    monkeypatch.setattr(vosk_engine, "load_model", lambda *a, **k: object())
+
+    detector = wake.WakeWordDetector(["hey jarvis", "jarvis"])
+    assert detector.feed(b"\x00" * 3200) == "hey jarvis"
+
+
+def test_env_example_has_no_comment_as_value():
+    """
+    Regression: python-dotenv treats an inline comment as the value when the
+    value itself is empty, so `VOICE_PERSONA=   # set to override` loaded the
+    literal comment and sent it to the model as the system prompt for every
+    spoken turn. Comments above empty keys, never beside them.
+    """
+    from pathlib import Path
+
+    from dotenv import dotenv_values
+
+    root = Path(__file__).resolve().parents[2]
+    for name in (".env.example", ".env"):
+        path = root / name
+        if not path.exists():
+            continue
+        bad = {
+            k: v for k, v in dotenv_values(path).items()
+            if v and v.lstrip().startswith("#")
+        }
+        assert not bad, f"{name}: value is actually a comment: {bad}"

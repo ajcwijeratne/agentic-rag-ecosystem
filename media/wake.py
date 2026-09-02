@@ -44,6 +44,10 @@ WAKE_ENABLED: bool = os.getenv("WAKE_ENABLED", "false").lower() in ("1", "true",
 # How long the assistant stays awake with no speech before it needs the wake
 # phrase again.
 WAKE_TIMEOUT_S: float = float(os.getenv("WAKE_TIMEOUT_S", "12"))
+# Match in-flight hypotheses as well as settled ones. Faster to wake, but VOSK
+# retracts grammar-mode partials often enough to cause false wakes — see
+# WakeWordDetector.feed. Off by default.
+WAKE_ON_PARTIAL: bool = os.getenv("WAKE_ON_PARTIAL", "false").lower() in ("1", "true", "yes")
 # Phrases that interrupt a spoken reply. Deliberately short and unlike anything
 # the assistant says about itself, so its own voice cannot trigger them.
 BARGE_WORDS: list = [
@@ -142,6 +146,15 @@ class WakeWordDetector:
         """
         Push audio. Returns the matched wake phrase, or None.
 
+        Only *settled* results are matched. VOSK partials in grammar mode are
+        unstable: decoding unrelated speech, it briefly proposed "[unk] jarvis"
+        before retracting it to "[unk] [unk]" on the final. Matching partials
+        therefore woke the assistant on a sentence with no wake word in it.
+        Waiting for the final costs roughly a second of endpointing delay and
+        removes that entire class of false wake.
+
+        Set WAKE_ON_PARTIAL=true to trade that back for latency.
+
         `debounce_s` suppresses a second hit immediately after the first, which
         otherwise happens when the phrase straddles two decoder results.
         """
@@ -149,6 +162,8 @@ class WakeWordDetector:
             return None
 
         for result in self._stream.accept(pcm):
+            if result.partial and not WAKE_ON_PARTIAL:
+                continue
             hit = phrase_in(result.text, self.phrases)
             if not hit:
                 continue

@@ -58,8 +58,19 @@ WHISPER_LANG:    str = os.getenv("WHISPER_LANGUAGE", "")        # "" = auto-dete
 
 ENGINES = ("whisper", "vosk", "hybrid")
 
-# Audio replayed after the wake word fires, covering detector lag only.
-WAKE_PREROLL_S: float = float(os.getenv("WAKE_PREROLL_S", "0.6"))
+# Audio replayed once the wake word fires, so a question asked in the same
+# breath is not lost while the detector was still deciding.
+#
+# Tuned by measurement, and the safe band is narrow. The detector only matches
+# settled VOSK results (see media/wake.py), which lands roughly a second after
+# the phrase is actually spoken, so the buffer has to reach back at least that
+# far. Measured against "hey jarvis, what is agentic RAG":
+#   0.6s  clips the question   -> "his agentic retrieval augmented generation"
+#   1.0s  clean                -> "What is Agentic Retrieval Augmented Generation?"
+#   1.5s  clean
+#   2.0s  degrades: Whisper starts transcribing the wake phrase itself and the
+#         result loses its punctuation, and prior speech risks being dragged in
+WAKE_PREROLL_S: float = float(os.getenv("WAKE_PREROLL_S", "1.2"))
 
 
 # ---------------------------------------------------------------------------
