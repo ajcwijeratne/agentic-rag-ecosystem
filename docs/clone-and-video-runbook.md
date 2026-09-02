@@ -1,5 +1,39 @@
 # Clone and video runbook (free path)
 
+## Status: PARKED as of 3 September 2026
+
+This pipeline is built and tested but deliberately not running. Deciding
+that explicitly, rather than leaving it half-configured, is Stage 1 items
+8 to 10 of the product finalisation plan: a capability that is off on
+purpose is fine, one that is off by accident reads as a broken system.
+
+`python -m scripts.verify_media_providers` currently reports NOT READY
+(1 ok, 7 warn, 3 fail): both GPU workers are down, the voice and avatar
+paths have no engine, and ffmpeg is not on PATH on wijwork. Nothing else
+in the system polls these workers, so none of that shows as a false alarm
+in the cockpit or the watchdog; the pipeline is simply dormant.
+
+To un-park, in this order. Steps 1 and 2 need Aaron and cannot be
+automated, which is the actual reason this is parked:
+
+1. Record a clean 5 to 15 second voice reference. Set `VOICE_REF_AUDIO`
+   to the file and `VOICE_REF_TEXT` to its exact transcript.
+2. Choose a portrait photo. Set `AVATAR_PORTRAIT`.
+3. Install ffmpeg and put it on PATH. Needed for assembly whichever
+   engine is used, so this one matters even if the clone stays off.
+4. Run `deploy/gpu-worker-setup.ps1` on the GPU PC (wijwork).
+5. Start both workers, then set `F5_TTS_URL` and either
+   `MEDIA_TOOL_SADTALKER_ENDPOINT` or `MEDIA_TOOL_MUSETALK_ENDPOINT`.
+   `MUSETALK_REF_VIDEO` is already set; MuseTalk also needs its checkout
+   and weights present.
+6. Re-run `python -m scripts.verify_media_providers` and expect READY.
+
+Until then, treat every clone and avatar capability as unavailable. The
+`clone_output` governance gate stays in force regardless of engine, so
+nothing can slip to publish while this is off.
+
+---
+
 How to clone your voice and face and produce finished video at zero marginal
 cost. Engines run on your Windows PC's GPU; the orchestrator calls them over
 Tailscale. No subscriptions, no API keys, no per-minute charges. The paid

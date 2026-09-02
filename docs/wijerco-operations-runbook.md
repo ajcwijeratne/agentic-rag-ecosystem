@@ -55,7 +55,11 @@ Re-indexing from scratch is the recommended way to move the vector store to a ne
 
 ## 5. API keys and RBAC
 
-**Current state (deliberately incomplete — Stage 1 item 13 is still open):** a single `API_KEY` covers every role including admin. `common/rbac.py` already fully supports `RBAC_ROLE_KEYS` (a JSON map of role name to key) with a fallback to `API_KEY` → operator and `ADMIN_API_KEY` → admin, and `role_for_request()` treats loopback requests as admin regardless of key. The code needs no changes; only `.env` needs the new keys generated and set. This has not been done yet — do it deliberately, not as a drive-by edit, since it touches every credential in the system.
+**Current state (3 Sep 2026 — wijwork done, wijerco outstanding):** `RBAC_ROLE_KEYS` is now set on **wijwork** with three distinct 43-character keys for viewer, operator and admin, verified so that `_role_keys()` resolves all three roles to different values. A leaked read key can no longer reach a destructive admin endpoint on that machine. The previous `.env` is kept beside it as `logs/.env.pre-rbac-*.bak`.
+
+**wijerco is still on the old single-key model** and is the machine that actually matters, because it is the one served over Tailscale; wijwork is reached over loopback, where `role_for_request()` grants admin regardless. To finish item 13: generate three fresh keys on wijerco (do not copy wijwork's — separate machines should not share credentials), set `RBAC_ROLE_KEYS` in its `.env`, restart the stack, and re-open the cockpit once with `?key=<operator key>` so the browser stores the new value as `cc_api_key`. Keep the admin key out of the browser entirely; it is for `/ops/*` calls made deliberately.
+
+`common/rbac.py` needed no changes: it already supported `RBAC_ROLE_KEYS` (a JSON map of role to key) with a fallback to `API_KEY` → operator and `ADMIN_API_KEY` → admin.
 
 **Rotation procedure:** generate new key values, update `.env` on wijwork and wijerco (they do not currently share a value, so both need updating), restart every service that reads the key at startup (the seven core services plus the daemon/channels — a full `launch.ps1` re-run is the simplest way to be sure everything picks up the change), then confirm with `/ops/me` (returns the resolved role for the request) before relying on the new keys.
 
