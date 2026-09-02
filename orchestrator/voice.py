@@ -54,6 +54,30 @@ VOICE_ALLOW_LOCAL: bool = os.getenv("VOICE_ALLOW_LOCAL", "true").lower() in ("1"
 # a cough that clears VAD would otherwise each cost a paid call.
 AUTO_QUERY_MIN_CHARS: int = int(os.getenv("VOICE_AUTO_QUERY_MIN_CHARS", "8"))
 
+# Persona for spoken conversation. The name is cosmetic; the length instruction
+# is not. An answer that reads well on screen is unbearable aloud — nobody wants
+# 400 words and a bulleted list read at them, and the listener cannot skim. This
+# is applied only to voice turns, so typed chat keeps its normal fuller answers.
+VOICE_ASSISTANT_NAME: str = os.getenv("VOICE_ASSISTANT_NAME", "Jarvis")
+VOICE_MAX_SENTENCES: int = int(os.getenv("VOICE_MAX_SENTENCES", "3"))
+VOICE_PERSONA: str = os.getenv("VOICE_PERSONA", "").strip()
+
+
+def voice_system_prompt() -> str:
+    """The framing sent with every spoken turn."""
+    if VOICE_PERSONA:
+        return VOICE_PERSONA
+    return (
+        f"You are {VOICE_ASSISTANT_NAME}, Aaron's voice assistant. This answer "
+        f"will be read aloud, so reply in at most {VOICE_MAX_SENTENCES} short "
+        "sentences of plain spoken English. No markdown, no bullet points, no "
+        "headings, no code blocks, no URLs — they are unreadable aloud. Lead "
+        "with the answer itself rather than restating the question. If the "
+        "honest answer is that you do not know, say so briefly. If the full "
+        "answer genuinely needs more detail, give the short version and say it "
+        "is on screen."
+    )
+
 _ws_url = VOICE_SERVICE_URL.replace("https://", "wss://").replace("http://", "ws://")
 VOICE_WS_URL: str = f"{_ws_url.rstrip('/')}/ws/transcribe"
 
@@ -194,16 +218,30 @@ async def voice_transcribe(
 # Speak-to-answer
 # ---------------------------------------------------------------------------
 
-async def _run_hybrid(query: str, session_id: str, force_route: str | None = None) -> dict:
+async def _run_hybrid(
+    query: str,
+    session_id: str,
+    force_route: str | None = None,
+    spoken: bool = False,
+) -> dict:
     """
     Send a transcript through the normal hybrid routing pipeline. Imported
     lazily: main.py imports this router, so a module-level import would be
     circular.
+
+    `spoken` prepends the voice persona as a system turn, which keeps the reply
+    short enough to listen to. Typed chat never sees it.
     """
     from .main import HybridRequest, run_hybrid
 
+    history = [{"role": "system", "content": voice_system_prompt()}] if spoken else []
     return await run_hybrid(
-        HybridRequest(query=query, session_id=session_id, force_route=force_route)
+        HybridRequest(
+            query=query,
+            session_id=session_id,
+            force_route=force_route,
+            conversation_history=history,
+        )
     )
 
 
@@ -286,6 +324,8 @@ async def voice_ws(client: WebSocket):
     session_id  = str(config.pop("session_id", "") or uuid.uuid4())
     force_route = config.pop("force_route", None)
     auto_query_min_chars = int(config.pop("auto_query_min_chars", AUTO_QUERY_MIN_CHARS))
+    wake_word   = bool(config.get("wake_word", False))
+    wake_phrases = list(config.get("wake_phrases") or [])
 
     key = os.getenv("API_KEY", "").strip()
     upstream_url = f"{VOICE_WS_URL}?api_key={key}" if key else VOICE_WS_URL
@@ -328,7 +368,7 @@ async def voice_ws(client: WebSocket):
         in_flight["busy"] = True
         try:
             await client.send_json({"type": "thinking", "query": text, "session_id": session_id})
-            answer = await _run_hybrid(text, session_id, force_route)
+            answer = await _run_hybrid(text, session_id, force_route, spoken=True)
             await client.send_json({"type": "answer", "session_id": session_id, **answer})
         except Exception as exc:  # noqa: BLE001 — keep the socket alive
             await client.send_json({"type": "error", "message": f"Query failed: {exc}"})
@@ -362,6 +402,14 @@ async def voice_ws(client: WebSocket):
                 continue
 
             text = (event.get("text") or "").strip()
+            # An utterance caught in the same breath as the wake word carries it
+            # in front: "hey jarvis what is X". Asking the agent that verbatim
+            # wastes tokens and confuses retrieval.
+            if wake_word and text:
+                from media.wake import strip_wake_prefix
+
+                text = strip_wake_prefix(text, wake_phrases) or text
+
             if len(text) < auto_query_min_chars:
                 await client.send_json({
                     "type": "skipped", "reason": "too_short", "text": text,

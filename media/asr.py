@@ -30,12 +30,13 @@ timer, each utterance is transcribed exactly once, when it ends.
 
 from __future__ import annotations
 
+import collections
 import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .audio import SAMPLE_RATE, decode_to_pcm, duration_s, pcm_to_float32
+from .audio import SAMPLE_RATE, SAMPLE_WIDTH, decode_to_pcm, duration_s, pcm_to_float32
 from .vad import (
     SegmenterConfig,
     SpeechSegment,
@@ -56,6 +57,9 @@ WHISPER_BEAM:    int = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
 WHISPER_LANG:    str = os.getenv("WHISPER_LANGUAGE", "")        # "" = auto-detect
 
 ENGINES = ("whisper", "vosk", "hybrid")
+
+# Audio replayed after the wake word fires, covering detector lag only.
+WAKE_PREROLL_S: float = float(os.getenv("WAKE_PREROLL_S", "0.6"))
 
 
 # ---------------------------------------------------------------------------
@@ -459,6 +463,12 @@ class LiveConfig:
     vad_backend:   str = "auto"
     emit_partials: bool = True
     segmenter:     SegmenterConfig = field(default_factory=SegmenterConfig)
+    # Wake word. With this on the session starts asleep: audio is listened to
+    # continuously but only the cheap grammar-mode detector runs, so nothing
+    # reaches Whisper or a model until someone says the phrase.
+    wake_word:     bool = False
+    wake_phrases:  list = field(default_factory=list)
+    wake_timeout_s: float = 12.0
 
 
 class LiveSession:
@@ -494,6 +504,43 @@ class LiveSession:
         self.transcript: list = []
         self.started_at = time.time()
 
+        # Barge-in. While the assistant is speaking the client keeps sending
+        # audio, but only a grammar-constrained detector listens, matching just
+        # the interrupt words. The assistant's own voice cannot trigger it
+        # unless it happens to say "stop" or "wait" in isolation, which the
+        # grammar makes vanishingly unlikely — whereas full ASR would transcribe
+        # its own reply and act on it.
+        self.assistant_speaking = False
+        self._barge = None
+
+        # Wake state. `asleep` means only the wake detector is fed.
+        self._wake = None
+        self.asleep = False
+        self._last_voice_at = time.monotonic()
+        if self.config.wake_word:
+            from .wake import WAKE_WORDS, WakeWordDetector
+
+            phrases = self.config.wake_phrases or WAKE_WORDS
+            self._wake = WakeWordDetector(phrases)
+            if self._wake.available:
+                self.asleep = True
+                # Hold a little recent audio while asleep, so a question asked
+                # in the same breath as the wake word ("hey jarvis, what is X")
+                # is not lost in the gap between the detector firing and
+                # transcription starting.
+                #
+                # Kept deliberately short. VOSK reports the phrase once it has
+                # ended, and the question follows it, so only the detector's own
+                # lag needs covering. Buffering longer drags in whatever was said
+                # before the wake word — the tail of an unrelated conversation
+                # gets transcribed and answered as though it were the question.
+                self._preroll: collections.deque = collections.deque()
+                self._preroll_bytes = 0
+                self._preroll_limit = int(SAMPLE_RATE * SAMPLE_WIDTH * WAKE_PREROLL_S)
+            else:
+                print("[asr] wake word requested but unavailable — staying awake")
+                self.config.wake_word = False
+
         if self.config.engine in ("vosk", "hybrid"):
             from . import vosk_engine
 
@@ -518,6 +565,111 @@ class LiveSession:
         """Push a chunk of canonical PCM; return the events it produced."""
         events: list = []
 
+        # ---- assistant is talking: listen only for an interrupt ----------
+        if self.assistant_speaking:
+            if self._barge is not None:
+                hit = self._barge.feed(pcm_chunk)
+                if hit:
+                    events.append({"type": "barge_in", "phrase": hit})
+                    self.set_speaking(False)
+            return events
+
+        # ---- asleep: only the wake detector runs -------------------------
+        if self.asleep:
+            # Byte-bounded, because chunk sizes vary by client.
+            self._preroll.append(pcm_chunk)
+            self._preroll_bytes += len(pcm_chunk)
+            while self._preroll_bytes > self._preroll_limit and len(self._preroll) > 1:
+                self._preroll_bytes -= len(self._preroll.popleft())
+
+            hit = self._wake.feed(pcm_chunk)
+            if hit is None:
+                return []
+            self.asleep = False
+            self._last_voice_at = time.monotonic()
+            events.append({"type": "wake", "phrase": hit})
+            # Replay the buffered audio so the question that followed the wake
+            # word is transcribed rather than dropped.
+            buffered = b"".join(self._preroll)
+            self._preroll.clear()
+            self._preroll_bytes = 0
+            events.extend(self._feed_awake(buffered))
+            return events
+
+        events.extend(self._feed_awake(pcm_chunk))
+
+        # ---- awake but idle: go back to sleep ----------------------------
+        if self.config.wake_word and not self.segmenter.speaking:
+            idle = time.monotonic() - self._last_voice_at
+            if idle >= self.config.wake_timeout_s:
+                events.append({"type": "sleep", "after_idle_s": round(idle, 1)})
+                self.sleep()
+        return events
+
+    def set_speaking(self, speaking: bool) -> None:
+        """
+        Tell the session the assistant has started or stopped talking.
+
+        Note the distinction from the read-only `speaking` property, which means
+        the *user* is mid-utterance according to VAD. This one is the assistant.
+
+        While speaking, incoming audio is routed only to the barge-in detector,
+        so the reply is never transcribed back as user speech. On stopping, the
+        recognisers are reset so nothing captured during playback leaks into the
+        next utterance.
+        """
+        speaking = bool(speaking)
+        if speaking == self.assistant_speaking:
+            return
+        self.assistant_speaking = speaking
+
+        if speaking:
+            if self._barge is None:
+                from .wake import BARGE_WORDS, WakeWordDetector
+
+                self._barge = WakeWordDetector(BARGE_WORDS)
+                if not self._barge.available:
+                    self._barge = None      # no VOSK: fall back to a muted mic
+            if self._barge is not None:
+                self._barge.reset()
+        else:
+            self.segmenter.reset()
+            if self._vosk_stream is not None:
+                self._vosk_stream.reset()
+            if self._wake is not None:
+                self._wake.reset()
+            self._was_speaking = False
+            self._last_voice_at = time.monotonic()
+
+    @property
+    def barge_in_available(self) -> bool:
+        """Whether interrupting by voice will work, or the mic must be muted."""
+        if self._barge is not None:
+            return True
+        try:
+            from . import vosk_engine
+
+            return vosk_engine.is_available()
+        except Exception:
+            return False
+
+    def sleep(self) -> None:
+        """Return to waiting for the wake word."""
+        if not self.config.wake_word or self._wake is None:
+            return
+        self.segmenter.reset()
+        if self._vosk_stream is not None:
+            self._vosk_stream.reset()
+        self._wake.reset()
+        self._preroll.clear()
+        self._preroll_bytes = 0
+        self._was_speaking = False
+        self.asleep = True
+
+    def _feed_awake(self, pcm_chunk: bytes) -> list:
+        """The normal transcription path, once the session is awake."""
+        events: list = []
+
         # VOSK runs on the raw stream, not on VAD segments: it has its own
         # endpointing and needs continuous audio to keep partials coherent.
         if self._vosk_stream is not None and self.config.emit_partials:
@@ -539,6 +691,8 @@ class LiveSession:
 
         completed = self.segmenter.feed(pcm_chunk)
 
+        if self.segmenter.speaking:
+            self._last_voice_at = time.monotonic()
         if self.segmenter.speaking and not self._was_speaking:
             events.insert(0, {"type": "speech_start", "at_s": round(self.segmenter.state.stream_pos_s, 3)})
         self._was_speaking = self.segmenter.speaking

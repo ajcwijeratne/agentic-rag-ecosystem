@@ -237,6 +237,58 @@ The Command Centre mic button uses the orchestrator socket and drops each
 finished utterance into the composer, so a misheard question can be corrected
 before it costs a model call. `getUserMedia` requires `https://` or `localhost`.
 
+### Hands-free assistant
+
+Beyond dictation, the stack runs as a wake-word assistant that answers out loud.
+
+**Wake word.** With it on, the session starts asleep: audio is listened to
+continuously but only a grammar-constrained VOSK detector runs, so ordinary
+conversation in the room never reaches Whisper or a paid model. Say *"hey
+jarvis"* and it wakes, answers, and goes back to sleep after `WAKE_TIMEOUT_S` of
+quiet. Grammar mode is what makes this cheap — the decoder only has to choose
+between a few phrases and "something else", so it idles at a fraction of a core.
+
+Pick a wake word that does not occur in normal speech. "jarvis" is good;
+"computer" would fire constantly.
+
+**Barge-in.** While it talks, the microphone stays open, but the server switches
+to a detector matching only `BARGE_WORDS` (*stop, wait, cancel...*). So the reply
+can never be transcribed back as a question, yet saying "stop" cuts it off
+immediately. Without VOSK there is no detector, and the client mutes the mic
+during playback instead — safe, but you cannot interrupt.
+
+**Persona.** Spoken turns get a system prompt that typed chat never sees. The
+name is cosmetic; the length limit is not — an answer that reads well on screen
+is unbearable read aloud, so replies are capped at `VOICE_MAX_SENTENCES` and
+markdown is forbidden. Override the whole thing with `VOICE_PERSONA`.
+
+### Two runtimes
+
+| | Command Centre tab | Always-on daemon |
+|---|---|---|
+| Start | 🎙 in the Chat composer | `.\scripts\start_voice_daemon.ps1` |
+| Needs a browser | yes | no |
+| Speech out | browser voices | local Windows voices (SAPI) |
+| Mic | shared with the OS | held exclusively |
+
+They both drive the same `LiveSession`, so wake word, VAD, engines and barge-in
+behave identically.
+
+The daemon is **not** started by `start_all.ps1` on purpose: it holds the
+microphone exclusively, so running it alongside the browser tab means whichever
+grabbed the mic first wins. Run one or the other.
+
+```powershell
+.\scripts\start_voice_daemon.ps1 -ListDevices
+.\scripts\start_voice_daemon.ps1 -Device 1 -Voice "Catherine"
+```
+
+Test it without speaking by replaying a file through the whole pipeline:
+
+```bash
+python -m media.voice_daemon --wav sample.wav --fast --no-speak --max-turns 1
+```
+
 ### Ingestion
 
 `media/ingest/audio.py` transcribes through `media.asr` (VAD-gated, engine

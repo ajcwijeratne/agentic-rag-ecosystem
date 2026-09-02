@@ -353,6 +353,7 @@ window.fetch = (input, init = {}) => {
 // Voice: the WS handshake cannot carry headers, so the API key rides as a
 // query parameter, which common.security accepts on websocket connections.
 const WS_API = API.replace(/^http/, "ws");
+const assistantName = localStorage.getItem("cc_assistant_name") || "jarvis";
 const voiceWsUrl = () => `${WS_API}/voice/ws` +
   (COMMAND_CENTRE_API_KEY ? `?api_key=${encodeURIComponent(COMMAND_CENTRE_API_KEY)}` : "");
 
@@ -416,6 +417,26 @@ const speakText = (text, {maxChars = 1200} = {}) => new Promise(resolve => {
     speechSynthesis.speak(u);
   } catch { resolve("error"); }
 });
+
+// Short tones so you know the state without looking at the screen: a rising
+// pair when it wakes and starts listening, a single low tone when it stops.
+let cueCtx = null;
+const cue = (kind) => {
+  try {
+    cueCtx = cueCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const notes = kind === "wake" ? [[660, 0], [880, 0.09]] : [[440, 0]];
+    for (const [freq, at] of notes) {
+      const o = cueCtx.createOscillator(), g = cueCtx.createGain();
+      o.frequency.value = freq; o.type = "sine";
+      const t = cueCtx.currentTime + at;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.16, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+      o.connect(g); g.connect(cueCtx.destination);
+      o.start(t); o.stop(t + 0.15);
+    }
+  } catch {}
+};
 
 const floatToPCM16 = f32 => {
   const out = new Int16Array(f32.length);
@@ -4351,6 +4372,9 @@ function App() {
   const [voiceErr,setVoiceErr]     = useState('');
   const [voiceEngines,setVoiceEngines] = useState(null);
   const [handsFree,setHandsFree]   = useState(false);  // speak -> answer -> keep listening
+  const [wakeWord,setWakeWord]     = useState(false);  // only act when addressed
+  const [asleep,setAsleep]         = useState(false);  // waiting for the wake phrase
+  const [bargeOk,setBargeOk]       = useState(false);  // can you interrupt by voice
   const [speakReplies,setSpeakReplies] = useState(true);
   const [speaking,setSpeaking]     = useState(false);  // TTS is talking
   const [thinking,setThinking]     = useState(false);  // agent is working
@@ -4365,6 +4389,10 @@ function App() {
   const mutedRef  = useRef(false);
   const handsFreeRef = useRef(false);
   const speakRepliesRef = useRef(true);
+  const wakeWordRef = useRef(false);
+  const bargeOkRef = useRef(false);
+  useEffect(()=>{ wakeWordRef.current = wakeWord; },[wakeWord]);
+  useEffect(()=>{ bargeOkRef.current = bargeOk; },[bargeOk]);
   useEffect(()=>{ handsFreeRef.current = handsFree; },[handsFree]);
   useEffect(()=>{ speakRepliesRef.current = speakReplies; },[speakReplies]);
 
@@ -4513,6 +4541,7 @@ function App() {
         vad_backend: 'auto',
         partials:    true,
         auto_query:  handsFreeRef.current,          // hands-free answers each utterance
+        wake_word:   wakeWordRef.current,           // only act when addressed
         session_id:  sessionId,
       }));
 
@@ -4537,7 +4566,19 @@ function App() {
     ws.onmessage = async ev => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
 
-      if (m.type === 'speech_start') setVoiceState('speaking');
+      if (m.type === 'ready') { setAsleep(!!m.asleep); setBargeOk(!!m.barge_in); }
+
+      else if (m.type === 'wake') { setAsleep(false); cue('wake'); setVoiceState('listening'); }
+      else if (m.type === 'sleep') { setAsleep(true); cue('sleep'); setPartial(''); }
+
+      else if (m.type === 'barge_in') {
+        // The server heard an interrupt word over the reply. Cut it off.
+        try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
+        setSpeaking(false);
+        setVoiceState('listening');
+      }
+
+      else if (m.type === 'speech_start') setVoiceState('speaking');
       else if (m.type === 'speech_end') setVoiceState(r => r === 'speaking' ? 'listening' : r);
       else if (m.type === 'partial') setPartial(m.text);
 
@@ -4578,18 +4619,24 @@ function App() {
           modelLabel: m.model || '', cost_usd: m.cost_usd || 0, streaming: false,
         }]);
         if (speakRepliesRef.current) {
-          mutedRef.current = true;          // stop feeding the mic
+          // Audio keeps flowing while it talks. The server switches to a
+          // grammar-constrained detector that only matches interrupt words, so
+          // the reply cannot be transcribed back as a question, but you can cut
+          // in by saying "stop". When VOSK is unavailable there is no detector,
+          // so fall back to muting the mic rather than letting it hear itself.
           setSpeaking(true);
           setVoiceState('replying');
+          try { if (ws.readyState === 1) ws.send(JSON.stringify({type:'speaking_start'})); } catch {}
+          if (!bargeOkRef.current) mutedRef.current = true;
+
           await speakText(text);
+
           setSpeaking(false);
-          // Let the speakers settle, clear whatever the recogniser buffered,
-          // then listen again.
           setTimeout(() => {
-            try { if (ws.readyState === 1) ws.send(JSON.stringify({type:'reset'})); } catch {}
             mutedRef.current = false;
+            try { if (ws.readyState === 1) ws.send(JSON.stringify({type:'speaking_end'})); } catch {}
             setVoiceState(r => r === 'replying' ? 'listening' : r);
-          }, 250);
+          }, 200);
         }
       }
 
@@ -4623,7 +4670,12 @@ function App() {
     try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
     setSpeaking(false);
     const ws = voiceRef.current.ws;
-    try { if (ws && ws.readyState === 1) ws.send(JSON.stringify({type:'reset'})); } catch {}
+    try {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({type:'speaking_end'}));
+        ws.send(JSON.stringify({type:'reset'}));
+      }
+    } catch {}
     mutedRef.current = false;
     setVoiceState(r => r === 'replying' ? 'listening' : r);
   }, []);
@@ -4957,6 +5009,17 @@ function App() {
                   border:'1px solid '+(handsFree?'#e2cf8f':'var(--border)'),
                   color:handsFree?'#8a630f':'var(--muted)',letterSpacing:'.04em'}}>
                 {handsFree?'hands-free':'dictate'}
+              </button>
+              <button onClick={()=>{ const n=!wakeWord; setWakeWord(n); wakeWordRef.current=n;
+                       if(recording){ stopVoice(true); setTimeout(()=>startVoiceRef.current?.(),400); } }}
+                title={wakeWord
+                  ? `Wake word on — say "hey ${assistantName}" to address it; everything else is ignored`
+                  : 'Wake word off — every utterance is heard'}
+                style={{fontSize:9,padding:'2px 5px',borderRadius:5,cursor:'pointer',
+                  background:wakeWord?'var(--pine-tint)':'var(--bg3)',
+                  border:'1px solid '+(wakeWord?'#bcd6c8':'var(--border)'),
+                  color:wakeWord?'var(--pine)':'var(--muted)',letterSpacing:'.04em'}}>
+                {wakeWord?(asleep?'💤 waiting':'👂 awake'):'wake off'}
               </button>
               <button onClick={()=>{ if(speaking) shutUp(); setSpeakReplies(v=>!v); }}
                 title={speakReplies?'Spoken replies on (Esc interrupts)':'Spoken replies off'}

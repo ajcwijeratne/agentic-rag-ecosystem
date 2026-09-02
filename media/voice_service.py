@@ -227,6 +227,9 @@ def _build_session(config: dict) -> tuple:
         vad_backend=config.get("vad_backend") or "auto",
         emit_partials=bool(config.get("partials", True)),
         segmenter=seg_config,
+        wake_word=bool(config.get("wake_word", False)),
+        wake_phrases=list(config.get("wake_phrases") or []),
+        wake_timeout_s=float(config.get("wake_timeout_s", 12.0)),
     )
     return LiveSession(live), int(config.get("sample_rate") or SAMPLE_RATE)
 
@@ -275,6 +278,9 @@ async def ws_transcribe(ws: WebSocket):
                 "sample_rate": input_rate,
                 "frame_ms":    session.segmenter.frame_ms,
                 "partials":    session.config.emit_partials,
+                "wake_word":   session.config.wake_word,
+                "asleep":      session.asleep,
+                "barge_in":    session.barge_in_available,
             }
         )
 
@@ -315,6 +321,14 @@ async def ws_transcribe(ws: WebSocket):
             elif action == "reset":
                 await asyncio.to_thread(session.reset)
                 await ws.send_json({"type": "reset"})
+            elif action in ("speaking_start", "speaking_end"):
+                # The client tells us when the assistant is talking so audio can
+                # be routed to the barge-in detector instead of transcription.
+                await asyncio.to_thread(session.set_speaking, action == "speaking_start")
+                await ws.send_json({"type": "speaking", "value": session.assistant_speaking})
+            elif action == "sleep":
+                await asyncio.to_thread(session.sleep)
+                await ws.send_json({"type": "sleep", "requested": True})
             elif action == "ping":
                 await ws.send_json({"type": "pong", "speaking": session.speaking})
 

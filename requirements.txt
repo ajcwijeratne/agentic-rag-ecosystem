@@ -57,6 +57,11 @@ silero-vad~=5.1           # neural VAD backend (needs torch; falls back if absen
 webrtcvad-wheels~=2.0.14; sys_platform == "win32"
 webrtcvad~=2.0.10; sys_platform != "win32"
 
+# Always-on voice daemon (media/voice_daemon.py). Only needed to run the
+# assistant outside the browser; the Command Centre mic works without them.
+sounddevice~=0.4          # microphone capture outside the browser
+pyttsx3~=2.90             # local text to speech (SAPI on Windows)
+
 # ---------------------------------------------------------------------------
 # Multimodal expansion (Phase 2) — image ingestion + visual search
 #   torch + open_clip back the self-hosted visual embedder (media_visual).

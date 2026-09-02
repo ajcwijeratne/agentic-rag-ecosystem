@@ -471,3 +471,117 @@ async def test_hands_free_answers_each_utterance_and_guards_noise(monkeypatch):
     assert kinds.count("answer") == 1, kinds
     skipped = [e for e in sent if e["type"] == "skipped"]
     assert len(skipped) == 1 and skipped[0]["reason"] == "busy", sent
+
+
+# ---------------------------------------------------------------------------
+# Wake word and barge-in
+# ---------------------------------------------------------------------------
+
+def test_wake_phrase_matching_is_word_bounded():
+    from media.wake import phrase_in
+
+    words = ["hey jarvis", "jarvis"]
+    assert phrase_in("hey jarvis what is rag", words) == "hey jarvis"
+    assert phrase_in("JARVIS!! summarise", words) == "jarvis"
+    assert phrase_in("what is the weather", words) is None
+    # A wake word inside a longer word must not fire.
+    assert phrase_in("the jarvisian era", words) is None
+
+
+def test_barge_words_do_not_match_inside_other_words():
+    from media.wake import is_barge_in
+
+    assert is_barge_in("stop") == "stop"
+    assert is_barge_in("wait a moment") == "wait"
+    assert is_barge_in("tell me about stopping distance") is None
+    assert is_barge_in("the waiting room") is None
+
+
+def test_wake_prefix_is_stripped_from_the_question():
+    from media.wake import strip_wake_prefix
+
+    words = ["hey jarvis", "jarvis", "okay jarvis"]
+    assert strip_wake_prefix("hey jarvis what is agentic rag", words) == "what is agentic rag"
+    assert strip_wake_prefix("jarvis, summarise this", words) == "summarise this"
+    # No wake word: left alone.
+    assert strip_wake_prefix("what is agentic rag", words) == "what is agentic rag"
+
+
+def test_session_starts_asleep_and_ignores_speech_until_woken(two_utterances, monkeypatch):
+    """
+    The point of a wake word: ordinary conversation in the room must not reach a
+    model. While asleep no transcription happens at all.
+    """
+    from media import asr
+
+    calls = []
+
+    def fake_whisper(pcm, **kw):
+        calls.append(len(pcm))
+        return ([asr.TranscriptSegment(text="x", start_s=0, end_s=1, confidence=0.9)], "en")
+
+    monkeypatch.setattr(asr, "load_whisper", lambda *a, **k: object())
+    monkeypatch.setattr(asr, "whisper_transcribe_pcm", fake_whisper)
+
+    session = asr.LiveSession(asr.LiveConfig(
+        engine="whisper", vad_backend="energy", wake_word=True,
+    ))
+    if not session.config.wake_word:
+        pytest.skip("VOSK model not installed; wake word unavailable")
+
+    assert session.asleep
+    events = []
+    for i in range(0, len(two_utterances), 3200):
+        events.extend(session.feed(two_utterances[i:i + 3200]))
+
+    # Synthetic tones are not the wake phrase, so nothing should have woken and
+    # the recogniser should never have been called.
+    assert not any(e["type"] == "wake" for e in events), events
+    assert calls == [], "transcribed audio while asleep"
+
+
+def test_assistant_speaking_flag_is_separate_from_user_speaking(monkeypatch):
+    """
+    Regression: the barge-in flag once collided with the read-only `speaking`
+    property, which means the *user* is mid-utterance. They are different things.
+    """
+    from media import asr
+
+    monkeypatch.setattr(asr, "load_whisper", lambda *a, **k: object())
+    session = asr.LiveSession(asr.LiveConfig(engine="whisper", vad_backend="energy"))
+
+    assert session.speaking is False              # user, from VAD
+    assert session.assistant_speaking is False    # assistant, set explicitly
+    session.set_speaking(True)
+    assert session.assistant_speaking is True
+    assert session.speaking is False              # unchanged by the assistant talking
+    session.set_speaking(False)
+    assert session.assistant_speaking is False
+
+
+def test_audio_during_playback_is_not_transcribed(two_utterances, monkeypatch):
+    """While the assistant talks, its own voice must never become a question."""
+    from media import asr
+
+    calls = []
+    monkeypatch.setattr(asr, "load_whisper", lambda *a, **k: object())
+    monkeypatch.setattr(asr, "whisper_transcribe_pcm",
+                        lambda pcm, **kw: (calls.append(len(pcm)), ([], "en"))[1])
+
+    session = asr.LiveSession(asr.LiveConfig(engine="whisper", vad_backend="energy"))
+    session.set_speaking(True)
+    for i in range(0, len(two_utterances), 3200):
+        session.feed(two_utterances[i:i + 3200])
+
+    assert calls == [], "transcribed audio while the assistant was speaking"
+
+
+def test_voice_persona_keeps_replies_short():
+    """A spoken answer must be constrained; screen-length prose is unusable aloud."""
+    from orchestrator.voice import VOICE_MAX_SENTENCES, voice_system_prompt
+
+    prompt = voice_system_prompt().lower()
+    assert "read aloud" in prompt
+    assert str(VOICE_MAX_SENTENCES) in prompt
+    for banned in ("markdown", "bullet"):
+        assert banned in prompt, f"persona should forbid {banned}"
