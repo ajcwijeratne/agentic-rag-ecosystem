@@ -833,3 +833,159 @@ def test_screen_module_cannot_act_on_the_desktop():
     for forbidden in ("pyautogui", "SendInput", "keybd_event", "mouse_event",
                       "subprocess", "os.system", "ShellExecute"):
         assert forbidden not in source, f"screen.py must stay read-only: found {forbidden}"
+
+
+# ---------------------------------------------------------------------------
+# Voice control of the Command Centre
+# ---------------------------------------------------------------------------
+
+def test_navigation_phrases_map_to_ui_pages():
+    from orchestrator.voice_commands import interpret
+
+    expected = {
+        "show me deliverables": "library",
+        "open sector intel": "intel",
+        "go to usage": "admin",
+        "take me to the content pipeline": "content",
+        "jump to automations": "n8n",
+        "show me the knowledge base": "kb",
+    }
+    for phrase, page in expected.items():
+        cmd = interpret(phrase)
+        assert cmd is not None, phrase
+        assert cmd.kind == "navigate" and cmd.target == page, (phrase, cmd)
+
+
+def test_page_keys_match_the_ui_navigation():
+    """
+    The page keys here are only useful if the UI's setView accepts them, and
+    nothing else couples the two. Check them against the rail definition.
+    """
+    import re
+    from pathlib import Path
+
+    from orchestrator.voice_commands import PAGES
+
+    ui = (Path(__file__).resolve().parents[2] / "ui" / "command_centre.html").read_text(
+        encoding="utf-8", errors="replace")
+    nav = ui[ui.index("const NAV = ["):]
+    nav = nav[: nav.index("];")]
+    ui_keys = set(re.findall(r"\['([a-z0-9_]+)',", nav))
+
+    unknown = set(PAGES) - ui_keys
+    assert not unknown, f"voice can navigate to pages the UI does not have: {unknown}"
+
+
+def test_readout_beats_navigation():
+    """"What's in my deliverables" should answer, not merely open the page."""
+    from orchestrator.voice_commands import interpret
+
+    cmd = interpret("what's in my deliverables")
+    assert cmd.kind == "readout" and cmd.target == "library"
+
+
+def test_own_spend_is_distinguished_from_business_pricing():
+    """
+    "What did I spend" is the usage page. "What does a sprint cost" is a
+    question for the knowledge base — routing it to usage would answer the
+    wrong question confidently.
+    """
+    from orchestrator.voice_commands import interpret
+
+    for mine in ("what did I spend today", "how much has this cost me", "what's my spend"):
+        cmd = interpret(mine)
+        assert cmd is not None and cmd.target == "admin", mine
+    for theirs in ("what is the cost of a diagnostic sprint engagement",
+                   "how much does a micro-credential cost to develop"):
+        assert interpret(theirs) is None, theirs
+
+
+def test_ordinary_questions_fall_through_to_the_agent():
+    from orchestrator.voice_commands import interpret
+
+    for q in ("what is agentic RAG", "summarise the TEQSA requirements",
+              "draft a proposal for a micro-credential"):
+        assert interpret(q) is None, q
+
+
+def test_state_changing_actions_require_confirmation():
+    from orchestrator.voice_commands import interpret
+
+    for phrase in ("reindex the vault", "run the harness"):
+        cmd = interpret(phrase)
+        assert cmd.kind == "action" and cmd.confirm, phrase
+    # Harmless ones do not interrupt to ask.
+    assert not interpret("start a new chat").confirm
+
+
+def test_confirmation_round_trip():
+    from orchestrator.voice_commands import interpret, resolve_pending, set_pending
+
+    cmd = interpret("reindex the vault")
+
+    set_pending("s", cmd)
+    approved, reply = resolve_pending("s", "yes go ahead")
+    assert approved is cmd and reply is None
+
+    set_pending("s", cmd)
+    approved, reply = resolve_pending("s", "no, cancel")
+    assert approved is None and reply == "Cancelled."
+
+    # Changing the subject disarms it rather than leaving it primed.
+    set_pending("s", cmd)
+    assert resolve_pending("s", "show me deliverables") == (None, None)
+    assert resolve_pending("s", "yes") == (None, None)
+
+
+def test_yes_requires_a_word_boundary():
+    """Regression: without \b, "yesterday" armed a re-index of the vault."""
+    from orchestrator.voice_commands import interpret, resolve_pending, set_pending
+
+    set_pending("s", interpret("reindex the vault"))
+    approved, _ = resolve_pending("s", "yesterday's deliverables please")
+    assert approved is None
+
+
+async def test_navigate_returns_a_ui_event():
+    from orchestrator.voice_commands import execute, interpret
+
+    result = await execute(interpret("show me deliverables"))
+    assert result["ui"]["navigate"] == "library"
+    assert result["route"] == "ui"
+    assert result["cost_usd"] == 0.0        # navigation must never cost anything
+
+
+def test_readouts_tolerate_the_different_field_names_endpoints_use():
+    """
+    Regression: read-outs hard-coded one name field, so pages whose items use a
+    different one were read aloud as "untitled; untitled; untitled". Each
+    endpoint in this codebase names it differently.
+    """
+    from orchestrator.voice_commands import _say_items
+
+    shapes = [
+        [{"title": "Options analysis"}],       # deliverables
+        [{"name": "KB freshness check"}],      # scheduled runs
+        [{"head": "Survey shows a gap"}],      # sector intel
+        [{"q": "draft a proposal"}],           # routing traces
+        [{"text": "Finish the painting"}],     # productivity inbox
+    ]
+    for items in shapes:
+        said = _say_items("things", items)
+        assert "untitled" not in said, (items, said)
+
+
+def test_content_pipeline_counts_a_flat_column_mapping():
+    """
+    Regression: the board is {"Ideas": [...], "Drafts": [...]} with no "columns"
+    key, and looking for that key reported 22 real pieces as an empty pipeline.
+    """
+    from orchestrator.voice_commands import _say_pipeline
+
+    said = _say_pipeline({"Ideas": [1, 2, 3], "Drafts": [1, 2], "Published": []})
+    assert "empty" not in said.lower()
+    assert "5 pieces" in said
+    assert "3 in ideas" in said and "2 in drafts" in said
+    assert "published" not in said            # empty stages are not read aloud
+
+    assert "empty" in _say_pipeline({}).lower()

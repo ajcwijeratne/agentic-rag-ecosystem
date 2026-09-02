@@ -234,6 +234,34 @@ async def _run_hybrid(
     """
     from .main import HybridRequest, run_hybrid
 
+    # Command Centre control comes first: it is deterministic and free, and
+    # "show me deliverables" must feel like pressing the button rather than
+    # waiting on a model.
+    if spoken:
+        from .voice_commands import (
+            execute as run_command, interpret, resolve_pending, set_pending,
+        )
+
+        # Is this a yes/no to something we just offered to do?
+        approved, reply = resolve_pending(session_id, query)
+        if approved is not None:
+            return {"session_id": session_id, "query": query, **(await run_command(approved))}
+        if reply is not None:
+            return {"session_id": session_id, "query": query, "answer": reply,
+                    "route": "ui", "model": "", "cost_usd": 0.0}
+
+        cmd = interpret(query)
+        if cmd is not None:
+            if cmd.confirm:
+                # Costly or state-changing: say what it would do and wait for a
+                # yes rather than acting on a possible mishearing.
+                set_pending(session_id, cmd)
+                return {"session_id": session_id, "query": query,
+                        "answer": cmd.confirm, "route": "ui", "model": "",
+                        "cost_usd": 0.0,
+                        "ui": {"pending": cmd.target, "kind": cmd.kind}}
+            return {"session_id": session_id, "query": query, **(await run_command(cmd))}
+
     # "What's on my screen?" cannot be answered from the vault. Look instead.
     if spoken:
         from .screen import answer_about_screen

@@ -4607,6 +4607,12 @@ function App() {
 
       else if (m.type === 'answer') {
         setThinking(false);
+        // Voice drives the whole cockpit, not just the chat box: a navigate or
+        // readout command moves the page so the screen follows what was asked.
+        if (m.ui && m.ui.navigate) {
+          setView(m.ui.navigate);
+          cue('wake');
+        }
         // An empty answer is a real outcome (the RAG services can be down), and
         // in hands-free it would otherwise be indistinguishable from the thing
         // being broken: you speak, and nothing ever happens. Say so instead.

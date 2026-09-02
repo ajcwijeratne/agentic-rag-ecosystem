@@ -289,6 +289,35 @@ Test it without speaking by replaying a file through the whole pipeline:
 python -m media.voice_daemon --wav sample.wav --fast --no-speak --max-turns 1
 ```
 
+### Voice control of the Command Centre
+
+The conversation drives the whole cockpit, not just the chat box.
+
+| Say | What happens |
+|---|---|
+| "show me deliverables", "open sector intel", "go to usage" | The page changes |
+| "what's in my content pipeline", "read me the sector intel" | It fetches the page and says it, and moves there |
+| "what did I spend today" | Reads the usage figures |
+| "reindex the vault", "run the harness" | Asks first, then runs it on "yes" |
+
+Matching is a deterministic local table, not a model call. Navigation has to
+feel like pressing the button — a round trip to an LLM to work out which page
+you meant would make voice slower than the mouse. Navigation and read-outs cost
+nothing and take 0-600ms. Anything the table does not recognise falls straight
+through to the normal agent, so ordinary questions are unaffected.
+
+Two distinctions the table is careful about:
+
+- *"What did I spend"* is the usage page; *"what does a diagnostic sprint cost"*
+  is a knowledge-base question. Matching bare "cost" would answer the wrong one
+  confidently.
+- Anything that changes state or spends money confirms first, and the "yes" is
+  word-bounded so *"yesterday's deliverables"* never triggers a re-index.
+
+Add pages or commands in `orchestrator/voice_commands.py`; the page keys are
+checked against the UI's own navigation by a test, so a rename cannot silently
+break voice navigation.
+
 ### Screen awareness
 
 The assistant can look at the display and answer about it — *"what's on my
