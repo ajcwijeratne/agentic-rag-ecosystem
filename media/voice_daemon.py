@@ -7,7 +7,7 @@ Whisper/VOSK, barge-in); the differences are that audio comes from `sounddevice`
 instead of an AudioWorklet, and replies are spoken through the local Windows
 voices instead of the browser synthesiser.
 
-    idle ── "hey jarvis" ──▶ listening ──▶ thinking ──▶ speaking ──┐
+    idle ── "hey apex" ──▶ listening ──▶ thinking ──▶ speaking ──┐
       ▲                                                            │
       └──────────────── wake timeout / reply finished ─────────────┘
 

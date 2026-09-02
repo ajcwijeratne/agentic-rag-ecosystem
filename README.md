@@ -233,9 +233,30 @@ ws://localhost:8009/ws/transcribe
 <- {"type":"transcript","text":"What is agentic RAG?","duration_s":5.1}
 ```
 
-The Command Centre mic button uses the orchestrator socket and drops each
-finished utterance into the composer, so a misheard question can be corrected
-before it costs a model call. `getUserMedia` requires `https://` or `localhost`.
+### Always on, everywhere
+
+Voice is a property of the app, not of the chat page. One session is opened at
+the top level, so the wake word works on any page, and the top bar carries a
+live pill — `apex ● waiting / listening / speaking / off` — that starts and
+stops it from anywhere.
+
+The Apex console on the Overview page drives that same session. It previously
+used the browser's Web Speech API, which streams audio to Google in Chrome and
+does nothing at all in Firefox; it now shares the local stack, so there is one
+wake word, one engine, and nothing leaves the machine.
+
+Wake word and hands-free are **on by default**, and the mic opens on load
+without waiting for a click. Two deliberate limits on that:
+
+- Autostart is skipped unless the browser has already granted the microphone.
+  Prompting for permission on page load with no user action behind it is
+  hostile, and browsers increasingly refuse it anyway — the button still works
+  and prompts properly.
+- A deliberate "off" is remembered per browser (`cc_wake_word`,
+  `cc_hands_free`, `cc_voice_autostart`), so the default never overrides someone
+  who turned it off on purpose.
+
+`getUserMedia` requires `https://` or `localhost`.
 
 ### Hands-free assistant
 
@@ -244,11 +265,11 @@ Beyond dictation, the stack runs as a wake-word assistant that answers out loud.
 **Wake word.** With it on, the session starts asleep: audio is listened to
 continuously but only a grammar-constrained VOSK detector runs, so ordinary
 conversation in the room never reaches Whisper or a paid model. Say *"hey
-jarvis"* and it wakes, answers, and goes back to sleep after `WAKE_TIMEOUT_S` of
+apex"* and it wakes, answers, and goes back to sleep after `WAKE_TIMEOUT_S` of
 quiet. Grammar mode is what makes this cheap — the decoder only has to choose
 between a few phrases and "something else", so it idles at a fraction of a core.
 
-Pick a wake word that does not occur in normal speech. "jarvis" is good;
+Pick a wake word that does not occur in normal speech. "apex" is good;
 "computer" would fire constantly.
 
 **Barge-in.** While it talks, the microphone stays open, but the server switches

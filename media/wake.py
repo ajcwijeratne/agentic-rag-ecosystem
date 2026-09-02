@@ -14,12 +14,12 @@ Why not Whisper: it has no streaming mode, so wake detection would mean
 transcribing every few seconds of room noise in full. Grammar-mode VOSK only has
 to decide between a few phrases and "something else".
 
-    detector = WakeWordDetector(["hey jarvis", "jarvis"])
+    detector = WakeWordDetector(["hey apex", "apex"])
     if detector.feed(pcm_chunk):
         ...   # addressed
 
 Set WAKE_WORDS to change the phrases. Keep them to two or three syllables and
-avoid common words: "jarvis" is a good wake word precisely because it almost
+avoid common words: "apex" is a good wake word precisely because it almost
 never occurs in ordinary speech, whereas "computer" would fire constantly.
 """
 
@@ -37,7 +37,7 @@ from .audio import SAMPLE_RATE
 
 WAKE_WORDS: list = [
     w.strip().lower()
-    for w in os.getenv("WAKE_WORDS", "hey jarvis,jarvis,okay jarvis").split(",")
+    for w in os.getenv("WAKE_WORDS", "hey apex,apex,okay apex").split(",")
     if w.strip()
 ]
 WAKE_ENABLED: bool = os.getenv("WAKE_ENABLED", "false").lower() in ("1", "true", "yes")
@@ -67,7 +67,7 @@ def phrase_in(text: str, phrases: list) -> str | None:
     Return the phrase found in `text`, or None.
 
     Substring rather than equality: VOSK often returns the wake word with
-    whatever was said after it in the same result ("hey jarvis what is"), and an
+    whatever was said after it in the same result ("hey apex what is"), and an
     exact match would miss every one of those.
     """
     clean = _normalise(text)
@@ -84,7 +84,7 @@ def strip_wake_prefix(text: str, phrases: list) -> str:
     """
     Remove the wake phrase from the front of an utterance.
 
-    "hey jarvis what is agentic rag" -> "what is agentic rag", so the wake word
+    "hey apex what is agentic rag" -> "what is agentic rag", so the wake word
     is never carried into the question itself.
     """
     clean = _normalise(text)
@@ -147,7 +147,7 @@ class WakeWordDetector:
         Push audio. Returns the matched wake phrase, or None.
 
         Only *settled* results are matched. VOSK partials in grammar mode are
-        unstable: decoding unrelated speech, it briefly proposed "[unk] jarvis"
+        unstable: decoding unrelated speech, it briefly proposed "[unk] apex"
         before retracting it to "[unk] [unk]" on the final. Matching partials
         therefore woke the assistant on a sentence with no wake word in it.
         Waiting for the final costs roughly a second of endpointing delay and

@@ -353,7 +353,14 @@ window.fetch = (input, init = {}) => {
 // Voice: the WS handshake cannot carry headers, so the API key rides as a
 // query parameter, which common.security accepts on websocket connections.
 const WS_API = API.replace(/^http/, "ws");
-const assistantName = localStorage.getItem("cc_assistant_name") || "jarvis";
+const assistantName = localStorage.getItem("cc_assistant_name") || "apex";
+
+// A stored preference, defaulting on. Only an explicit "false" turns it off, so
+// a fresh browser gets the always-on behaviour without losing a deliberate opt-out.
+const pref = (key, fallback) => {
+  try { const v = localStorage.getItem(key); return v === null ? fallback : v === "true"; }
+  catch { return fallback; }
+};
 const voiceWsUrl = () => `${WS_API}/voice/ws` +
   (COMMAND_CENTRE_API_KEY ? `?api_key=${encodeURIComponent(COMMAND_CENTRE_API_KEY)}` : "");
 
@@ -4156,11 +4163,16 @@ function ApxKpis(){
 }
 
 /* ---- Dispatch console: chips, text, and voice (speech + waveform) ---- */
-function ApxConsole({ onDispatch }){
+function ApxConsole({ onDispatch, voice }){
   const [text,setText]=useState('');
   const [listening,setListening]=useState(false);
   const recRef=useRef(null);
   const audioRef=useRef(null);
+  // The mic here used to drive the browser's Web Speech API, which streams
+  // audio to Google in Chrome and does nothing at all in Firefox. It now shares
+  // the same local session as the rest of the app, so one wake word, one
+  // engine, and nothing leaves the machine.
+  const useLocalVoice = !!(voice && voice.startVoice);
   const chips=[
     'Draft a proposal for a micro-credential in data literacy.',
     'Summarise this week’s TEQSA and sector signals.',
@@ -4195,6 +4207,12 @@ function ApxConsole({ onDispatch }){
     }catch(e){ /* mic blocked or insecure context: degrade silently */ }
   }
   function toggleMic(){
+    if(useLocalVoice){
+      // Shared local session: the waveform still runs, the recognition does not.
+      if(voice.recording){ voice.stopVoice(true); stopAudio(); }
+      else { voice.startVoice(); startAudio(); }
+      return;
+    }
     if(listening){ setListening(false); try{recRef.current&&recRef.current.stop();}catch(e){} stopAudio(); return; }
     setListening(true); startAudio();
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -4217,14 +4235,22 @@ function ApxConsole({ onDispatch }){
         {chips.map((c,i)=><button key={i} className="apx-chip" onClick={()=>setText(c)}>{c.length>40?c.slice(0,40)+'…':c}</button>)}
       </div>
       <div className="apx-input-row">
-        <button className={"apx-mic"+(listening?' live':'')} title="Voice input" onClick={toggleMic} aria-label="Toggle voice input">
+        <button className={"apx-mic"+((useLocalVoice ? voice.recording : listening)?' live':'')}
+          title={useLocalVoice
+            ? (voice.asleep ? `Listening for "hey ${assistantName}"` : (voice.recording ? 'Apex is listening — click to stop' : 'Start voice'))
+            : "Voice input"}
+          onClick={toggleMic} aria-label="Toggle voice input">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 11a7 7 0 0 1-14 0M12 18v4"/>
           </svg>
         </button>
         <input value={text} onChange={e=>setText(e.target.value)}
           onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); go(); } }}
-          placeholder="Brief Apex, or press the microphone" aria-label="Brief for Apex"/>
+          placeholder={useLocalVoice && voice.recording
+            ? (voice.asleep ? `Say "hey ${assistantName}" — or type a brief`
+                            : (voice.partial ? voice.partial : 'Listening…'))
+            : "Brief Apex, or press the microphone"}
+          aria-label="Brief for Apex"/>
         <button className="apx-send" onClick={go} disabled={!text.trim()}>Dispatch</button>
       </div>
     </div>
@@ -4284,7 +4310,7 @@ function ApxActivity(){
 }
 
 /* ---- Command bar meters (live, best-effort) ---- */
-function ApxBar({ view, setView, VIEW_LABELS, sessionCost }){
+function ApxBar({ view, setView, VIEW_LABELS, sessionCost, voice }){
   const [queue,setQueue]=useState(null);
   const [spend,setSpend]=useState(null);
   const [clock,setClock]=useState('--:--');
@@ -4308,6 +4334,33 @@ function ApxBar({ view, setView, VIEW_LABELS, sessionCost }){
       </div>
       <span className="apx-crumb">{view!=='overview'?('/ '+(VIEW_LABELS[view]||view)):''}</span>
       <div className="apx-meters">
+        {/* Voice is global, so its state belongs in the chrome rather than on
+            one page. Click to start or stop from anywhere. */}
+        {voice && (
+          <button
+            onClick={()=>{ if(voice.speaking) voice.shutUp();
+                           else if(voice.recording) voice.stopVoice(true);
+                           else voice.startVoice(); }}
+            title={!voice.recording ? 'Voice off — click to start'
+                 : voice.speaking ? `${assistantName} is speaking — click to stop it`
+                 : voice.asleep ? `Listening for "hey ${assistantName}"`
+                 : 'Awake and listening'}
+            className="apx-meter"
+            style={{border:'none',cursor:'pointer',font:'inherit',
+                    background: voice.speaking ? 'rgba(226,143,49,.18)'
+                              : voice.recording && !voice.asleep ? 'rgba(46,164,110,.18)' : 'transparent'}}>
+            <span className="mk">{assistantName}</span>
+            <span className="mv" style={{display:'flex',alignItems:'center',gap:5}}>
+              <span style={{width:7,height:7,borderRadius:'50%',display:'inline-block',
+                background: !voice.recording ? '#6b7a74'
+                          : voice.speaking ? '#e28f31'
+                          : voice.asleep ? '#8aa79b' : '#2ea46e',
+                boxShadow: voice.recording && !voice.asleep ? '0 0 6px #2ea46e' : 'none'}}/>
+              {!voice.recording ? 'off' : voice.speaking ? 'speaking'
+                : voice.asleep ? 'waiting' : (voice.partial ? 'hearing' : 'listening')}
+            </span>
+          </button>
+        )}
         <div className="apx-meter"><span className="mk">Queue depth</span><span className={"mv"+(queue>0?' warn':'')}>{queue===null?'—':queue}</span></div>
         <div className="apx-meter"><span className="mk">Spend today</span><span className="mv">{spend===null?(typeof sessionCost==='number'?fmtCost(sessionCost):'—'):fmtCost(spend)}</span></div>
         <div className="apx-meter"><span className="mk">Local time</span><span className="mv">{clock}</span></div>
@@ -4317,7 +4370,7 @@ function ApxBar({ view, setView, VIEW_LABELS, sessionCost }){
 }
 
 /* ---- Overview: the Apex landing (orbital + KPIs + console + activity) ---- */
-function OverviewApex({ setView, onDispatch }){
+function OverviewApex({ setView, onDispatch, voice }){
   const [statuses,setStatuses]=useState({});
   const [hoverName,setHoverName]=useState(null);
   useEffect(()=>{
@@ -4338,7 +4391,7 @@ function OverviewApex({ setView, onDispatch }){
       <div className="apx-field">
         <ApxOrbital setView={setView} statuses={statuses} hoverName={hoverName} setHoverName={setHoverName}/>
         <ApxKpis/>
-        <ApxConsole onDispatch={onDispatch}/>
+        <ApxConsole onDispatch={onDispatch} voice={voice}/>
       </div>
       <ApxActivity/>
     </div>
@@ -4371,8 +4424,11 @@ function App() {
   const [partial,setPartial]       = useState('');     // live VOSK hypothesis
   const [voiceErr,setVoiceErr]     = useState('');
   const [voiceEngines,setVoiceEngines] = useState(null);
-  const [handsFree,setHandsFree]   = useState(false);  // speak -> answer -> keep listening
-  const [wakeWord,setWakeWord]     = useState(false);  // only act when addressed
+  // On by default: this is meant to be an always-on assistant, not a button.
+  // A deliberate "off" is remembered per browser so the default never overrides
+  // someone who turned it off on purpose.
+  const [handsFree,setHandsFree]   = useState(pref('cc_hands_free', true));
+  const [wakeWord,setWakeWord]     = useState(pref('cc_wake_word', true));
   const [asleep,setAsleep]         = useState(false);  // waiting for the wake phrase
   const [bargeOk,setBargeOk]       = useState(false);  // can you interrupt by voice
   const [speakReplies,setSpeakReplies] = useState(true);
@@ -4391,9 +4447,11 @@ function App() {
   const speakRepliesRef = useRef(true);
   const wakeWordRef = useRef(false);
   const bargeOkRef = useRef(false);
-  useEffect(()=>{ wakeWordRef.current = wakeWord; },[wakeWord]);
+  useEffect(()=>{ wakeWordRef.current = wakeWord;
+    try { localStorage.setItem('cc_wake_word', String(wakeWord)); } catch {} },[wakeWord]);
   useEffect(()=>{ bargeOkRef.current = bargeOk; },[bargeOk]);
-  useEffect(()=>{ handsFreeRef.current = handsFree; },[handsFree]);
+  useEffect(()=>{ handsFreeRef.current = handsFree;
+    try { localStorage.setItem('cc_hands_free', String(handsFree)); } catch {} },[handsFree]);
   useEffect(()=>{ speakRepliesRef.current = speakReplies; },[speakReplies]);
 
   useEffect(()=>{
@@ -4707,6 +4765,36 @@ function App() {
     stopVoice(false);
   }, [stopVoice]);
 
+  // Everything a page needs to show and drive the one shared session, so voice
+  // is not trapped in the chat composer.
+  const startVoiceRefLocal = useRef(null);
+  startVoiceRefLocal.current = startVoice;
+  const voiceApi = {
+    recording, voiceState, asleep, partial, speaking, wakeWord, handsFree,
+    voiceErr, engines: voiceEngines,
+    startVoice, stopVoice, shutUp, setWakeWord, setHandsFree,
+  };
+
+  // Always-on by default: open the mic on load rather than waiting for a click.
+  // With the wake word on this is cheap and private — only the local grammar
+  // detector runs until it hears the phrase.
+  //
+  // Autostart is skipped unless the microphone is already granted. Prompting
+  // for permission on page load, with no user action behind it, is hostile and
+  // browsers increasingly refuse it anyway; the button still works and prompts
+  // properly then.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current || recording || !pref('cc_voice_autostart', true)) return;
+    autoStarted.current = true;
+    (async () => {
+      try {
+        const st = await navigator.permissions?.query({name: 'microphone'});
+        if (st && st.state === 'granted') startVoiceRefLocal.current?.();
+      } catch { /* permissions API unsupported: leave it to the button */ }
+    })();
+  }, [recording]);
+
   const onPickFile = () => fileRef.current?.click();
 
   const handleUpload = async (e) => {
@@ -4792,7 +4880,7 @@ function App() {
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden'}}>
-      <ApxBar view={view} setView={setView} VIEW_LABELS={VIEW_LABELS} sessionCost={sessionCost}/>
+      <ApxBar view={view} setView={setView} VIEW_LABELS={VIEW_LABELS} sessionCost={sessionCost} voice={voiceApi}/>
       <div style={{display:'flex',flex:'1 1 auto',minHeight:0,overflow:'hidden'}}>
       {/* ── Left rail ── */}
       <div className="rail">
@@ -4865,7 +4953,8 @@ function App() {
           <button onClick={newSession} style={{background:'none',border:'1px solid var(--border)',color:'var(--muted)',borderRadius:8,padding:'4px 12px',cursor:'pointer',fontSize:12}}>+ New chat</button>
         </div>}
 
-        {view==='overview' && <OverviewApex setView={setView} onDispatch={t=>{setInput(t);setView('chat');}}/>}
+        {view==='overview' && <OverviewApex setView={setView} voice={voiceApi}
+          onDispatch={t=>{setInput(t);setView('chat');}}/>}
         {view==='admin' && <AdminView/>}
         {view==='quality' && <QualityCockpit/>}
         {view==='productivity' && <ProductivityView/>}

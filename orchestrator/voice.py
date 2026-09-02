@@ -58,7 +58,7 @@ AUTO_QUERY_MIN_CHARS: int = int(os.getenv("VOICE_AUTO_QUERY_MIN_CHARS", "8"))
 # is not. An answer that reads well on screen is unbearable aloud — nobody wants
 # 400 words and a bulleted list read at them, and the listener cannot skim. This
 # is applied only to voice turns, so typed chat keeps its normal fuller answers.
-VOICE_ASSISTANT_NAME: str = os.getenv("VOICE_ASSISTANT_NAME", "Jarvis")
+VOICE_ASSISTANT_NAME: str = os.getenv("VOICE_ASSISTANT_NAME", "Apex")
 VOICE_MAX_SENTENCES: int = int(os.getenv("VOICE_MAX_SENTENCES", "3"))
 VOICE_PERSONA: str = os.getenv("VOICE_PERSONA", "").strip()
 
@@ -439,7 +439,7 @@ async def voice_ws(client: WebSocket):
 
             text = (event.get("text") or "").strip()
             # An utterance caught in the same breath as the wake word carries it
-            # in front: "hey jarvis what is X". Asking the agent that verbatim
+            # in front: "hey apex what is X". Asking the agent that verbatim
             # wastes tokens and confuses retrieval.
             if wake_word and text:
                 from media.wake import strip_wake_prefix

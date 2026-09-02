@@ -480,12 +480,12 @@ async def test_hands_free_answers_each_utterance_and_guards_noise(monkeypatch):
 def test_wake_phrase_matching_is_word_bounded():
     from media.wake import phrase_in
 
-    words = ["hey jarvis", "jarvis"]
-    assert phrase_in("hey jarvis what is rag", words) == "hey jarvis"
-    assert phrase_in("JARVIS!! summarise", words) == "jarvis"
+    words = ["hey apex", "apex"]
+    assert phrase_in("hey apex what is rag", words) == "hey apex"
+    assert phrase_in("APEX!! summarise", words) == "apex"
     assert phrase_in("what is the weather", words) is None
     # A wake word inside a longer word must not fire.
-    assert phrase_in("the jarvisian era", words) is None
+    assert phrase_in("the apexian era", words) is None
 
 
 def test_barge_words_do_not_match_inside_other_words():
@@ -500,9 +500,9 @@ def test_barge_words_do_not_match_inside_other_words():
 def test_wake_prefix_is_stripped_from_the_question():
     from media.wake import strip_wake_prefix
 
-    words = ["hey jarvis", "jarvis", "okay jarvis"]
-    assert strip_wake_prefix("hey jarvis what is agentic rag", words) == "what is agentic rag"
-    assert strip_wake_prefix("jarvis, summarise this", words) == "summarise this"
+    words = ["hey apex", "apex", "okay apex"]
+    assert strip_wake_prefix("hey apex what is agentic rag", words) == "what is agentic rag"
+    assert strip_wake_prefix("apex, summarise this", words) == "summarise this"
     # No wake word: left alone.
     assert strip_wake_prefix("what is agentic rag", words) == "what is agentic rag"
 
@@ -590,7 +590,7 @@ def test_voice_persona_keeps_replies_short():
 def test_wake_detector_ignores_retracted_partials(monkeypatch):
     """
     Regression: VOSK grammar-mode partials are unstable. Decoding a sentence with
-    no wake word in it, it briefly proposed "[unk] jarvis" before retracting to
+    no wake word in it, it briefly proposed "[unk] apex" before retracting to
     "[unk] [unk]" on the final — and the assistant woke on unrelated speech.
     Only settled results may count.
     """
@@ -607,7 +607,7 @@ def test_wake_detector_ignores_retracted_partials(monkeypatch):
         def accept(self, pcm):
             self.n += 1
             if self.n == 1:
-                return [wake_result("[unk] jarvis", partial=True)]
+                return [wake_result("[unk] apex", partial=True)]
             if self.n == 2:
                 return [wake_result("[unk] [unk]", partial=False)]
             return []
@@ -621,7 +621,7 @@ def test_wake_detector_ignores_retracted_partials(monkeypatch):
         return VoskResult(text=text, partial=partial)
 
     detector = wake.WakeWordDetector.__new__(wake.WakeWordDetector)
-    detector.phrases = ["hey jarvis", "jarvis"]
+    detector.phrases = ["hey apex", "apex"]
     detector.available = True
     detector._stream = FakeStream()
     detector._last_hit = 0.0
@@ -638,23 +638,23 @@ def test_wake_detector_fires_on_a_settled_result(monkeypatch):
 
     class FakeStream:
         def accept(self, pcm):
-            return [VoskResult(text="[unk] hey jarvis [unk]", partial=False)]
+            return [VoskResult(text="[unk] hey apex [unk]", partial=False)]
 
         def reset(self):
             pass
 
     detector = wake.WakeWordDetector.__new__(wake.WakeWordDetector)
-    detector.phrases = ["hey jarvis", "jarvis"]
+    detector.phrases = ["hey apex", "apex"]
     detector.available = True
     detector._stream = FakeStream()
     detector._last_hit = 0.0
 
-    assert detector.feed(b"\x00" * 3200) == "hey jarvis"
+    assert detector.feed(b"\x00" * 3200) == "hey apex"
 
 
 def test_wake_ignores_retracted_partial_hypotheses(monkeypatch):
     """
-    Regression: VOSK grammar mode briefly proposed "[unk] jarvis" while decoding
+    Regression: VOSK grammar mode briefly proposed "[unk] apex" while decoding
     a sentence with no wake word, then retracted it to "[unk] [unk]" on the
     final. Matching partials woke the assistant on unrelated speech, which in
     hands-free mode means transcribing and answering a conversation it was never
@@ -664,7 +664,7 @@ def test_wake_ignores_retracted_partial_hypotheses(monkeypatch):
 
     scripted = [
         [vosk_engine.VoskResult(text="[unk]", partial=True)],
-        [vosk_engine.VoskResult(text="[unk] jarvis", partial=True)],   # retracted
+        [vosk_engine.VoskResult(text="[unk] apex", partial=True)],   # retracted
         [vosk_engine.VoskResult(text="[unk] [unk]", partial=False)],   # settled truth
     ]
 
@@ -685,7 +685,7 @@ def test_wake_ignores_retracted_partial_hypotheses(monkeypatch):
     monkeypatch.setattr(vosk_engine, "load_model", lambda *a, **k: object())
     monkeypatch.setattr(wake, "WAKE_ON_PARTIAL", False)
 
-    detector = wake.WakeWordDetector(["hey jarvis", "jarvis"])
+    detector = wake.WakeWordDetector(["hey apex", "apex"])
     assert detector.available
     hits = [detector.feed(b"\x00" * 3200) for _ in range(3)]
     assert hits == [None, None, None], f"woke on a retracted partial: {hits}"
@@ -703,7 +703,7 @@ def test_wake_still_fires_on_a_settled_result(monkeypatch):
             if self.done:
                 return []
             self.done = True
-            return [vosk_engine.VoskResult(text="[unk] hey jarvis [unk]", partial=False)]
+            return [vosk_engine.VoskResult(text="[unk] hey apex [unk]", partial=False)]
 
         def reset(self):
             pass
@@ -712,8 +712,8 @@ def test_wake_still_fires_on_a_settled_result(monkeypatch):
     monkeypatch.setattr(vosk_engine, "is_available", lambda: True)
     monkeypatch.setattr(vosk_engine, "load_model", lambda *a, **k: object())
 
-    detector = wake.WakeWordDetector(["hey jarvis", "jarvis"])
-    assert detector.feed(b"\x00" * 3200) == "hey jarvis"
+    detector = wake.WakeWordDetector(["hey apex", "apex"])
+    assert detector.feed(b"\x00" * 3200) == "hey apex"
 
 
 def test_env_example_has_no_comment_as_value():

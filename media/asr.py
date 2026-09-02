@@ -75,7 +75,7 @@ ENGINES = ("whisper", "vosk", "hybrid")
 # Tuned by measurement, and the safe band is narrow. The detector only matches
 # settled VOSK results (see media/wake.py), which lands roughly a second after
 # the phrase is actually spoken, so the buffer has to reach back at least that
-# far. Measured against "hey jarvis, what is agentic RAG":
+# far. Measured against "hey apex, what is agentic RAG":
 #   0.6s  clips the question   -> "his agentic retrieval augmented generation"
 #   1.0s  clean                -> "What is Agentic Retrieval Augmented Generation?"
 #   1.5s  clean
@@ -548,7 +548,7 @@ class LiveSession:
             if self._wake.available:
                 self.asleep = True
                 # Hold a little recent audio while asleep, so a question asked
-                # in the same breath as the wake word ("hey jarvis, what is X")
+                # in the same breath as the wake word ("hey apex, what is X")
                 # is not lost in the gap between the detector firing and
                 # transcription starting.
                 #
