@@ -4,6 +4,7 @@
 #   rag-watchdog.timer    -> every 5 minutes  -> scripts\watchdog.ps1
 #   rag-rehearsal.timer   -> Mon 05:30        -> scripts\rehearsal.ps1
 #   (new) weekly live eval -> Mon 05:00       -> scripts\weekly_live_eval.ps1
+#   (new) nightly backup   -> daily 02:30     -> scripts\backup_system.py
 #   autostart on logon    -> Start RAG Ecosystem.bat (optional, -Autostart)
 #
 # The live eval runs 30 minutes before the rehearsal task, not because they
@@ -28,7 +29,11 @@
 
 param(
     [switch]$Autostart,
-    [switch]$WhatIf
+    [switch]$WhatIf,
+    # Where nightly archives land. Point this at a location that does not
+    # share a failure mode with C: (another disk, a NAS, or a synced folder)
+    # or the backup dies with the thing it was meant to protect.
+    [string]$BackupRoot = "C:\Backups\agentic-rag"
 )
 
 $ProjectRoot = Split-Path $PSScriptRoot -Parent
@@ -64,6 +69,17 @@ $liveEvalAction = New-ScheduledTaskAction -Execute "powershell.exe" `
 $liveEvalTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At "05:00"
 Register-OrPreview "RAG Weekly Live Eval" $liveEvalAction $liveEvalTrigger `
     "Golden + recall live retrieval eval, Monday 05:00, so a regression surfaces within days rather than at the next debugging session (Stage 1 item 15)."
+
+# --- Nightly full backup: 02:30 ---------------------------------------------
+# /ops/backup (which the Monday rehearsal calls) copies media.db alone into
+# logs\db_backups, inside the repo on the same disk. This captures every
+# database, every Qdrant collection, config and the cost ledger, and puts the
+# archive somewhere the loss of C: does not take with it. Stage 1 item 4.
+$backupAction = New-ScheduledTaskAction -Execute "$ProjectRoot\.venv\Scripts\python.exe" `
+    -Argument "scripts\backup_system.py --keep 10 --roots `"$BackupRoot`"" -WorkingDirectory $ProjectRoot
+$backupTrigger = New-ScheduledTaskTrigger -Daily -At "02:30"
+Register-OrPreview "RAG Nightly Backup" $backupAction $backupTrigger `
+    "Full-system backup (all SQLite DBs, Qdrant collections, config, cost ledger) to $BackupRoot, nightly at 02:30."
 
 # --- Rehearsal: every Monday 05:30 ------------------------------------------
 $rehearsalAction = New-ScheduledTaskAction -Execute "powershell.exe" `
