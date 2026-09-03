@@ -3891,6 +3891,7 @@ const APX_CC = {
 // Inner ring = primary daily surfaces; outer ring = systems & operations.
 const APX_NODES = [
   { id:'chat',        label:'Chat',           ring:1 },
+  { id:'departments',label:'Departments',   ring:1 },
   { id:'productivity',label:'Productivity',   ring:1 },
   { id:'content',     label:'Content',        ring:1 },
   { id:'production',  label:'Production',      ring:1 },
@@ -4398,6 +4399,189 @@ function OverviewApex({ setView, onDispatch, voice }){
   );
 }
 
+/* ---- Department cards: explicit dispatch into the WijerCo agent layer -----
+   Phase 1 endpoint probing (4 Sep 2026) found /classify returns the expected
+   department in only 3 of 12 representative queries, and no department at all
+   in 5, falling back to hybrid or rag. That is the classifier being
+   deliberately conservative rather than broken, but it settles the design:
+   a card DISPATCHES BY FORCE. Clicking one sets `department` on /wijerco
+   instead of hoping the router attributes the work to the right place.
+   Classification still appears, as a suggestion with its confidence next to
+   it, never as the mechanism that decides which card owns a run. */
+
+function DeptRunPill({state}){
+  const map = {
+    idle:    ['st-mute', 'Idle'],
+    running: ['st-warn', 'Running'],
+    done:    ['st-good', 'Done'],
+    blocked: ['st-fail', 'Blocked'],
+  };
+  const [cls,label] = map[state] || map.idle;
+  return <span className={"stag "+cls}>{label}</span>;
+}
+
+function DepartmentsView(){
+  const [roster,setRoster]   = useState(null);
+  const [sel,setSel]         = useState(null);   // selected department key
+  const [brief,setBrief]     = useState('');
+  const [agent,setAgent]     = useState('');     // subagent slug, '' = let the router pick
+  const [runs,setRuns]       = useState({});     // dept key -> run record
+  const [suggest,setSuggest] = useState(null);   // /classify preview, advisory only
+  const [busy,setBusy]       = useState(false);
+
+  useEffect(()=>{
+    fetch(`${API}/wijerco/roster`)
+      .then(r=>r.ok?r.json():Promise.reject())
+      .then(setRoster)
+      .catch(()=>setRoster({departments:[]}));
+  },[]);
+
+  // One session per department, so reopening a card continues that
+  // department's conversation instead of starting a fresh one every time.
+  // session_store.py keys history off session_id; the id is kept per browser.
+  const sessionFor = key => {
+    const k = 'cc_dept_session_'+key;
+    let v = null;
+    try { v = localStorage.getItem(k); } catch {}
+    if(!v){
+      v = crypto.randomUUID();
+      try { localStorage.setItem(k, v); } catch {}
+    }
+    return v;
+  };
+
+  const depts   = (roster && roster.departments) || [];
+  const current = depts.find(d=>d.key===sel) || null;
+  const run     = current ? (runs[current.key] || {}) : {};
+
+  const preview = async () => {
+    if(!brief.trim()) return;
+    setSuggest({loading:true});
+    try {
+      const r = await fetch(`${API}/classify`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({query: brief}),
+      }).then(r=>r.ok?r.json():Promise.reject());
+      setSuggest(r);
+    } catch { setSuggest({failed:true}); }
+  };
+
+  const dispatch = async () => {
+    if(!current || !brief.trim() || busy) return;
+    setBusy(true);
+    setRuns(r=>({...r, [current.key]: {...(r[current.key]||{}), state:'running'}}));
+    try {
+      const body = {query: brief, department: current.key, session_id: sessionFor(current.key)};
+      if(agent) body.subagent = agent;
+      const d = await fetch(`${API}/wijerco`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body),
+      }).then(r=>r.ok?r.json():Promise.reject(new Error('HTTP '+r.status)));
+      setRuns(r=>({...r, [current.key]: {
+        state: d.error ? 'blocked' : 'done',
+        answer: d.answer, model: d.model, subagent: d.subagent,
+        tokens: d.tokens_used, error: d.error,
+        at: new Date().toLocaleTimeString(),
+      }}));
+    } catch(e) {
+      setRuns(r=>({...r, [current.key]: {
+        state:'blocked', error: String((e && e.message) || e),
+        at: new Date().toLocaleTimeString(),
+      }}));
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="view-wrap"><div className="view-inner">
+      <ViewHead eyebrow="Agent layer" title="Departments."
+        lede="Twelve departments, sixty-two agents. Choose one and give it a brief. The department is forced, not guessed."/>
+
+      <div style={{marginTop:24,display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:14}}>
+        {depts.map(d=>{
+          const st = (runs[d.key]||{}).state || 'idle';
+          const on = sel===d.key;
+          return (
+            <div key={d.key} className="card card-i"
+              onClick={()=>{ setSel(d.key); setAgent(''); setSuggest(null); }}
+              style={{cursor:'pointer', borderLeft:'3px solid '+d.color,
+                      outline: on ? '2px solid var(--accent)' : 'none'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+                <div style={{fontSize:22,lineHeight:1}}>{d.emoji}</div>
+                <DeptRunPill state={st}/>
+              </div>
+              <div className="serif" style={{fontSize:16,fontWeight:500,color:'var(--ink)',margin:'8px 0 5px'}}>{d.label}</div>
+              <div className="mini" style={{minHeight:34}}>{d.blurb}</div>
+              <div className="cap-tag" style={{marginTop:8}}>{d.count} agents</div>
+            </div>
+          );
+        })}
+        {!depts.length && <div className="mini">Roster unavailable. Is the orchestrator running on port 8000?</div>}
+      </div>
+
+      {current && (
+        <div className="card" style={{marginTop:20,borderTop:'3px solid '+current.color}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+            <div className="serif" style={{fontSize:18,fontWeight:500,color:'var(--ink)'}}>
+              {current.emoji} {current.label}
+            </div>
+            <DeptRunPill state={run.state||'idle'}/>
+          </div>
+
+          <div className="mini" style={{marginTop:6}}>{current.blurb}</div>
+
+          <textarea value={brief} onChange={e=>setBrief(e.target.value)}
+            placeholder={"Brief for "+current.label+"..."}
+            style={{width:'100%',minHeight:88,marginTop:14,padding:10,borderRadius:8,
+                    background:'var(--bg2)',color:'var(--ink)',border:'1px solid var(--border)',
+                    font:'inherit',fontSize:14,resize:'vertical'}}/>
+
+          <div style={{display:'flex',gap:10,alignItems:'center',marginTop:10,flexWrap:'wrap'}}>
+            <select className="delivery-select" value={agent} onChange={e=>setAgent(e.target.value)}>
+              <option value="">Let the department choose an agent</option>
+              {(current.agents||[]).map(a=>(
+                <option key={a.slug} value={a.slug}>{a.name} · {a.role}</option>
+              ))}
+            </select>
+            <button className="icon-btn" onClick={preview} disabled={!brief.trim()}>Preview routing</button>
+            <button className="icon-btn" onClick={dispatch} disabled={!brief.trim()||busy}
+              style={{background:current.color,color:'#0b1020',fontWeight:600}}>
+              {busy ? 'Running...' : 'Dispatch'}
+            </button>
+          </div>
+
+          {suggest && (
+            <div className="mini" style={{marginTop:10,opacity:.9}}>
+              {suggest.loading && 'Classifying...'}
+              {suggest.failed  && 'Routing preview unavailable.'}
+              {!suggest.loading && !suggest.failed && (
+                <>
+                  Suggestion only, not what runs: the classifier would route this to{' '}
+                  <b>{suggest.department || 'no department'}</b> ({Math.round((suggest.confidence||0)*100)}% confidence)
+                  {suggest.subagent ? <> via <b>{suggest.subagent}</b></> : null}.
+                  {' '}Dispatch sends it to <b>{current.label}</b> regardless.
+                </>
+              )}
+            </div>
+          )}
+
+          {run.state && run.state!=='idle' && run.state!=='running' && (
+            <div style={{marginTop:16,paddingTop:14,borderTop:'1px solid var(--border)'}}>
+              <div className="cap-tag">
+                {run.subagent ? run.subagent+' · ' : ''}{run.model||''}{run.tokens ? ' · '+run.tokens+' tokens' : ''}
+                {run.at ? ' · '+run.at : ''}
+              </div>
+              {run.error
+                ? <div className="mini" style={{marginTop:8,color:'var(--rose,#f87171)'}}>{String(run.error)}</div>
+                : <div style={{marginTop:8,whiteSpace:'pre-wrap',fontSize:14,lineHeight:1.55,color:'var(--ink)'}}>{run.answer}</div>}
+            </div>
+          )}
+        </div>
+      )}
+    </div></div>
+  );
+}
+
 function App() {
   const [sessionId,setSessionId]   = useState(()=>crypto.randomUUID());
   const [messages,setMessages]     = useState([]);
@@ -4849,11 +5033,12 @@ function App() {
 
   const avail = Object.entries(models).filter(([,v])=>v.available);
 
-  const VIEW_LABELS = {overview:'Overview',chat:'Chat',admin:'Usage',quality:'Quality',productivity:'Productivity',harness:'Self-Improve',n8n:'Automations',operating:'Operating',library:'Deliverables',content:'Content pipeline',production:'Production',media:'Media library',engagements:'Engagements',kb:'Knowledge base',intel:'Sector intel',trace:'Routing',schedule:'Scheduled runs'};
+  const VIEW_LABELS = {overview:'Overview',chat:'Chat',departments:'Departments',admin:'Usage',quality:'Quality',productivity:'Productivity',harness:'Self-Improve',n8n:'Automations',operating:'Operating',library:'Deliverables',content:'Content pipeline',production:'Production',media:'Media library',engagements:'Engagements',kb:'Knowledge base',intel:'Sector intel',trace:'Routing',schedule:'Scheduled runs'};
   const NAV = [
     {label:'Workspace', items:[
       ['overview','Overview',<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/></svg>],
       ['chat','Chat',<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-4 4V5z" strokeLinejoin="round"/></svg>],
+      ['departments','Departments',<svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>],
       ['productivity','Productivity',<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4" strokeLinecap="round" strokeLinejoin="round"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" strokeLinecap="round" strokeLinejoin="round"/></svg>],
       ['admin','Usage',<svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 16v-4M12 16V8M16 16v-2" strokeLinecap="round"/></svg>],
       ['quality','Quality',<svg viewBox="0 0 24 24"><path d="M4 13l4 4 4-10 4 6 4-9" strokeLinecap="round" strokeLinejoin="round"/><path d="M4 20h16" strokeLinecap="round"/></svg>],
@@ -4955,6 +5140,7 @@ function App() {
 
         {view==='overview' && <OverviewApex setView={setView} voice={voiceApi}
           onDispatch={t=>{setInput(t);setView('chat');}}/>}
+        {view==='departments' && <DepartmentsView/>}
         {view==='admin' && <AdminView/>}
         {view==='quality' && <QualityCockpit/>}
         {view==='productivity' && <ProductivityView/>}
