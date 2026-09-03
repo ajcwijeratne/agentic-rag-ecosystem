@@ -459,12 +459,14 @@ async def call_wijerco_agent(
         query         = query,
     )
 
-    # Extract and store memorable facts in the background
+    # Record candidate facts as evidence in the background. These are NOT
+    # written to recallable memory: this reply is generated text, and only
+    # verify_candidates() can promote a claim once the KB corroborates it.
     try:
         import asyncio
-        from memory.memory_agent import extract_and_store
+        from memory.memory_agent import extract_and_record_evidence
         asyncio.ensure_future(
-            extract_and_store(department, query, response.content)
+            extract_and_record_evidence(department, query, response.content)
         )
     except Exception:
         pass

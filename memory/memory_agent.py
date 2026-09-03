@@ -3,9 +3,13 @@ Memory Agent
 ============
 Two async functions used around every WijerCo agent call:
 
-  extract_and_store(department, query, response)
+  extract_and_record_evidence(department, query, response)
       After a WijerCo response, uses a local LLM (Ollama/llama3) to extract
-      memorable facts (client names, project details, decisions) and stores them.
+      candidate facts (client names, project details, decisions) and records
+      them as UNVERIFIED EVIDENCE. They are not recallable. Promotion into the
+      semantic store happens only in memory.consolidation.verify_candidates(),
+      and only when the knowledge base corroborates the claim. Generated text
+      is evidence, never knowledge.
 
   recall(query, department)
       Before a WijerCo response, retrieves semantically relevant memories and
@@ -33,6 +37,11 @@ objects with keys "entity" and "fact". If nothing memorable, output [].
 Example: [{"entity": "Swinburne", "fact": "Requires TEQSA-compliant unit outlines."}]
 """
 
+
+# Tag on candidate entries in project memory. memory/consolidation.py reads
+# this to find things awaiting verification, and skips them in the ordinary
+# recurrence-based promotion pass, where repetition alone would be enough.
+CANDIDATE_KIND = "agent_candidate"
 
 _PLACEHOLDER = re.compile(r"\[[^\]]{2,60}\]")
 _ERRORISH = re.compile(r"\b(error|traceback|exception|failed to|no response)\b", re.I)
@@ -66,14 +75,23 @@ def _is_storable(entity: str, fact: str) -> bool:
     return True
 
 
-async def extract_and_store(
+async def extract_and_record_evidence(
     department: str,
     query:      str,
     response:   str,
 ) -> int:
-    """
-    Extract memorable facts from the query+response pair and persist them.
-    Returns the number of memories stored. Runs silently on failure.
+    """Extract candidate facts from a query+response pair as EVIDENCE ONLY.
+
+    These facts come from the assistant's own reply, which is generated text,
+    not established truth. Nothing here is recallable. Candidates land in the
+    project-memory tier tagged CANDIDATE_KIND, and only reach the semantic
+    store that recall() reads if verify_candidates() finds the knowledge base
+    corroborates them.
+
+    Until 4 Sep 2026 this wrote straight into the semantic store, so the system
+    treated whatever it had just said as a fact about the world. A drafted
+    email became a "fact" about the LMS and was recalled into an unrelated
+    question days later. Returns the number of candidates recorded.
     """
     import json
     from orchestrator.multi_llm import call_model
@@ -103,27 +121,42 @@ async def extract_and_store(
     if not isinstance(facts, list):
         return 0
 
+    from orchestrator.operating import add_project_memory
+
     count = 0
     for item in facts:
         if isinstance(item, dict) and "entity" in item and "fact" in item:
-            if not _is_storable(str(item["entity"]), str(item["fact"])):
-                logger.debug(
-                    "[memory_agent] Rejected non-fact: %r / %r",
-                    item["entity"], item["fact"],
-                )
+            entity, fact = str(item["entity"]), str(item["fact"])
+            if not _is_storable(entity, fact):
+                logger.debug("[memory_agent] Rejected non-fact: %r / %r", entity, fact)
                 continue
             try:
-                await store.add(
-                    entity  = str(item["entity"]),
-                    content = str(item["fact"]),
-                    source  = department,
+                # Evidence, not knowledge. This goes to the candidate tier and
+                # is NOT recallable. memory.consolidation.verify_candidates()
+                # promotes it into the semantic store only if the knowledge
+                # base corroborates it.
+                add_project_memory(
+                    project = department,
+                    content = f"{entity}: {fact}",
+                    source  = "agent-extraction",
+                    meta    = {
+                        "kind":       CANDIDATE_KIND,
+                        "entity":     entity,
+                        "fact":       fact,
+                        "department": department,
+                        "query":      query[:300],
+                        "verified":   False,
+                    },
                 )
                 count += 1
             except Exception as exc:
-                logger.debug(f"[memory_agent] Store failed: {exc}")
+                logger.debug(f"[memory_agent] Candidate record failed: {exc}")
 
     if count:
-        logger.info(f"[memory_agent] Stored {count} memories from {department} agent")
+        logger.info(
+            "[memory_agent] Recorded %d unverified candidate(s) from %s agent",
+            count, department,
+        )
 
     return count
 
