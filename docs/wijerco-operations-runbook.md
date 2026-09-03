@@ -113,7 +113,7 @@ wijwork ↔ wijerco is relayed through the Sydney DERP server, not direct (`tail
 
 - **venv interpreter**: always `.venv\Scripts\python.exe`, never bare `python`. See §4.
 - **PWA hard-refresh**: Ctrl+F5 after every deploy, or you'll be debugging a UI that already shipped. See §2.
-- **OneDrive placeholder hydration**: a repo or vault living inside a OneDrive-synced folder can silently truncate files that haven't been "hydrated" from the cloud yet — this corrupted a stale `agentic-rag-ecosystem` checkout's own `.git` directory earlier in the project's history (superseded 24 July; the working copy itself is scheduled for manual deletion, separate from this runbook). Keep the live repo outside any OneDrive-synced path; OneDrive is fine as a backup *destination* (see §3), just not as the location the live code or vault runs from.
+- **OneDrive placeholder hydration**: a repo or vault living inside a OneDrive-synced folder can silently truncate files that haven't been "hydrated" from the cloud yet — this corrupted a stale `agentic-rag-ecosystem` checkout's own `.git` directory earlier in the project's history (superseded 24 July; the working copy was archived and deleted on 3 September, so C:\dev is now the only tree. Two archives of it sit in the OneDrive `agentic-rag-backups` folder, and `ui/command_centre.apex.html` exists only inside them, never in git). Keep the live repo outside any OneDrive-synced path; OneDrive is fine as a backup *destination* (see §3), just not as the location the live code or vault runs from.
 - **Qdrant health signal**: fixed as of Stage 1 item 11 — `/health/qdrant` retries once after a short pause before reporting unhealthy, and the Docker healthchecks for Qdrant/Ollama now do a real HTTP GET rather than a bare TCP connect. If you see it flapping red again, that's a regression, not the old known issue.
 - **Daemon dry-run default**: `DAEMON_DRY_RUN=1` by default — the daemon logs what it would do rather than acting. This gates autonomous plan execution specifically; it does not gate the daemon's routine nightly memory-consolidation pass (episodic entries older than `EPISODIC_RETENTION_DAYS`, default 90, get pruned regardless of dry-run — that's routine housekeeping, not a "plan action").
 
@@ -124,6 +124,21 @@ wijwork ↔ wijerco is relayed through the Sydney DERP server, not direct (`tail
 3. Restore `.env` and `data/*.db` from the newest backup (§3) — or copy from the other machine if this is a fresh second node, not a disaster recovery.
 4. `docker compose up -d`; confirm Qdrant and Ollama pass their health checks.
 5. Re-index (§4) if not restoring the Qdrant volume directly.
-6. `.\scripts\launch.ps1`.
-7. Confirm `/health/deep` returns `ok`, the Command Centre loads (Ctrl+F5 once), and — if this machine should run the daemon/channels — that `logs\daemon.log` and `logs\telegram.log` (if configured) show clean startup.
-8. Only once satisfied this machine is meant to be a standing production node: register the watchdog and rehearsal scheduled tasks (§7), and separately decide about autostart-on-boot (§1).
+6. **Voice only, and only on a machine with a microphone:** fetch the VOSK model with `.\scripts\download_vosk_model.ps1`. `models/` is gitignored, so a clone does not carry it and the voice service will not start without it. Skip this on wijerco (see §12).
+7. `.\scripts\launch.ps1`.
+8. Confirm `/health/deep` returns `ok`, the Command Centre loads (Ctrl+F5 once), and — if this machine should run the daemon/channels — that `logs\daemon.log` and `logs\telegram.log` (if configured) show clean startup.
+9. Only once satisfied this machine is meant to be a standing production node: register the watchdog and rehearsal scheduled tasks (§7), and separately decide about autostart-on-boot (§1).
+
+## 12. Which machine runs what
+
+Merging the voice stack made this a real split rather than a detail, so it is worth stating plainly.
+
+**wijerco** (headless mini PC) is the brain. It runs the orchestrator, the daemon, the Telegram and email channels, n8n, and Qdrant, and it is the node served over Tailscale. It has no microphone and no one sitting at it, so it does not run the voice service and does not need the VOSK model.
+
+**wijwork** (the GPU desktop) runs whatever needs hardware or a person: the voice service and its wake-word listener, screen awareness, and the GPU media workers if they are ever un-parked (§9). It is reached over loopback, where `role_for_request()` grants admin, which is why its RBAC keys matter less than wijerco's (§5).
+
+Consequences worth remembering:
+
+- Voice is on by default as of the voice-stack merge. On a machine with no microphone that is inert, not broken.
+- `models/` is gitignored, so the VOSK model is a per-machine provisioning step, not something a clone or a restore brings with it.
+- Screen awareness reads the desktop of the machine it runs on. That is wijwork, the machine with a person and their other windows on it. Treat what it may retain and send to a cloud model as a live question rather than a settled one, particularly while the agentic harness can act unattended.
