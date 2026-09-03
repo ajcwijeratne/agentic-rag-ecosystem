@@ -36,6 +36,9 @@ start_service "retriever" "python -m rag.retriever"
 # Notifier
 start_service "notifier" "python -m notifications.notifier --serve"
 
+# Voice: VAD + Whisper + VOSK (REST + live websocket) on port 8009
+start_service "voice_service" "python -m media.voice_service --serve"
+
 # Media (start on demand — uncomment to autostart)
 # start_service "whisper"  "python -m media.whisper_pipeline --serve"
 # start_service "video"    "python -m media.video_pipeline --serve"
@@ -43,3 +46,4 @@ start_service "notifier" "python -m notifications.notifier --serve"
 echo ""
 echo "All services started. Logs in $LOG_DIR/"
 echo "  Orchestrator API → http://localhost:8000/docs"
+echo "  Voice Service    → http://localhost:8009/docs"

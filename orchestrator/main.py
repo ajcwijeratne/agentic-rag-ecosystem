@@ -80,6 +80,14 @@ app.include_router(dashboard_router)
 from .inbox import router as inbox_router
 app.include_router(inbox_router)
 
+# Voice: VAD-gated speech recognition (Whisper + VOSK), file and live socket
+from .voice import router as voice_router
+app.include_router(voice_router)
+
+# Screen awareness: look at the display and describe it. Read-only.
+from .screen import router as screen_router
+app.include_router(screen_router)
+
 # ---------------------------------------------------------------------------
 # Command Centre UI (installable PWA)
 # Served same-origin as the API so the installed app and its fetch() calls both
@@ -1497,7 +1505,10 @@ async def run_hybrid(req: HybridRequest):
             "finished": False,
         }
         try:
-            final_state = graph.invoke(initial_state)
+            # ainvoke, not invoke: rag_node and llm_node are async. The sync
+            # entrypoint returns before they have produced anything, so the
+            # payload arrives with no answer and no error to explain it.
+            final_state = await graph.ainvoke(initial_state)
             rag_result = final_state.get("output_payload", {})
         except Exception as exc:
             rag_result = {"error": str(exc), "answer": "", "context_chunks": []}
@@ -1954,7 +1965,8 @@ async def _background_query(query: str) -> None:
         "finished": False,
     }
     try:
-        final_state = graph.invoke(initial_state)
+        # Async nodes: see the note in run_hybrid.
+        final_state = await graph.ainvoke(initial_state)
         payload = final_state.get("output_payload", {})
 
         # Forward result to Apprise notifier

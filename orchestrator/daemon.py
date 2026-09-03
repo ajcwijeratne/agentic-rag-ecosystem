@@ -192,24 +192,63 @@ def _plan_context(task: dict) -> str:
 
 
 async def _dispatch_agent(task: dict) -> dict[str, Any]:
-    """Run an `agent` task through the WijerCo agent layer."""
-    from .wijerco_agent import call_wijerco_agent
+    """Run an `agent` task through the autonomous execution harness.
 
-    intent = classify_intent(task["title"])
-    department = getattr(intent, "department", None) or "research_intelligence"
+    Gives the daemon the same tool-calling loop chat already has (search,
+    Content Studio, operating-plan, n8n tools), gated for unattended use, and
+    reads the Handoff Contract Return block the agent is asked to close with
+    so this can tell done from blocked from needs-a-human from hand off to
+    another department.
+    """
+    from .agentic_harness import run_autonomous_task, create_handoff_task, DEPARTMENTS
+
+    assignee = str(task.get("assignee") or "").strip()
+    if assignee in DEPARTMENTS:
+        department = assignee
+    else:
+        intent = classify_intent(task["title"])
+        department = getattr(intent, "department", None) or "research_intelligence"
+
     context = _plan_context(task)
     query = (
         f"Operating task: {task['title']}\n\n{context}\n\n"
         "Complete this task. Be specific and self-contained; your output is "
         "recorded as the task result and read later without you present."
     )
-    result = await call_wijerco_agent(
+    result = await run_autonomous_task(
         department=department,
         query=query,
+        plan_id=task.get("plan_id"),
         max_tier=AGENT_MAX_TIER,
+        task_id=task.get("task_id"),
     )
-    answer = result.get("answer") or result.get("content") or ""
-    return {"ok": bool(answer.strip()), "department": department, "output": answer}
+
+    if result.get("handoff_department"):
+        try:
+            new_task_id = create_handoff_task(parent_task=task, result=result)
+            _log_decision("handoff_created", {
+                "task_id": task["task_id"], "from": department,
+                "to": result["handoff_department"], "new_task_id": new_task_id,
+            })
+        except Exception:
+            logger.exception("failed to create handoff task for %s", task.get("task_id"))
+        return {"ok": True, "department": department, "output": result.get("output"),
+                "handoff_to": result.get("handoff_department")}
+
+    if result.get("decision_needed") or result.get("status") == "needs-decision":
+        return {
+            "ok": False, "needs_decision": True, "department": department,
+            "output": result.get("output"),
+            "error": result.get("decision_needed") or "agent flagged a decision is needed",
+        }
+
+    answer = result.get("output") or ""
+    ok = bool(result.get("ok")) and bool(answer.strip())
+    return {
+        "ok": ok, "department": department, "output": answer,
+        "tool_calls": result.get("tool_calls"),
+        "error": None if ok else (result.get("error") or "agent produced no usable output"),
+    }
 
 
 async def _dispatch_production(task: dict) -> dict[str, Any]:
@@ -346,10 +385,14 @@ async def run_cycle(state: dict[str, Any]) -> dict[str, Any]:
         _log_decision("task_done", {"task_id": task_id, "type": kind, "title": task["title"], "elapsed_sec": elapsed})
         return {"picked": task_id, "action": "done", "type": kind, "elapsed_sec": elapsed}
 
-    if result.get("blocked_on_gate"):
-        operating.update_task(task_id, status="waiting_approval", meta=_set_daemon_meta(task, attempts=attempts))
-        _log_decision("task_gated", {"task_id": task_id, "title": task["title"]})
-        return {"picked": task_id, "action": "gated"}
+    if result.get("blocked_on_gate") or result.get("needs_decision"):
+        reason = str(result.get("error") or "").strip()
+        note = (task.get("note") or "").strip()
+        new_note = (note + f"\n\n---\nneeds a decision: {reason}").strip() if reason else (note or None)
+        operating.update_task(task_id, status="waiting_approval", note=new_note,
+                               meta=_set_daemon_meta(task, attempts=attempts))
+        _log_decision("task_gated", {"task_id": task_id, "title": task["title"], "reason": reason})
+        return {"picked": task_id, "action": "gated", "reason": reason}
 
     error = str(result.get("error") or "unknown failure")[:500]
     if attempts >= MAX_ATTEMPTS:

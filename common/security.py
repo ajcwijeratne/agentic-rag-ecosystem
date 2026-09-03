@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, Request, status
+from starlette.requests import HTTPConnection
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -32,13 +33,13 @@ from fastapi import HTTPException, Request, status
 _LOOPBACK = {"127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1"}
 
 
-def _client_host(request: Request) -> str:
-    client = request.client
+def _client_host(conn: HTTPConnection) -> str:
+    client = conn.client
     return client.host if client else ""
 
 
-def is_loopback(request: Request) -> bool:
-    return _client_host(request) in _LOOPBACK
+def is_loopback(conn: HTTPConnection) -> bool:
+    return _client_host(conn) in _LOOPBACK
 
 
 def _constant_eq(a: str, b: str) -> bool:
@@ -57,9 +58,17 @@ def _configured_keys() -> list[str]:
     return [k for k in keys if k]
 
 
-def require_api_key(request: Request) -> None:
-    """Allow loopback unconditionally; otherwise require API_KEY or ADMIN_API_KEY."""
-    if is_loopback(request):
+def require_api_key(conn: HTTPConnection) -> None:
+    """Allow loopback unconditionally; otherwise require API_KEY or ADMIN_API_KEY.
+
+    Typed as HTTPConnection, the shared base of Request and WebSocket, so the
+    same dependency guards HTTP routes and websocket routes. Declaring it as
+    Request would raise on a websocket route, which has no Request to resolve.
+
+    Browsers cannot set headers on a WebSocket handshake, so on a websocket the
+    key may also arrive as the `api_key` query parameter.
+    """
+    if is_loopback(conn):
         return
     keys = _configured_keys()
     if not keys:
@@ -67,7 +76,9 @@ def require_api_key(request: Request) -> None:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="API_KEY not configured; remote access is disabled",
         )
-    provided = request.headers.get("x-api-key", "")
+    provided = conn.headers.get("x-api-key", "")
+    if not provided and conn.scope.get("type") == "websocket":
+        provided = conn.query_params.get("api_key", "")
     if not any(_constant_eq(provided, k) for k in keys):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -75,9 +86,9 @@ def require_api_key(request: Request) -> None:
         )
 
 
-def require_admin(request: Request) -> None:
+def require_admin(conn: HTTPConnection) -> None:
     """Stricter gate for destructive or paid actions."""
-    if is_loopback(request):
+    if is_loopback(conn):
         return
     admins = []
     raw_roles = os.getenv("RBAC_ROLE_KEYS", "").strip()
@@ -98,7 +109,7 @@ def require_admin(request: Request) -> None:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="ADMIN_API_KEY not configured; remote admin is disabled",
         )
-    provided = request.headers.get("x-api-key", "")
+    provided = conn.headers.get("x-api-key", "")
     if not any(_constant_eq(provided, admin) for admin in admins):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

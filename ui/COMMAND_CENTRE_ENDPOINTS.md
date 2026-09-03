@@ -387,6 +387,61 @@ Envelope: `{"items": [...]}` or bare array.
 
 ---
 
+## 9. Voice — `GET /voice/engines`, `WS /voice/ws`
+
+Backs the mic button in the composer. Served by the orchestrator on 8000, which
+proxies to the voice service on 8009.
+
+`GET /voice/engines` reports what this machine can actually run, so the UI can
+label the button and avoid offering a mode that would fail:
+
+```json
+{
+  "mode": "proxy",
+  "whisper": {"available": true, "model": "base", "device": "cpu"},
+  "vosk":    {"available": true, "model_path": "models/vosk/vosk-model-small-en-us-0.15"},
+  "hybrid":  {"available": true},
+  "vad":     {"silero": true, "webrtc": true, "energy": true}
+}
+```
+
+`mode` is `proxy` (voice service reachable), `in-process` (running inside the
+orchestrator) or `unavailable`.
+
+`WS /voice/ws` carries the live microphone stream. A browser cannot set headers
+on a WebSocket handshake, so the Command Centre appends the stored API key as
+`?api_key=` — `require_api_key` accepts that on websocket connections only.
+
+Send one JSON config frame, then raw 16-bit mono PCM at the declared
+`sample_rate`; the server resamples to 16 kHz:
+
+```json
+{"engine":"hybrid","sample_rate":48000,"vad_backend":"auto",
+ "partials":true,"auto_query":false,"session_id":"..."}
+```
+
+Events come back as JSON:
+
+| `type` | Meaning |
+|---|---|
+| `ready` | Session started; echoes the engine and VAD actually in use |
+| `speech_start` / `speech_end` | VAD boundaries — drives the live mic indicator |
+| `partial` | In-flight VOSK hypothesis; will be superseded |
+| `final` | One finished utterance. In `hybrid`, this is the Whisper text |
+| `transcript` | Sent after `{"type":"stop"}`; the whole session text |
+| `thinking` / `answer` | Only when `auto_query` is true — the routed answer |
+| `error` | Something failed; the socket stays usable |
+
+The Command Centre sets `auto_query: false` and drops each `final` into the
+composer, so a misheard question is corrected before it costs a model call. Set
+`auto_query: true` for a hands-free loop where the orchestrator runs the
+transcript through `/hybrid` and returns the answer on the same socket.
+
+`POST /voice/ask` does the same in one HTTP call (multipart audio in, routed
+answer out) and requires the `operator` role, since it spends model budget.
+
+Note: `getUserMedia` only works on `https://` or `localhost`.
+
 ## Status fields
 
 The pages read `st` directly as a CSS class, which means the backend currently has to know about UI colours. If you would rather keep the API clean, return a semantic status and map it on the frontend.

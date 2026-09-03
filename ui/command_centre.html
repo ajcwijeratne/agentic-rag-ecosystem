@@ -350,6 +350,110 @@ window.fetch = (input, init = {}) => {
   return nativeFetch(input, {...init, headers});
 };
 
+// Voice: the WS handshake cannot carry headers, so the API key rides as a
+// query parameter, which common.security accepts on websocket connections.
+const WS_API = API.replace(/^http/, "ws");
+const assistantName = localStorage.getItem("cc_assistant_name") || "apex";
+
+// A stored preference, defaulting on. Only an explicit "false" turns it off, so
+// a fresh browser gets the always-on behaviour without losing a deliberate opt-out.
+const pref = (key, fallback) => {
+  try { const v = localStorage.getItem(key); return v === null ? fallback : v === "true"; }
+  catch { return fallback; }
+};
+const voiceWsUrl = () => `${WS_API}/voice/ws` +
+  (COMMAND_CENTRE_API_KEY ? `?api_key=${encodeURIComponent(COMMAND_CENTRE_API_KEY)}` : "");
+
+// Mic capture: float32 frames from the browser -> 16-bit PCM for the voice
+// service. An AudioWorklet keeps capture off the main thread; ScriptProcessor
+// is the fallback for browsers that refuse the Blob-URL worklet.
+const PCM_WORKLET = `
+class PCMTap extends AudioWorkletProcessor {
+  process(inputs){
+    const ch = inputs[0] && inputs[0][0];
+    if (ch && ch.length) this.port.postMessage(new Float32Array(ch));
+    return true;
+  }
+}
+registerProcessor('pcm-tap', PCMTap);
+`;
+
+// Speech out. The browser's own synthesiser is used rather than a server TTS:
+// on Windows these are local SAPI voices, so a spoken reply costs nothing, adds
+// no latency, needs no key, and keeps the loop as offline as the rest of the
+// stack. media/generate/voice.py (Piper/ElevenLabs) stays for produced assets,
+// which are a different job: those are files that get registered, not replies.
+const pickVoice = () => {
+  const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+  if (!voices.length) return null;
+  const want = localStorage.getItem("cc_tts_voice");
+  return voices.find(v => v.name === want)
+      || voices.find(v => /en-AU/i.test(v.lang))
+      || voices.find(v => /en-GB/i.test(v.lang))
+      || voices.find(v => /^en/i.test(v.lang))
+      || voices[0];
+};
+
+// Strip what should not be read aloud: code fences, markdown emphasis, link
+// URLs, and bullet markers. Reading raw markdown out loud is unbearable.
+const speakableText = md => (md || "")
+  .replace(/```[\s\S]*?```/g, " (code block omitted) ")
+  .replace(/`([^`]+)`/g, "$1")
+  .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+  .replace(/^#{1,6}\s+/gm, "")
+  .replace(/^\s*[-*+]\s+/gm, "")
+  .replace(/\*\*([^*]+)\*\*/g, "$1")
+  .replace(/(^|\W)[*_]([^*_]+)[*_](\W|$)/g, "$1$2$3")
+  .replace(/\s+/g, " ")
+  .trim();
+
+// Speak `text`, resolving when finished or cancelled. Never rejects: a failed
+// utterance must not strand the hands-free loop with the mic still muted.
+const speakText = (text, {maxChars = 1200} = {}) => new Promise(resolve => {
+  if (!window.speechSynthesis) return resolve("unsupported");
+  const clean = speakableText(text).slice(0, maxChars);
+  if (!clean) return resolve("empty");
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean);
+    const v = pickVoice();
+    if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = parseFloat(localStorage.getItem("cc_tts_rate") || "1.05");
+    u.onend = () => resolve("done");
+    u.onerror = () => resolve("error");
+    speechSynthesis.speak(u);
+  } catch { resolve("error"); }
+});
+
+// Short tones so you know the state without looking at the screen: a rising
+// pair when it wakes and starts listening, a single low tone when it stops.
+let cueCtx = null;
+const cue = (kind) => {
+  try {
+    cueCtx = cueCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const notes = kind === "wake" ? [[660, 0], [880, 0.09]] : [[440, 0]];
+    for (const [freq, at] of notes) {
+      const o = cueCtx.createOscillator(), g = cueCtx.createGain();
+      o.frequency.value = freq; o.type = "sine";
+      const t = cueCtx.currentTime + at;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.16, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+      o.connect(g); g.connect(cueCtx.destination);
+      o.start(t); o.stop(t + 0.15);
+    }
+  } catch {}
+};
+
+const floatToPCM16 = f32 => {
+  const out = new Int16Array(f32.length);
+  for (let i = 0; i < f32.length; i++) {
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return out.buffer;
+};
+
 const PROVIDER_COLORS = {anthropic:"#7c3aed",openai:"#059669",google:"#2563eb",ollama:"#ea580c",deepseek:"#db2777",none:"#64748b"};
 const DEPT_EMOJI = {learning_design:"📚",academic_development:"🎓",marketing_sales:"📣",operations:"⚙️",research_intelligence:"🔬",support:"🛟",rag:"🔍",hybrid:"🔀"};
 
@@ -4059,11 +4163,16 @@ function ApxKpis(){
 }
 
 /* ---- Dispatch console: chips, text, and voice (speech + waveform) ---- */
-function ApxConsole({ onDispatch }){
+function ApxConsole({ onDispatch, voice }){
   const [text,setText]=useState('');
   const [listening,setListening]=useState(false);
   const recRef=useRef(null);
   const audioRef=useRef(null);
+  // The mic here used to drive the browser's Web Speech API, which streams
+  // audio to Google in Chrome and does nothing at all in Firefox. It now shares
+  // the same local session as the rest of the app, so one wake word, one
+  // engine, and nothing leaves the machine.
+  const useLocalVoice = !!(voice && voice.startVoice);
   const chips=[
     'Draft a proposal for a micro-credential in data literacy.',
     'Summarise this week’s TEQSA and sector signals.',
@@ -4098,6 +4207,12 @@ function ApxConsole({ onDispatch }){
     }catch(e){ /* mic blocked or insecure context: degrade silently */ }
   }
   function toggleMic(){
+    if(useLocalVoice){
+      // Shared local session: the waveform still runs, the recognition does not.
+      if(voice.recording){ voice.stopVoice(true); stopAudio(); }
+      else { voice.startVoice(); startAudio(); }
+      return;
+    }
     if(listening){ setListening(false); try{recRef.current&&recRef.current.stop();}catch(e){} stopAudio(); return; }
     setListening(true); startAudio();
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -4120,14 +4235,22 @@ function ApxConsole({ onDispatch }){
         {chips.map((c,i)=><button key={i} className="apx-chip" onClick={()=>setText(c)}>{c.length>40?c.slice(0,40)+'…':c}</button>)}
       </div>
       <div className="apx-input-row">
-        <button className={"apx-mic"+(listening?' live':'')} title="Voice input" onClick={toggleMic} aria-label="Toggle voice input">
+        <button className={"apx-mic"+((useLocalVoice ? voice.recording : listening)?' live':'')}
+          title={useLocalVoice
+            ? (voice.asleep ? `Listening for "hey ${assistantName}"` : (voice.recording ? 'Apex is listening — click to stop' : 'Start voice'))
+            : "Voice input"}
+          onClick={toggleMic} aria-label="Toggle voice input">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 11a7 7 0 0 1-14 0M12 18v4"/>
           </svg>
         </button>
         <input value={text} onChange={e=>setText(e.target.value)}
           onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); go(); } }}
-          placeholder="Brief Apex, or press the microphone" aria-label="Brief for Apex"/>
+          placeholder={useLocalVoice && voice.recording
+            ? (voice.asleep ? `Say "hey ${assistantName}" — or type a brief`
+                            : (voice.partial ? voice.partial : 'Listening…'))
+            : "Brief Apex, or press the microphone"}
+          aria-label="Brief for Apex"/>
         <button className="apx-send" onClick={go} disabled={!text.trim()}>Dispatch</button>
       </div>
     </div>
@@ -4187,7 +4310,7 @@ function ApxActivity(){
 }
 
 /* ---- Command bar meters (live, best-effort) ---- */
-function ApxBar({ view, setView, VIEW_LABELS, sessionCost }){
+function ApxBar({ view, setView, VIEW_LABELS, sessionCost, voice }){
   const [queue,setQueue]=useState(null);
   const [spend,setSpend]=useState(null);
   const [clock,setClock]=useState('--:--');
@@ -4211,6 +4334,33 @@ function ApxBar({ view, setView, VIEW_LABELS, sessionCost }){
       </div>
       <span className="apx-crumb">{view!=='overview'?('/ '+(VIEW_LABELS[view]||view)):''}</span>
       <div className="apx-meters">
+        {/* Voice is global, so its state belongs in the chrome rather than on
+            one page. Click to start or stop from anywhere. */}
+        {voice && (
+          <button
+            onClick={()=>{ if(voice.speaking) voice.shutUp();
+                           else if(voice.recording) voice.stopVoice(true);
+                           else voice.startVoice(); }}
+            title={!voice.recording ? 'Voice off — click to start'
+                 : voice.speaking ? `${assistantName} is speaking — click to stop it`
+                 : voice.asleep ? `Listening for "hey ${assistantName}"`
+                 : 'Awake and listening'}
+            className="apx-meter"
+            style={{border:'none',cursor:'pointer',font:'inherit',
+                    background: voice.speaking ? 'rgba(226,143,49,.18)'
+                              : voice.recording && !voice.asleep ? 'rgba(46,164,110,.18)' : 'transparent'}}>
+            <span className="mk">{assistantName}</span>
+            <span className="mv" style={{display:'flex',alignItems:'center',gap:5}}>
+              <span style={{width:7,height:7,borderRadius:'50%',display:'inline-block',
+                background: !voice.recording ? '#6b7a74'
+                          : voice.speaking ? '#e28f31'
+                          : voice.asleep ? '#8aa79b' : '#2ea46e',
+                boxShadow: voice.recording && !voice.asleep ? '0 0 6px #2ea46e' : 'none'}}/>
+              {!voice.recording ? 'off' : voice.speaking ? 'speaking'
+                : voice.asleep ? 'waiting' : (voice.partial ? 'hearing' : 'listening')}
+            </span>
+          </button>
+        )}
         <div className="apx-meter"><span className="mk">Queue depth</span><span className={"mv"+(queue>0?' warn':'')}>{queue===null?'—':queue}</span></div>
         <div className="apx-meter"><span className="mk">Spend today</span><span className="mv">{spend===null?(typeof sessionCost==='number'?fmtCost(sessionCost):'—'):fmtCost(spend)}</span></div>
         <div className="apx-meter"><span className="mk">Local time</span><span className="mv">{clock}</span></div>
@@ -4220,7 +4370,7 @@ function ApxBar({ view, setView, VIEW_LABELS, sessionCost }){
 }
 
 /* ---- Overview: the Apex landing (orbital + KPIs + console + activity) ---- */
-function OverviewApex({ setView, onDispatch }){
+function OverviewApex({ setView, onDispatch, voice }){
   const [statuses,setStatuses]=useState({});
   const [hoverName,setHoverName]=useState(null);
   useEffect(()=>{
@@ -4241,7 +4391,7 @@ function OverviewApex({ setView, onDispatch }){
       <div className="apx-field">
         <ApxOrbital setView={setView} statuses={statuses} hoverName={hoverName} setHoverName={setHoverName}/>
         <ApxKpis/>
-        <ApxConsole onDispatch={onDispatch}/>
+        <ApxConsole onDispatch={onDispatch} voice={voice}/>
       </div>
       <ApxActivity/>
     </div>
@@ -4269,13 +4419,45 @@ function App() {
   const [wjDept,setWjDept]         = useState(null);      // selected department obj
   const [wjAgent,setWjAgent]       = useState(null);      // selected employee obj
   const [useTools,setUseTools]     = useState(true);      // let agents call n8n workflows
+  const [recording,setRecording]   = useState(false);
+  const [voiceState,setVoiceState] = useState('idle'); // idle|connecting|listening|speaking|error
+  const [partial,setPartial]       = useState('');     // live VOSK hypothesis
+  const [voiceErr,setVoiceErr]     = useState('');
+  const [voiceEngines,setVoiceEngines] = useState(null);
+  // On by default: this is meant to be an always-on assistant, not a button.
+  // A deliberate "off" is remembered per browser so the default never overrides
+  // someone who turned it off on purpose.
+  const [handsFree,setHandsFree]   = useState(pref('cc_hands_free', true));
+  const [wakeWord,setWakeWord]     = useState(pref('cc_wake_word', true));
+  const [asleep,setAsleep]         = useState(false);  // waiting for the wake phrase
+  const [bargeOk,setBargeOk]       = useState(false);  // can you interrupt by voice
+  const [speakReplies,setSpeakReplies] = useState(true);
+  const [speaking,setSpeaking]     = useState(false);  // TTS is talking
+  const [thinking,setThinking]     = useState(false);  // agent is working
   const bottomRef = useRef(null);
   const abortRef  = useRef(null);
   const fileRef   = useRef(null);
+  const voiceRef  = useRef({});   // {ws, stream, ctx, node, source}
+  // While the assistant is talking we stop feeding the socket. Without this the
+  // mic hears the reply, VAD marks it as speech, Whisper transcribes it, and
+  // hands-free answers itself forever. A ref, not state: the audio callback
+  // fires every few ms and must see the current value, not a stale closure.
+  const mutedRef  = useRef(false);
+  const handsFreeRef = useRef(false);
+  const speakRepliesRef = useRef(true);
+  const wakeWordRef = useRef(false);
+  const bargeOkRef = useRef(false);
+  useEffect(()=>{ wakeWordRef.current = wakeWord;
+    try { localStorage.setItem('cc_wake_word', String(wakeWord)); } catch {} },[wakeWord]);
+  useEffect(()=>{ bargeOkRef.current = bargeOk; },[bargeOk]);
+  useEffect(()=>{ handsFreeRef.current = handsFree;
+    try { localStorage.setItem('cc_hands_free', String(handsFree)); } catch {} },[handsFree]);
+  useEffect(()=>{ speakRepliesRef.current = speakReplies; },[speakReplies]);
 
   useEffect(()=>{
     fetch(`${API}/models`).then(r=>r.json()).then(setModels).catch(()=>{});
     fetch(`${API}/wijerco/roster`).then(r=>r.json()).then(setRoster).catch(()=>{});
+    fetch(`${API}/voice/engines`).then(r=>r.json()).then(setVoiceEngines).catch(()=>setVoiceEngines(null));
   },[]);
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}); },[messages]);
@@ -4358,6 +4540,260 @@ function App() {
   };
 
   const stop=()=>{ abortRef.current?.abort(); setStreaming(false); };
+
+  // -------------------------------------------------------------------------
+  // Voice capture: mic -> /voice/ws -> live transcript in the composer.
+  // The finished transcript lands in the input box rather than sending itself,
+  // so a misheard question can be corrected before it costs a model call.
+  // -------------------------------------------------------------------------
+
+  const stopVoice = useCallback((graceful=true) => {
+    const v = voiceRef.current;
+    try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
+    mutedRef.current = false;
+    setSpeaking(false);
+    setThinking(false);
+    try { if (graceful && v.ws?.readyState === 1) v.ws.send(JSON.stringify({type:'stop'})); } catch {}
+    try { v.node?.disconnect(); v.source?.disconnect(); } catch {}
+    try { v.stream?.getTracks().forEach(t=>t.stop()); } catch {}
+    try { v.ctx?.close(); } catch {}
+    voiceRef.current = {ws: v.ws};   // keep the socket open for the closing transcript
+    setRecording(false);
+    setVoiceState('idle');
+    setPartial('');
+  }, []);
+
+  const startVoiceRef = useRef(null);
+  const startVoice = useCallback(async () => {
+    if (recording) { stopVoice(true); return; }
+    setVoiceErr('');
+    setVoiceState('connecting');
+
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({audio:{
+        channelCount:1, echoCancellation:true, noiseSuppression:true, autoGainControl:true,
+      }});
+    } catch (e) {
+      setVoiceErr('Microphone access denied. Allow it in the browser, and note that getUserMedia needs https:// or localhost.');
+      setVoiceState('error');
+      return;
+    }
+
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const source = ctx.createMediaStreamSource(stream);
+    const ws = new WebSocket(voiceWsUrl());
+    ws.binaryType = 'arraybuffer';
+    voiceRef.current = {ws, stream, ctx, source};
+
+    // Drop frames while the assistant is speaking, so it never hears itself.
+    const pump = f32 => {
+      if (mutedRef.current) return;
+      if (ws.readyState === 1) ws.send(floatToPCM16(f32));
+    };
+
+    ws.onopen = async () => {
+      ws.send(JSON.stringify({
+        engine:      voiceEngines?.hybrid?.available ? 'hybrid' : 'whisper',
+        sample_rate: Math.round(ctx.sampleRate),   // server resamples to 16 kHz
+        vad_backend: 'auto',
+        partials:    true,
+        auto_query:  handsFreeRef.current,          // hands-free answers each utterance
+        wake_word:   wakeWordRef.current,           // only act when addressed
+        session_id:  sessionId,
+      }));
+
+      let node;
+      try {
+        const url = URL.createObjectURL(new Blob([PCM_WORKLET], {type:'application/javascript'}));
+        await ctx.audioWorklet.addModule(url);
+        URL.revokeObjectURL(url);
+        node = new AudioWorkletNode(ctx, 'pcm-tap');
+        node.port.onmessage = e => pump(e.data);
+      } catch {
+        node = ctx.createScriptProcessor(4096, 1, 1);
+        node.onaudioprocess = e => pump(e.inputBuffer.getChannelData(0));
+        node.connect(ctx.destination);            // ScriptProcessor needs a sink to tick
+      }
+      source.connect(node);
+      voiceRef.current.node = node;
+      setRecording(true);
+      setVoiceState('listening');
+    };
+
+    ws.onmessage = async ev => {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+
+      if (m.type === 'ready') { setAsleep(!!m.asleep); setBargeOk(!!m.barge_in); }
+
+      else if (m.type === 'wake') { setAsleep(false); cue('wake'); setVoiceState('listening'); }
+      else if (m.type === 'sleep') { setAsleep(true); cue('sleep'); setPartial(''); }
+
+      else if (m.type === 'barge_in') {
+        // The server heard an interrupt word over the reply. Cut it off.
+        try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
+        setSpeaking(false);
+        setVoiceState('listening');
+      }
+
+      else if (m.type === 'speech_start') setVoiceState('speaking');
+      else if (m.type === 'speech_end') setVoiceState(r => r === 'speaking' ? 'listening' : r);
+      else if (m.type === 'partial') setPartial(m.text);
+
+      else if (m.type === 'final') {
+        setPartial('');
+        if (handsFreeRef.current) {
+          // Hands-free: the utterance is a turn in the conversation, so it
+          // belongs in the transcript, not the composer.
+          setMessages(prev => [...prev, {id: Date.now(), role: 'user', content: m.text}]);
+        } else {
+          setInput(prev => (prev ? prev.replace(/\s+$/,'') + ' ' : '') + m.text);
+        }
+      }
+
+      else if (m.type === 'thinking') { setThinking(true); }
+
+      else if (m.type === 'skipped') {
+        // Heard, but deliberately not sent to a model. Say so rather than
+        // looking like it silently ignored the user.
+        setPartial('');
+        setVoiceErr(m.reason === 'busy'
+          ? 'Still answering the previous question — that one was skipped.'
+          : `Too short to be a question: "${m.text}"`);
+        setTimeout(() => setVoiceErr(''), 3000);
+      }
+
+      else if (m.type === 'answer') {
+        setThinking(false);
+        // Voice drives the whole cockpit, not just the chat box: a navigate or
+        // readout command moves the page so the screen follows what was asked.
+        if (m.ui && m.ui.navigate) {
+          setView(m.ui.navigate);
+          cue('wake');
+        }
+        // An empty answer is a real outcome (the RAG services can be down), and
+        // in hands-free it would otherwise be indistinguishable from the thing
+        // being broken: you speak, and nothing ever happens. Say so instead.
+        const empty = !(m.answer || '').trim();
+        const text = empty
+          ? 'I did not get an answer back. The retrieval or model services may be offline.'
+          : m.answer;
+        setMessages(prev => [...prev, {
+          id: Date.now(), role: 'assistant', content: empty ? `⚠️ ${text}` : text,
+          modelLabel: m.model || '', cost_usd: m.cost_usd || 0, streaming: false,
+        }]);
+        if (speakRepliesRef.current) {
+          // Audio keeps flowing while it talks. The server switches to a
+          // grammar-constrained detector that only matches interrupt words, so
+          // the reply cannot be transcribed back as a question, but you can cut
+          // in by saying "stop". When VOSK is unavailable there is no detector,
+          // so fall back to muting the mic rather than letting it hear itself.
+          setSpeaking(true);
+          setVoiceState('replying');
+          try { if (ws.readyState === 1) ws.send(JSON.stringify({type:'speaking_start'})); } catch {}
+          if (!bargeOkRef.current) mutedRef.current = true;
+
+          await speakText(text);
+
+          setSpeaking(false);
+          setTimeout(() => {
+            mutedRef.current = false;
+            try { if (ws.readyState === 1) ws.send(JSON.stringify({type:'speaking_end'})); } catch {}
+            setVoiceState(r => r === 'replying' ? 'listening' : r);
+          }, 200);
+        }
+      }
+
+      else if (m.type === 'transcript') {
+        setPartial('');
+        // Hands-free keeps the socket open for the next turn; one-shot dictation
+        // is finished once the transcript lands.
+        if (!handsFreeRef.current) { try { ws.close(); } catch {} }
+      }
+
+      else if (m.type === 'error') {
+        setThinking(false);
+        setVoiceErr(m.message || 'Voice service error');
+        setVoiceState('error');
+      }
+    };
+
+    ws.onerror = () => {
+      setVoiceErr('Could not reach the voice service. Start it with: python -m media.voice_service --serve');
+      setVoiceState('error');
+      stopVoice(false);
+    };
+    ws.onclose = () => { if (voiceRef.current.node) stopVoice(false); };
+  }, [recording, sessionId, voiceEngines, stopVoice]);
+  useEffect(()=>{ startVoiceRef.current = startVoice; },[startVoice]);
+
+  // Barge-in: Escape cuts the spoken reply short and hands the mic straight
+  // back. With the mic gated during playback the assistant cannot hear you
+  // interrupt, so there has to be a deliberate way to take the floor.
+  const shutUp = useCallback(() => {
+    try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
+    setSpeaking(false);
+    const ws = voiceRef.current.ws;
+    try {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({type:'speaking_end'}));
+        ws.send(JSON.stringify({type:'reset'}));
+      }
+    } catch {}
+    mutedRef.current = false;
+    setVoiceState(r => r === 'replying' ? 'listening' : r);
+  }, []);
+
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape' && speaking) { e.preventDefault(); shutUp(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [speaking, shutUp]);
+
+  // auto_query is fixed when the socket opens, so flipping hands-free mid-call
+  // has to re-handshake for the server to honour it.
+  const toggleHandsFree = useCallback(() => {
+    const next = !handsFree;
+    setHandsFree(next);
+    handsFreeRef.current = next;
+    if (recording) { stopVoice(true); setTimeout(() => startVoiceRef.current?.(), 400); }
+  }, [handsFree, recording, stopVoice]);
+
+  // Never leave the mic live, or the assistant talking, if the view goes away.
+  useEffect(() => () => {
+    try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
+    stopVoice(false);
+  }, [stopVoice]);
+
+  // Everything a page needs to show and drive the one shared session, so voice
+  // is not trapped in the chat composer.
+  const startVoiceRefLocal = useRef(null);
+  startVoiceRefLocal.current = startVoice;
+  const voiceApi = {
+    recording, voiceState, asleep, partial, speaking, wakeWord, handsFree,
+    voiceErr, engines: voiceEngines,
+    startVoice, stopVoice, shutUp, setWakeWord, setHandsFree,
+  };
+
+  // Always-on by default: open the mic on load rather than waiting for a click.
+  // With the wake word on this is cheap and private — only the local grammar
+  // detector runs until it hears the phrase.
+  //
+  // Autostart is skipped unless the microphone is already granted. Prompting
+  // for permission on page load, with no user action behind it, is hostile and
+  // browsers increasingly refuse it anyway; the button still works and prompts
+  // properly then.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current || recording || !pref('cc_voice_autostart', true)) return;
+    autoStarted.current = true;
+    (async () => {
+      try {
+        const st = await navigator.permissions?.query({name: 'microphone'});
+        if (st && st.state === 'granted') startVoiceRefLocal.current?.();
+      } catch { /* permissions API unsupported: leave it to the button */ }
+    })();
+  }, [recording]);
 
   const onPickFile = () => fileRef.current?.click();
 
@@ -4444,7 +4880,7 @@ function App() {
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden'}}>
-      <ApxBar view={view} setView={setView} VIEW_LABELS={VIEW_LABELS} sessionCost={sessionCost}/>
+      <ApxBar view={view} setView={setView} VIEW_LABELS={VIEW_LABELS} sessionCost={sessionCost} voice={voiceApi}/>
       <div style={{display:'flex',flex:'1 1 auto',minHeight:0,overflow:'hidden'}}>
       {/* ── Left rail ── */}
       <div className="rail">
@@ -4517,7 +4953,8 @@ function App() {
           <button onClick={newSession} style={{background:'none',border:'1px solid var(--border)',color:'var(--muted)',borderRadius:8,padding:'4px 12px',cursor:'pointer',fontSize:12}}>+ New chat</button>
         </div>}
 
-        {view==='overview' && <OverviewApex setView={setView} onDispatch={t=>{setInput(t);setView('chat');}}/>}
+        {view==='overview' && <OverviewApex setView={setView} voice={voiceApi}
+          onDispatch={t=>{setInput(t);setView('chat');}}/>}
         {view==='admin' && <AdminView/>}
         {view==='quality' && <QualityCockpit/>}
         {view==='productivity' && <ProductivityView/>}
@@ -4601,6 +5038,30 @@ function App() {
               <button onClick={clearAttached} style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:11}}>clear</button>
             </div>
           )}
+          {(speaking||thinking) && !voiceErr && (
+            <div style={{maxWidth:900,margin:'0 auto 8px',padding:'7px 12px',borderRadius:9,fontSize:12.5,
+              display:'flex',justifyContent:'space-between',alignItems:'center',
+              background:'var(--pine-tint)',border:'1px solid #bcd6c8',color:'var(--pine)'}}>
+              <span>{thinking ? '◍ working on that…' : '🔊 replying — microphone paused so it does not hear itself'}</span>
+              {speaking && (
+                <button onClick={shutUp}
+                  style={{fontSize:11,padding:'2px 8px',borderRadius:6,cursor:'pointer',
+                    background:'var(--surface)',border:'1px solid #bcd6c8',color:'var(--pine)'}}>
+                  Stop (Esc)
+                </button>
+              )}
+            </div>
+          )}
+          {(partial||voiceErr) && (
+            <div style={{maxWidth:900,margin:'0 auto 8px',padding:'7px 12px',borderRadius:9,fontSize:12.5,
+              background: voiceErr?'#fdeceb':'var(--gold-tint)',
+              border:'1px solid '+(voiceErr?'#f0c4c0':'#e2cf8f'),
+              color: voiceErr?'#8a2a22':'#8a630f'}}>
+              {voiceErr
+                ? <><b>Voice</b> · {voiceErr}</>
+                : <><span style={{opacity:.6}}>hearing…</span> {partial}</>}
+            </div>
+          )}
           <div style={{display:'flex',gap:10,alignItems:'flex-end',maxWidth:900,margin:'0 auto'}}>
             {/* Upload + mode */}
             <div style={{display:'flex',flexDirection:'column',gap:4,alignItems:'center'}}>
@@ -4615,6 +5076,53 @@ function App() {
                 <option value="chat">this chat</option>
                 <option value="kb">to KB</option>
               </select>
+            </div>
+
+            {/* Voice: hold a live mic stream open; transcript lands in the box */}
+            <div style={{display:'flex',flexDirection:'column',gap:4,alignItems:'center'}}>
+              <button onClick={startVoice}
+                title={recording?'Stop dictation':'Dictate — speech is transcribed into the box'}
+                style={{padding:'10px 12px',
+                  background: recording ? (voiceState==='speaking'?'var(--red)':'var(--gold-tint)') : 'var(--bg3)',
+                  border:'1px solid '+(recording?(voiceState==='speaking'?'var(--red)':'#e2cf8f'):'var(--border)'),
+                  borderRadius:10,color:recording&&voiceState==='speaking'?'#fff':'var(--text)',
+                  cursor:'pointer',fontSize:16,lineHeight:1,transition:'all .15s'}}>
+                {voiceState==='connecting' ? '…' : recording ? '■' : '🎙'}
+              </button>
+              <span style={{fontSize:9,color:'var(--muted)',letterSpacing:'.04em'}}>
+                {thinking ? 'thinking'
+                  : speaking ? 'replying'
+                  : voiceState==='speaking' ? 'speech'
+                  : voiceState==='listening' ? 'listening' : 'voice'}
+              </span>
+              <button onClick={toggleHandsFree}
+                title={handsFree
+                  ? 'Hands-free on — each utterance is answered automatically'
+                  : 'Hands-free off — dictation only, you press Send'}
+                style={{fontSize:9,padding:'2px 5px',borderRadius:5,cursor:'pointer',
+                  background:handsFree?'var(--gold-tint)':'var(--bg3)',
+                  border:'1px solid '+(handsFree?'#e2cf8f':'var(--border)'),
+                  color:handsFree?'#8a630f':'var(--muted)',letterSpacing:'.04em'}}>
+                {handsFree?'hands-free':'dictate'}
+              </button>
+              <button onClick={()=>{ const n=!wakeWord; setWakeWord(n); wakeWordRef.current=n;
+                       if(recording){ stopVoice(true); setTimeout(()=>startVoiceRef.current?.(),400); } }}
+                title={wakeWord
+                  ? `Wake word on — say "hey ${assistantName}" to address it; everything else is ignored`
+                  : 'Wake word off — every utterance is heard'}
+                style={{fontSize:9,padding:'2px 5px',borderRadius:5,cursor:'pointer',
+                  background:wakeWord?'var(--pine-tint)':'var(--bg3)',
+                  border:'1px solid '+(wakeWord?'#bcd6c8':'var(--border)'),
+                  color:wakeWord?'var(--pine)':'var(--muted)',letterSpacing:'.04em'}}>
+                {wakeWord?(asleep?'💤 waiting':'👂 awake'):'wake off'}
+              </button>
+              <button onClick={()=>{ if(speaking) shutUp(); setSpeakReplies(v=>!v); }}
+                title={speakReplies?'Spoken replies on (Esc interrupts)':'Spoken replies off'}
+                style={{fontSize:9,padding:'2px 5px',borderRadius:5,cursor:'pointer',
+                  background:'var(--bg3)',border:'1px solid var(--border)',
+                  color:speakReplies?'var(--text)':'var(--muted)',letterSpacing:'.04em'}}>
+                {speakReplies?'🔊 on':'🔇 off'}
+              </button>
             </div>
             <textarea
               value={input}
@@ -4639,6 +5147,7 @@ function App() {
             {routeMode==='auto'?'🔀 Auto-routing · ':routeMode==='rag'?'🔍 RAG-only · ':'🏢 WijerCo · '}
             {pinnedModel?`📌 ${models[pinnedModel]?.label||pinnedModel}`:'🤖 Optimal model auto-selected'}
             {' · Conversations saved automatically'}
+            {handsFree ? ' · 🔁 hands-free: speak and it answers' : ''}
           </div>
         </div>
         </>}

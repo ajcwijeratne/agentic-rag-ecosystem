@@ -26,6 +26,7 @@ from typing import Any, AsyncGenerator
 
 from .llm_registry import MODELS
 from .token_optimizer import pick_model, rough_token_count
+from .cost_tracker import tracker as cost_tracker
 
 MAX_TOOL_ITERS = 12         # rounds the model may spend CALLING tools.
 # The n8n Workflow SDK build path is a gated chain (plan -> sdk reference ->
@@ -525,8 +526,44 @@ async def _execute_local_tool(func_name: str, args: dict) -> str:
     return json.dumps({"error": f"unknown local tool {func_name}"})
 
 
-async def _execute(func_name: str, args: dict, name_map: dict[str, str]) -> str:
+# ───────────────────────────────────────────────────────────────────────
+# Autonomous-mode tool gating
+# ───────────────────────────────────────────────────────────────────────
+# When a task runs unattended (no human watching the turn — the operating
+# daemon is the caller), the WijerCo Decision Rights doc reserves a class of
+# actions for human approval: external communications, publishing, payments
+# and contracts, and anything touching academic/regulatory records. Chat
+# (Aaron present) is unaffected — this only applies when run_agentic_turn is
+# called with autonomous=True (see orchestrator/agentic_harness.py).
+_GATE_KEYWORDS = (
+    "send", "email", "publish", "post", "tweet", "dm", "message_customer",
+    "deploy", "invoice", "payment", "pay", "charge", "refund", "contract",
+    "sign", "grade", "admission", "misconduct", "delete", "terminate",
+    "credential", "purchase",
+)
+
+
+def _gate_reason(func_name: str, display_name: str | None = None) -> str | None:
+    """Return the matched keyword if this tool is gated for autonomous use, else None."""
+    haystack = f"{func_name} {display_name or ''}".lower()
+    for kw in _GATE_KEYWORDS:
+        if kw in haystack:
+            return kw
+    return None
+
+
+async def _execute(func_name: str, args: dict, name_map: dict[str, str], autonomous: bool = False) -> str:
     """Run a local or n8n tool and return its result as a string."""
+    if autonomous:
+        display = name_map.get(func_name, func_name)
+        reason = _gate_reason(func_name, display)
+        if reason:
+            return (
+                f"[gated: '{display}' looks like it {reason}s something, which needs a human present. "
+                "It was NOT run. Do not retry it or look for a workaround. Finish this turn with "
+                "STATUS: needs-decision and DECISION NEEDED naming this exact action and why it's needed.]"
+            )
+
     if func_name in _LOCAL_TOOL_NAMES:
         try:
             return (await _execute_local_tool(func_name, args or {}))[:6000]
@@ -619,12 +656,27 @@ def _pick_tool_model(
 # Agentic turn (event generator)
 # ─────────────────────────────────────────────────────────────────────────────
 
+_AUTONOMOUS_GUIDANCE = (
+    "\n\n---\n\n## Running unattended\n"
+    "No one is watching this turn. Actions that send or publish anything "
+    "external, move money, sign or bind anything, or touch grades, admissions, "
+    "misconduct or records are blocked here even if a tool would technically "
+    "let you call it — attempting one wastes a turn; it will refuse and tell "
+    "you to stop instead of running. If the task needs one of those, do the "
+    "rest you can, then say so plainly and name who should approve it. "
+    "Otherwise keep going with tools until the task is actually done, not "
+    "just planned."
+)
+
+
 async def run_agentic_turn(
     user_message:    str,
     system_prompt:   str,
     history:         list[dict] | None = None,
     max_tier:        int = 3,
     force_model_key: str | None = None,
+    autonomous:      bool = False,
+    cost_task_type:  str = "wijerco/agentic",
 ) -> AsyncGenerator[dict, None]:
     """
     Yields events:
@@ -632,6 +684,12 @@ async def run_agentic_turn(
       {"type":"tool_result","tool": "...", "ok": bool}
       {"type":"token","token": "...", "done": False}
       {"type":"end","done": True, "model_label","provider","cost_usd",...}
+
+    autonomous=True is for unattended dispatch (the operating daemon): a class
+    of tool calls that need a human present are gated (see _gate_reason)
+    instead of executed, and the model is told so up front. Every turn's cost
+    is recorded to the cost ledger under cost_task_type either way — this was
+    previously only true for the non-tool chat path.
     """
     history = history or []
     tools, name_map = await get_available_tools()
@@ -648,13 +706,17 @@ async def run_agentic_turn(
 
     # Bias the model toward acting rather than looping on discovery tools.
     system_prompt = (system_prompt or "") + _TOOL_USE_GUIDANCE
+    if autonomous:
+        system_prompt += _AUTONOMOUS_GUIDANCE
 
     try:
         if spec.provider == "anthropic":
-            async for ev in _anthropic_loop(spec, system_prompt, user_message, history, tools, name_map):
+            async for ev in _anthropic_loop(spec, system_prompt, user_message, history, tools, name_map,
+                                             autonomous=autonomous, cost_task_type=cost_task_type):
                 yield ev
         else:
-            async for ev in _openai_loop(spec, system_prompt, user_message, history, tools, name_map):
+            async for ev in _openai_loop(spec, system_prompt, user_message, history, tools, name_map,
+                                          autonomous=autonomous, cost_task_type=cost_task_type):
                 yield ev
     except Exception as exc:
         yield {"type": "token", "token": f"[tool-agent error: {exc}]", "done": False}
@@ -664,7 +726,7 @@ async def run_agentic_turn(
 
 # ── OpenAI-compatible loop (openai / deepseek / google) ──────────────────────
 
-async def _openai_loop(spec, system, user, history, tools, name_map):
+async def _openai_loop(spec, system, user, history, tools, name_map, autonomous: bool = False, cost_task_type: str = "wijerco/agentic"):
     from openai import AsyncOpenAI
     from .multi_llm import GOOGLE_OPENAI_BASE
 
@@ -678,6 +740,16 @@ async def _openai_loop(spec, system, user, history, tools, name_map):
     messages = ([{"role": "system", "content": system}] if system else []) + list(history) + [{"role": "user", "content": user}]
     oai_tools = _openai_tools(tools)
     in_tok = out_tok = 0
+
+    def _record_cost(cost_usd: float) -> None:
+        try:
+            cost_tracker.record(
+                model_key=f"{spec.provider}/{spec.model_id}", model_label=spec.label, provider=spec.provider,
+                task_type=cost_task_type, input_tokens=in_tok, output_tokens=out_tok,
+                cost_usd=cost_usd, latency_ms=0, query=user,
+            )
+        except Exception:
+            pass
 
     # MAX_TOOL_ITERS rounds may call tools; the final extra round forces a
     # text answer (tools off) so the turn can never dead-end after only searching.
@@ -708,8 +780,9 @@ async def _openai_loop(spec, system, user, history, tools, name_map):
                 except Exception:
                     args = {}
                 yield {"type": "tool_call", "tool": name_map.get(tc.function.name, tc.function.name), "args": args}
-                result = await _execute(tc.function.name, args, name_map)
-                yield {"type": "tool_result", "tool": name_map.get(tc.function.name, tc.function.name), "ok": "[tool error" not in result}
+                result = await _execute(tc.function.name, args, name_map, autonomous=autonomous)
+                yield {"type": "tool_result", "tool": name_map.get(tc.function.name, tc.function.name),
+                       "ok": "[tool error" not in result and "[gated" not in result}
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": result[:6000]})
             continue
 
@@ -717,24 +790,38 @@ async def _openai_loop(spec, system, user, history, tools, name_map):
         content = msg.content or ""
         for chunk in _chunk_text(content):
             yield {"type": "token", "token": chunk, "done": False}
+        cost_usd = spec.estimated_cost_usd(in_tok, out_tok)
+        _record_cost(cost_usd)
         yield {"type": "end", "done": True, "model_key": f"{spec.provider}/{spec.model_id}",
                "model_label": spec.label, "provider": spec.provider,
-               "cost_usd": spec.estimated_cost_usd(in_tok, out_tok),
+               "cost_usd": cost_usd,
                "input_tokens": in_tok, "output_tokens": out_tok}
         return
 
+    cost_usd = spec.estimated_cost_usd(in_tok, out_tok)
+    _record_cost(cost_usd)
     yield {"type": "token", "token": "[stopped after max tool iterations]", "done": False}
-    yield {"type": "end", "done": True, "model_label": spec.label, "provider": spec.provider, "cost_usd": spec.estimated_cost_usd(in_tok, out_tok)}
+    yield {"type": "end", "done": True, "model_label": spec.label, "provider": spec.provider, "cost_usd": cost_usd}
 
 
 # ── Anthropic loop ───────────────────────────────────────────────────────────
 
-async def _anthropic_loop(spec, system, user, history, tools, name_map):
+async def _anthropic_loop(spec, system, user, history, tools, name_map, autonomous: bool = False, cost_task_type: str = "wijerco/agentic"):
     import anthropic
     client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
     messages = list(history) + [{"role": "user", "content": user}]
     ant_tools = _anthropic_tools(tools)
     in_tok = out_tok = 0
+
+    def _record_cost(cost_usd: float) -> None:
+        try:
+            cost_tracker.record(
+                model_key=f"anthropic/{spec.model_id}", model_label=spec.label, provider="anthropic",
+                task_type=cost_task_type, input_tokens=in_tok, output_tokens=out_tok,
+                cost_usd=cost_usd, latency_ms=0, query=user,
+            )
+        except Exception:
+            pass
 
     # MAX_TOOL_ITERS rounds may call tools; the final extra round drops the tools
     # so the model is forced to synthesise a text answer instead of dead-ending.
@@ -754,8 +841,9 @@ async def _anthropic_loop(spec, system, user, history, tools, name_map):
             for block in resp.content:
                 if block.type == "tool_use":
                     yield {"type": "tool_call", "tool": name_map.get(block.name, block.name), "args": block.input}
-                    result = await _execute(block.name, block.input, name_map)
-                    yield {"type": "tool_result", "tool": name_map.get(block.name, block.name), "ok": "[tool error" not in result}
+                    result = await _execute(block.name, block.input, name_map, autonomous=autonomous)
+                    yield {"type": "tool_result", "tool": name_map.get(block.name, block.name),
+                           "ok": "[tool error" not in result and "[gated" not in result}
                     tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result[:6000]})
             messages.append({"role": "user", "content": tool_results})
             continue
@@ -763,14 +851,18 @@ async def _anthropic_loop(spec, system, user, history, tools, name_map):
         text = "".join(b.text for b in resp.content if b.type == "text")
         for chunk in _chunk_text(text):
             yield {"type": "token", "token": chunk, "done": False}
+        cost_usd = spec.estimated_cost_usd(in_tok, out_tok)
+        _record_cost(cost_usd)
         yield {"type": "end", "done": True, "model_key": f"anthropic/{spec.model_id}",
                "model_label": spec.label, "provider": "anthropic",
-               "cost_usd": spec.estimated_cost_usd(in_tok, out_tok),
+               "cost_usd": cost_usd,
                "input_tokens": in_tok, "output_tokens": out_tok}
         return
 
+    cost_usd = spec.estimated_cost_usd(in_tok, out_tok)
+    _record_cost(cost_usd)
     yield {"type": "token", "token": "[stopped after max tool iterations]", "done": False}
-    yield {"type": "end", "done": True, "model_label": spec.label, "provider": "anthropic", "cost_usd": spec.estimated_cost_usd(in_tok, out_tok)}
+    yield {"type": "end", "done": True, "model_label": spec.label, "provider": "anthropic", "cost_usd": cost_usd}
 
 
 def _chunk_text(text: str, size: int = 24):

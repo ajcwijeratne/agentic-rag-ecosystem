@@ -45,6 +45,28 @@ faster-whisper~=1.0.0
 moviepy~=1.0.3
 
 # ---------------------------------------------------------------------------
+# Voice: activity detection + speech recognition
+# ---------------------------------------------------------------------------
+numpy>=1.26               # canonical PCM handling (media/audio.py)
+websockets>=12.0          # live mic proxy: /voice/ws -> voice service
+vosk~=0.3.45              # offline streaming ASR (models downloaded separately)
+silero-vad~=5.1           # neural VAD backend (needs torch; falls back if absent)
+# Fast frame-level VAD backend. Upstream webrtcvad ships no Windows wheel and
+# needs MSVC to build, so Windows takes the prebuilt fork - same `webrtcvad`
+# import, same API.
+webrtcvad-wheels~=2.0.14; sys_platform == "win32"
+webrtcvad~=2.0.10; sys_platform != "win32"
+
+# Always-on voice daemon (media/voice_daemon.py). Only needed to run the
+# assistant outside the browser; the Command Centre mic works without them.
+sounddevice~=0.4          # microphone capture outside the browser
+pyttsx3~=2.90             # local text to speech (SAPI on Windows)
+
+# Screen awareness (media/screen.py). Pillow already ships with moviepy.
+psutil~=5.9               # name the process owning the foreground window
+pywin32; sys_platform == "win32"   # foreground window title and bounds
+
+# ---------------------------------------------------------------------------
 # Multimodal expansion (Phase 2) — image ingestion + visual search
 #   torch + open_clip back the self-hosted visual embedder (media_visual).
 #   Pillow reads image dimensions; pytesseract does OCR (needs the system

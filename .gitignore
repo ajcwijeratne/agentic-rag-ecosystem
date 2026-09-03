@@ -24,6 +24,11 @@ env/
 logs/
 data/
 transcripts/
+
+# Speech models (VOSK small is ~70 MB, large ~1.8 GB) - fetched with
+# scripts/download_vosk_model.ps1|sh, never committed.
+models/vosk/*
+!models/vosk/.gitkeep
 video_output/
 media_input/
 *.bak
