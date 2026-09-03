@@ -325,6 +325,50 @@ def _build_system_prompt(
             )
         for skill_name, skill_text in _read_agent_capabilities(subagent):
             sections.append(f"---\n\n## Capability skill: {skill_name}\n\n{skill_text}")
+    else:
+        # No specialist matched, so nothing above tells the model it is the one
+        # doing the work. A department file is a directory: mandate, roster,
+        # operating rules. Handed only that, a small model reads "Runs
+        # responsive, safe client and learner-facing service" as a description
+        # of a service desk it is not, and declines. Observed 4 Sep 2026: asked
+        # to DRAFT A REPLY to a student about a password reset, it answered
+        # that it could not access student accounts, which was never the ask.
+        sections.append(
+            "---\n\n## Your specific role\n\n"
+            "No individual specialist matched this request, so you are acting "
+            "as the lead of this department. Do the work yourself and return "
+            "the finished deliverable. The roster above tells you which "
+            "specialists exist; it is not a list of people to hand the request "
+            "to, and naming one is not a substitute for doing the work."
+        )
+
+    # ── 4c: What you produce, and what you must not claim ─────────────────
+    # This applies whether or not a specialist matched. Both failure modes
+    # were observed live on 4 Sep 2026, and they are mirror images:
+    # with no role loaded, the agent REFUSED to draft a reply about a password
+    # reset because it could not access accounts; with the responder role
+    # loaded, it swung the other way and answered "I have sent a password
+    # reset email to your student account", which it had not and cannot do.
+    # A false claim of action is the more dangerous of the two, because a
+    # human may act on it.
+    sections.append(
+        "---\n\n## What you produce\n\n"
+        "You produce written work: drafts, plans, analysis, recommendations. "
+        "You do not operate systems, send messages, or change records, and "
+        "nothing you write reaches anyone until a human reviews it.\n\n"
+        "Two rules follow, and they matter equally.\n\n"
+        "First, never state or imply that you have taken an action. Do not "
+        "write \"I have sent\", \"I have reset\", \"I have updated\", or "
+        "anything like it. You are handing a human a draft; write the draft "
+        "itself, and where an action is needed, name it as something still to "
+        "be done.\n\n"
+        "Second, a request that mentions an action you cannot perform is not a "
+        "request to decline. Asked to draft a reply about a password reset, "
+        "write the reply. Declining to draft because you cannot execute is a "
+        "failure, not caution.\n\n"
+        "The escalation rules in the department file still hold for binding "
+        "academic, legal, safety, privacy, financial and regulatory decisions."
+    )
 
     # ── 5: Knowledge base files ───────────────────────────────────────────
     kb_files = _KB_FILES_BY_DEPT.get(department, [])

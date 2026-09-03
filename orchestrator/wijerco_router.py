@@ -14,6 +14,7 @@ local LLM call if confidence is low.
 from __future__ import annotations
 
 import os
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -228,13 +229,31 @@ _SUBAGENT_SIGNALS: dict[str, dict[str, list[str]]] = {
 }
 
 
+def _signal_matches(signal: str, q: str) -> bool:
+    """Does this specialist signal appear in the query?
+
+    Single words match as plain substrings, as before. Multi-word signals
+    tolerate a few filler words between their terms, because people do not
+    phrase requests in signal form: the signal "draft reply" has to match
+    "Draft a short reply", which a bare substring test misses by one word.
+    That miss is not academic. On 4 Sep 2026 it left a plainly Support-shaped
+    brief with no specialist at all, and the department answered without a role.
+    """
+    parts = signal.split()
+    if len(parts) == 1:
+        return parts[0] in q
+    gap = r"\W+(?:\w+\W+){0,3}?"
+    pattern = r"\b" + gap.join(re.escape(p) for p in parts) + r"\b"
+    return re.search(pattern, q) is not None
+
+
 def select_subagent(query: str, department: str | None) -> tuple[str | None, float, str]:
     """Select the best specialist inside a known department."""
     signals = _SUBAGENT_SIGNALS.get(department or "")
     if not signals:
         return None, 0.0, "No specialist map for department"
     q = query.lower()
-    scores = {slug: sum(1 for signal in terms if signal in q) for slug, terms in signals.items()}
+    scores = {slug: sum(1 for signal in terms if _signal_matches(signal, q)) for slug, terms in signals.items()}
     best = max(scores, key=scores.get)
     score = scores[best]
     if score == 0:

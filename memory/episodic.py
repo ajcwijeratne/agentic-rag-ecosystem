@@ -13,7 +13,9 @@ recall_episodes() returns semantically relevant past episodes for a new query.
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -23,6 +25,8 @@ import httpx
 QDRANT_URL:          str = os.getenv("QDRANT_URL", "http://localhost:6333")
 EPISODIC_COLLECTION: str = os.getenv("EPISODIC_COLLECTION", "episodic_memory")
 VECTOR_DIM:          int = 768
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,6 +51,8 @@ async def _ensure_collection() -> None:
         )
         resp.raise_for_status()
 
+
+_MODEL_ERROR = re.compile(r"^\s*\[[^\]]*\berror\b[^\]]*\]\s*$", re.I)
 
 _SUMMARY_SYSTEM = """\
 Summarise this conversation into 2-4 sentences for long-term memory. Capture:
@@ -78,7 +84,14 @@ async def summarise_session(session_id: str, department: str = "general") -> Epi
             force_model_key = "ollama/llama3",   # local, free
         )
         summary = (resp.content or "").strip()
-        if not summary:
+        # multi_llm packages a provider failure into the content field as
+        # "[provider/model error: ...]" (multi_llm.py:217). That is a non-empty
+        # string, so a bare truthiness check stores it as a real episode.
+        # Observed 4 Sep 2026: three "[ollama/llama3 error: ]" entries were
+        # being recalled as "relevant past conversations" on every single
+        # query, in every department.
+        if not summary or resp.error or _MODEL_ERROR.match(summary):
+            logger.debug("[episodic] Refusing to store non-summary: %r", summary[:80])
             return None
 
         await _ensure_collection()

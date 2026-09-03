@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 from .memory_store import store
 
@@ -31,6 +32,38 @@ objects with keys "entity" and "fact". If nothing memorable, output [].
 
 Example: [{"entity": "Swinburne", "fact": "Requires TEQSA-compliant unit outlines."}]
 """
+
+
+_PLACEHOLDER = re.compile(r"\[[^\]]{2,60}\]")
+_ERRORISH = re.compile(r"\b(error|traceback|exception|failed to|no response)\b", re.I)
+_FILLER = {"n/a", "none", "unknown", "not specified", "not provided", "tbd"}
+
+
+def _is_storable(entity: str, fact: str) -> bool:
+    """Reject things that are not durable facts about the world.
+
+    Facts are extracted from the ASSISTANT'S OWN REPLY, so whatever it wrote
+    can come back later as though it were established truth. On 4 Sep 2026 a
+    drafted email containing "[Link to LMS password reset page]" was stored as
+    a fact about the entity "LMS", and then recalled into an unrelated question
+    about a portal outage, which the agent answered by telling the user to
+    reset their password. Template scaffolding is not knowledge, and neither is
+    an error string.
+
+    This filters the unambiguous junk. It does not address the wider question
+    of whether generated replies should seed long-term memory at all.
+    """
+    e, f = entity.strip(), fact.strip()
+    if len(f) < 8 or len(e) < 2:
+        return False
+    if f.lower() in _FILLER or e.lower() in _FILLER:
+        return False
+    # Unresolved placeholders: "[Student Name]", "[Link to ...]", "[Your Name]"
+    if _PLACEHOLDER.search(f) or _PLACEHOLDER.search(e):
+        return False
+    if _ERRORISH.search(f) or _ERRORISH.search(e):
+        return False
+    return True
 
 
 async def extract_and_store(
@@ -73,6 +106,12 @@ async def extract_and_store(
     count = 0
     for item in facts:
         if isinstance(item, dict) and "entity" in item and "fact" in item:
+            if not _is_storable(str(item["entity"]), str(item["fact"])):
+                logger.debug(
+                    "[memory_agent] Rejected non-fact: %r / %r",
+                    item["entity"], item["fact"],
+                )
+                continue
             try:
                 await store.add(
                     entity  = str(item["entity"]),
