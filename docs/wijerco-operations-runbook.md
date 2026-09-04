@@ -36,6 +36,20 @@ It bundles the changed files, ships them to wijerco through the n8n `remote_depl
 
 Plaintext credential files used during the deploy are deleted from both the source and target locations as the last bundling step; if a deploy is interrupted partway, check for and remove `remote_deploy_credentials.json` by hand.
 
+> **4 Sep 2026.** That control failed once and it is worth knowing how, because
+> the failure was not the control. The credential file was correctly gitignored.
+> The folder containing it was then zipped, and the zip was committed, to a
+> repo that is public. Ignoring a file says nothing about an archive of that
+> file. The webhook secret was public from 29 Aug to 4 Sep and has been rotated.
+> Deploy bundles are now untracked (`deploy/*.zip`), the credential is ignored at
+> any depth, and `assemble_bundle.ps1`, which copied the credential into the
+> bundle, is gone. The rule to take from it: never bundle a secret into an
+> artefact, because the artefact is what gets committed, attached and shared.
+> The webhook itself was not the weakness. It is allowlisted to `ui/`,
+> `n8n/workflows/` and `docker-compose.yml`, resolves paths against the repo
+> root, refuses symlinks and writes an audit log, and it is reachable only from
+> the tailnet (no Funnel; the public DNS record points at the 100.x address).
+
 ## 3. Backup and restore
 
 **Backup** runs nightly via the `AgenticRAG-NightlyBackup` Windows scheduled task, which calls `deploy\backup.ps1`. It writes a timestamped zip to `C:\Users\ajwij\OneDrive\Documents\Agents\agentic-rag-backups\agentic-rag-backup-<timestamp>.zip` containing `manifest.json`, the SQLite databases under `data/` (media.db, harness.db, sessions.db, evals.db), `.env`, `logs/cost_log.jsonl`, and Qdrant snapshots for every collection.

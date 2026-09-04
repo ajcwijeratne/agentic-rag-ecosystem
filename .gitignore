@@ -62,6 +62,13 @@ my-video/*.mp4
 sector-intel/logs/
 
 # secrets - never commit (n8n deploy webhook credential, stray debug log)
-deploy/*/remote_deploy_credentials.json
+#
+# The rule below was correct and still let the secret out. On 29 Aug 2026 the
+# credential file was ignored exactly as intended, and then the folder holding
+# it was zipped and the ZIP was committed to a public repo. Ignoring a file does
+# nothing about an archive of that file. Deploy bundles are build artefacts and
+# are regenerable, so none of them are tracked.
+**/remote_deploy_credentials.json
+deploy/*.zip
 webhook_test2.log
 deploy/webhook_audit.log
