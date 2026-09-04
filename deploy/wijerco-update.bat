@@ -1,26 +1,25 @@
 @echo off
 setlocal enabledelayedexpansion
 REM ============================================================
-REM  wijerco update - 4 Sep 2026
-REM  Pulls main and restarts the core services. Safe to re-run.
+REM  wijerco update v2 - 4 Sep 2026
+REM  v1 failed: git is not on PATH on wijerco (the repo was cloned
+REM  with GitHub Desktop, which bundles its own git). v1 also
+REM  misread that failure as "working tree is dirty", because the
+REM  line count it used was counting git's error output. Both fixed.
 REM
-REM  Refuses to do anything risky:
-REM    - stops if the working tree is dirty (never overwrites your changes)
-REM    - pulls fast-forward only
-REM    - import-checks the orchestrator BEFORE restarting anything
-REM    - restarts only the seven core services, not the daemon or channels
-REM
-REM  The log is sent back to wijwork automatically at the end.
+REM  Still refuses to do anything risky: stops on a dirty tree,
+REM  pulls fast-forward only, import-checks BEFORE restarting, and
+REM  leaves the daemon and channels alone.
 REM ============================================================
 
 if not "%~1"=="" (
-    set REPO=%~1
+    set "REPO=%~1"
 ) else if exist "C:\dev\agentic-rag-ecosystem\docker-compose.yml" (
-    set REPO=C:\dev\agentic-rag-ecosystem
+    set "REPO=C:\dev\agentic-rag-ecosystem"
 ) else (
-    set REPO=C:\dev\agentic-rag
+    set "REPO=C:\dev\agentic-rag"
 )
-set LOG=%~dp0wijerco_update_log.txt
+set "LOG=%~dp0wijerco_update_log.txt"
 
 call :main > "%LOG%" 2>&1
 type "%LOG%"
@@ -28,29 +27,52 @@ echo.
 echo Sending this log back to wijwork ...
 "C:\Program Files\Tailscale\tailscale.exe" file cp "%LOG%" wijwork:
 echo.
-echo Done. Log also saved to: %LOG%
-echo.
 pause
 goto :eof
 
 :main
 echo ============================================
-echo  wijerco update - started %DATE% %TIME%
+echo  wijerco update v2 - started %DATE% %TIME%
 echo  Repo: %REPO%
 echo ============================================
+
+echo.
+echo [0/5] Locating git ...
+set "GITEXE="
+where git >nul 2>&1 && set "GITEXE=git"
+if not defined GITEXE if exist "%ProgramFiles%\Git\cmd\git.exe" set "GITEXE=%ProgramFiles%\Git\cmd\git.exe"
+if not defined GITEXE if exist "%ProgramFiles(x86)%\Git\cmd\git.exe" set "GITEXE=%ProgramFiles(x86)%\Git\cmd\git.exe"
+if not defined GITEXE if exist "%LOCALAPPDATA%\Programs\Git\cmd\git.exe" set "GITEXE=%LOCALAPPDATA%\Programs\Git\cmd\git.exe"
+if not defined GITEXE for /d %%d in ("%LOCALAPPDATA%\GitHubDesktop\app-*") do if exist "%%d\resources\app\git\cmd\git.exe" set "GITEXE=%%d\resources\app\git\cmd\git.exe"
+if not defined GITEXE (
+  echo   NOT FOUND. Looked on PATH, in Program Files, and inside GitHub Desktop.
+  echo   Nothing was changed. Send this log back and we will find it.
+  dir /b "%LOCALAPPDATA%\GitHubDesktop" 2>nul
+  goto :eof
+)
+echo   Using: !GITEXE!
+
 pushd "%REPO%"
 
 echo.
 echo [1/5] Current state ...
-git rev-parse --abbrev-ref HEAD
-git log --oneline -1
-echo   Working tree:
-git status --short
-for /f %%i in ('git status --porcelain ^| find /c /v ""') do set DIRTY=%%i
+"!GITEXE!" rev-parse --abbrev-ref HEAD
+"!GITEXE!" log --oneline -1
+"!GITEXE!" status --porcelain > "%TEMP%\wj_status.txt" 2>&1
+if errorlevel 1 (
+  echo   STOPPING: git status failed. Output:
+  type "%TEMP%\wj_status.txt"
+  popd
+  goto :eof
+)
+set DIRTY=0
+for /f %%i in ('type "%TEMP%\wj_status.txt" ^| find /c /v ""') do set DIRTY=%%i
+echo   Uncommitted changes: !DIRTY!
 if not "!DIRTY!"=="0" (
+  echo   Working tree contents:
+  type "%TEMP%\wj_status.txt"
   echo.
-  echo   STOPPING: working tree has !DIRTY! uncommitted change^(s^).
-  echo   Pulling could overwrite them. Commit or stash here first.
+  echo   STOPPING: commit or stash on wijerco first, then re-run.
   popd
   goto :eof
 )
@@ -58,37 +80,35 @@ echo   OK - tree is clean.
 
 echo.
 echo [2/5] Fetching, and what is about to land ...
-git fetch origin
-git --no-pager log --oneline HEAD..origin/main
-for /f %%i in ('git rev-list --count HEAD..origin/main') do set BEHIND=%%i
+"!GITEXE!" fetch origin
+"!GITEXE!" --no-pager log --oneline HEAD..origin/main
+for /f %%i in ('"!GITEXE!" rev-list --count HEAD..origin/main') do set BEHIND=%%i
 echo   !BEHIND! commit^(s^) to pull.
 
 echo.
 echo [3/5] Pulling ...
-git pull --ff-only origin main
+"!GITEXE!" pull --ff-only origin main
 if errorlevel 1 (
   echo   FAILED - pull did not fast-forward. Resolve here by hand.
   popd
   goto :eof
 )
-git log --oneline -1
+"!GITEXE!" log --oneline -1
 echo   OK.
 
 echo.
 echo [4/5] Import check BEFORE restarting anything ...
 .venv\Scripts\python.exe -c "import orchestrator.main; print('   orchestrator imports OK')"
 if errorlevel 1 (
-  echo.
-  echo   FAILED - orchestrator does not import on this machine.
-  echo   Nothing was restarted; the running system is untouched.
+  echo   FAILED - orchestrator does not import here. Nothing restarted.
   popd
   goto :eof
 )
 .venv\Scripts\python.exe -c "from memory.memory_agent import extract_and_record_evidence, CANDIDATE_KIND; from memory.consolidation import verify_candidates; print('   memory verification gate present')"
-if errorlevel 1 echo   WARNING: memory gate did not import, see error above.
+if errorlevel 1 echo   WARNING: memory gate did not import, see above.
 
 echo.
-echo [5/5] Restarting the seven core services ^(daemon and channels untouched^) ...
+echo [5/5] Restarting the seven core services ^(daemon/channels untouched^) ...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO%\scripts\start_all.ps1"
 echo   Waiting 30s for the orchestrator to bind ...
 timeout /t 30 /nobreak >nul
@@ -102,7 +122,6 @@ curl -s -o nul -w "  /app/command_centre.html -> HTTP %%{http_code} (want 200)\n
 echo.
 echo ============================================
 echo  Finished %DATE% %TIME%
-echo  Open the Command Centre and hard-refresh once (Ctrl+F5).
 echo ============================================
 popd
 goto :eof
