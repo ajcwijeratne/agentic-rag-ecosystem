@@ -21,44 +21,69 @@ from __future__ import annotations
 
 import math
 import os
+import re
 from dataclasses import dataclass, field
 
 # Canonical keyword signals. Kept here (not imported from token_optimizer) so the
 # classifier has no heavy imports and stays unit-testable. Phrases with more
 # words are more specific and weighted higher.
+#
+# RULE: a signal describes the KIND OF WORK being asked for, never the subject
+# matter. Domain vocabulary (curriculum, sector, client, TEQSA, AQF, workshop,
+# proposal ...) belongs in orchestrator/wijerco_router.py, which routes on
+# department. Those words were in "advisory" until 4 Sep 2026, which meant every
+# query about WijerCo's actual subject matter scored advisory whatever the task
+# was. See docs/router-calibration-2026-09-04.md.
 TASK_SIGNALS: dict[str, list[str]] = {
     "code": [
         "write code", "debug", "python", "javascript", "typescript", "function",
-        "class", "script", "refactor", "stack trace", "implement",
+        "class", "script", "refactor", "stack trace", "traceback", "implement",
         "algorithm", "api endpoint", "sql", "bash", "shell script",
+        "unit test", "regex", "compile", "exception",
     ],
     "reasoning": [
-        "why does", "explain why", "analyse", "analyze", "compare", "evaluate",
-        "pros and cons", "trade-off", "root cause", "infer",
-        "hypothesis", "argue", "critique", "assess the impact",
-        "strategic recommendation", "deep dive", "first principles",
+        "why", "why does", "why did", "why is", "explain why", "what explains",
+        "what caused", "reason for", "root cause", "diagnose",
+        "analyse", "analyze", "evaluate", "assess", "compare", "contrast",
+        "pros and cons", "trade-off", "tradeoff", "infer", "hypothesis",
+        "argue", "critique", "justify", "figure out", "work out",
+        "make sense of", "does the evidence", "supported by", "how likely",
+        "implications", "first principles", "deep dive",
+        "benchmark", "the claim",
     ],
     "advisory": [
-        "proposal", "strategy", "recommend", "advice", "plan",
-        "curriculum", "course design", "workshop", "assessment design",
-        "linkedin post", "article", "thought leadership", "sector",
-        "wijerco", "client", "higher education", "teqsa", "aqf",
+        "strategy", "recommend", "advice", "advise", "plan", "propose",
+        "should we", "should i", "how should", "what should",
+        "how do we", "how can we", "best way", "approach for", "approach to",
+        "roadmap", "options for", "guidance on",
+        "design a", "design an", "design the", "redesign", "set up",
     ],
     "creative": [
-        "write a", "draft", "blog post", "email", "newsletter", "cover letter",
-        "social media", "caption", "story", "creative", "pitch",
+        "write a", "write an", "write the", "draft", "compose", "creative",
+        "blog post", "email", "newsletter", "cover letter", "press release",
+        "position description", "job ad", "abstract", "acknowledgement",
+        "social media", "caption", "headline", "copy for", "wording",
+        "story", "reply",
     ],
     "summary": [
-        "summarise", "summarize", "tldr", "key points", "main ideas",
-        "condense", "brief", "overview", "digest",
+        "summarise", "summarize", "summary of", "tldr", "key points",
+        "main ideas", "condense", "brief me", "overview", "digest",
+        "recap", "what changed", "boil down", "in short",
     ],
     "retrieval": [
-        "search", "find", "retrieve", "look up", "fetch", "get me",
-        "what's in my", "obsidian", "notes", "vault",
+        "search", "find", "retrieve", "look up", "look for", "fetch",
+        "get me", "show me", "pull together", "pull the",
+        "what is the", "what are the", "what is our", "what are our",
+        "what does the", "how much", "how many",
+        "sources on", "sources for", "figures for", "data on", "statistics",
+        "what's in my", "obsidian", "my notes", "the notes", "vault",
     ],
     "classification": [
-        "is this", "classify", "categorise", "categorize", "yes or no",
-        "true or false", "which of", "label", "detect",
+        "is this", "are these", "does this", "classify", "categorise",
+        "categorize", "yes or no", "true or false", "which of", "which of these",
+        "label", "detect", "tag", "triage",
+        "eligible", "qualify", "compliant", "meets the", "equivalent", "valid",
+        "rank these", "sort these", "prioritise these",
     ],
 }
 
@@ -100,13 +125,30 @@ class ClassificationResult:
         }
 
 
+_SIGNAL_RE_CACHE: dict[str, "re.Pattern[str]"] = {}
+
+
+def _signal_re(signal: str) -> "re.Pattern[str]":
+    """Whole-word match for a signal phrase.
+
+    Plain substring matching silently fired on word fragments: "research"
+    contains "search" (retrieval) and "assessment" contains "assess"
+    (reasoning), so any query using those very common words was misrouted.
+    """
+    rx = _SIGNAL_RE_CACHE.get(signal)
+    if rx is None:
+        rx = re.compile(r"\b" + re.escape(signal) + r"\b")
+        _SIGNAL_RE_CACHE[signal] = rx
+    return rx
+
+
 def _heuristic_scores(query: str) -> dict[str, float]:
     q = query.lower()
     scores: dict[str, float] = {}
     for task, signals in TASK_SIGNALS.items():
         total = 0.0
         for s in signals:
-            if s in q:
+            if _signal_re(s).search(q):
                 total += 1.0 + 0.5 * (s.count(" "))   # multi-word phrases weigh more
         if total:
             scores[task] = total

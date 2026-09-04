@@ -22,8 +22,19 @@ env/
 # Runtime state, logs, data, backups
 # ---------------------------------------------------------------------------
 logs/
-data/
 transcripts/
+
+# Any data/ directory, at any depth (sector-intel/data/ included).
+**/data/
+# ... except the repo-root one, which is opened just far enough to track the
+# router gold label set. That set is the only independent record of what
+# correct routing looks like, it is small, and every routing accuracy number is
+# measured against it. Losing it means losing the ability to tell whether a
+# change to the signal maps helped or hurt. Everything else under data/ stays
+# ignored.
+!/data/
+/data/*
+!/data/router_labels.jsonl
 
 # Speech models (VOSK small is ~70 MB, large ~1.8 GB) - fetched with
 # scripts/download_vosk_model.ps1|sh, never committed.

@@ -1,0 +1,73 @@
+{"query": "Draft a LinkedIn post announcing our university benchmarking service", "suggested": "creative", "department": "marketing_sales", "certainty": "high"}
+{"query": "Write the follow-up email to the Deakin contact after Tuesday's call", "suggested": "creative", "department": "marketing_sales", "certainty": "high"}
+{"query": "Plan the content calendar for next quarter", "suggested": "advisory", "department": "marketing_sales", "certainty": "high", "note": "hard negative: 'plan' reads advisory but the work is marketing"}
+{"query": "Compare our two proposal templates and recommend which one converts better", "suggested": "reasoning", "department": "marketing_sales", "certainty": "medium", "note": "hard negative: 'compare' looks like research, but it is our own sales collateral"}
+{"query": "What should we charge for a diagnostic sprint for a mid-size provider?", "suggested": "advisory", "department": "marketing_sales", "certainty": "high"}
+{"query": "Turn the sector intel briefing into a one-page leave-behind for prospects", "suggested": "creative", "department": "marketing_sales", "certainty": "high"}
+{"query": "Summarise the last six months of outreach and what actually converted", "suggested": "summary", "department": "marketing_sales", "certainty": "medium"}
+{"query": "Which of these three leads should I call first?", "suggested": "classification", "department": "marketing_sales", "certainty": "medium"}
+{"query": "Write a webinar abstract on assessment integrity for programme directors", "suggested": "creative", "department": "marketing_sales", "certainty": "medium", "note": "content is learning design, but the job is promotion"}
+{"query": "Draft the partnership approach for a peak body in the VET sector", "suggested": "advisory", "department": "marketing_sales", "certainty": "high"}
+{"query": "Benchmark Deakin's international fee dependence against the Go8 average", "suggested": "reasoning", "department": "research_intelligence", "certainty": "high"}
+{"query": "Find the QILT student experience scores for online cohorts in 2024", "suggested": "retrieval", "department": "research_intelligence", "certainty": "high"}
+{"query": "What does the latest DoE staff data say about casualisation trends?", "suggested": "retrieval", "department": "research_intelligence", "certainty": "high"}
+{"query": "Summarise the TEQSA threshold standards changes relevant to online delivery", "suggested": "summary", "department": "research_intelligence", "certainty": "high"}
+{"query": "Analyse which universities grew online enrolment fastest between 2022 and 2024", "suggested": "reasoning", "department": "research_intelligence", "certainty": "high"}
+{"query": "Pull together the evidence base on micro-credential recognition in Australia", "suggested": "retrieval", "department": "research_intelligence", "certainty": "medium", "note": "could read as library services; the intent is sector evidence for advisory work"}
+{"query": "Is the claim that online students have worse outcomes actually supported?", "suggested": "reasoning", "department": "research_intelligence", "certainty": "high"}
+{"query": "Give me a first-principles view on why regional universities are struggling financially", "suggested": "reasoning", "department": "research_intelligence", "certainty": "high"}
+{"query": "Condense the 2024 higher education finance tables into the five numbers that matter", "suggested": "summary", "department": "research_intelligence", "certainty": "high"}
+{"query": "Build the institution profile for Charles Sturt ahead of the pitch", "suggested": "advisory", "department": "research_intelligence", "certainty": "medium", "note": "prepared for a sales conversation, but the work is evidence gathering"}
+{"query": "Redesign the assessment in this online unit to reduce student workload", "suggested": "advisory", "department": "learning_design", "certainty": "high"}
+{"query": "Is this unit outline AQF level 7 compliant?", "suggested": "classification", "department": "learning_design", "certainty": "high"}
+{"query": "Map the learning outcomes for a graduate certificate in data analytics", "suggested": "advisory", "department": "learning_design", "certainty": "high"}
+{"query": "Our assessment moderation keeps missing late submissions. Why is that happening?", "suggested": "reasoning", "department": "learning_design", "certainty": "medium", "note": "could read as operations; moderation design sits with learning design"}
+{"query": "Write the rubric for an interactive oral assessment", "suggested": "creative", "department": "learning_design", "certainty": "high"}
+{"query": "Design a constructive alignment review for a whole course", "suggested": "advisory", "department": "learning_design", "certainty": "high"}
+{"query": "Summarise best practice on authentic assessment in online delivery", "suggested": "summary", "department": "learning_design", "certainty": "high"}
+{"query": "How should we handle group work assessment when cohorts are fully asynchronous?", "suggested": "advisory", "department": "learning_design", "certainty": "high"}
+{"query": "Review this assessment brief and tell me if the AI use policy is clear enough", "suggested": "reasoning", "department": "learning_design", "certainty": "medium"}
+{"query": "Design a workshop helping academics give better assessment feedback", "suggested": "advisory", "department": "academic_development", "certainty": "high"}
+{"query": "Build a six-week programme to lift digital capability across a teaching team", "suggested": "advisory", "department": "academic_development", "certainty": "high"}
+{"query": "Write the facilitator notes for the AI literacy session", "suggested": "creative", "department": "academic_development", "certainty": "high"}
+{"query": "How do we coach a reluctant senior academic through a teaching redesign?", "suggested": "advisory", "department": "academic_development", "certainty": "high"}
+{"query": "Summarise what the evidence says about effective peer observation of teaching", "suggested": "summary", "department": "academic_development", "certainty": "medium", "note": "evidence flavoured, but the purpose is educator capability"}
+{"query": "Draft the pre-work email for next week's curriculum design workshop", "suggested": "creative", "department": "academic_development", "certainty": "medium"}
+{"query": "What should a teaching qualification pathway look like for our sessional staff?", "suggested": "advisory", "department": "academic_development", "certainty": "medium", "note": "hard negative: staff qualifications could read as people and culture"}
+{"query": "A student emailed asking how to reset their LMS password. Draft a short reply.", "suggested": "creative", "department": "support", "certainty": "high"}
+{"query": "Triage this week's inbox and tell me what actually needs me", "suggested": "classification", "department": "support", "certainty": "high"}
+{"query": "The learner portal is down and students are complaining. What do we do now?", "suggested": "advisory", "department": "support", "certainty": "medium"}
+{"query": "Draft a holding reply to a client asking why their report is late", "suggested": "creative", "department": "support", "certainty": "high"}
+{"query": "Set up the scheduling and follow-up for six client interviews", "suggested": "advisory", "department": "support", "certainty": "medium", "note": "hard negative: scheduling could read as operations"}
+{"query": "Which of these support tickets are actually urgent?", "suggested": "classification", "department": "support", "certainty": "high"}
+{"query": "Write an acknowledgement to a prospect who asked about pricing", "suggested": "creative", "department": "support", "certainty": "low", "note": "genuinely contested: response handling is support, pricing conversation is marketing"}
+{"query": "Write a Python script to merge the monthly enrolment CSV exports", "suggested": "code", "department": "operations", "certainty": "high"}
+{"query": "The nightly backup silently failed. Find the root cause.", "suggested": "reasoning", "department": "operations", "certainty": "high"}
+{"query": "Set up a nightly job and document the runbook steps", "suggested": "advisory", "department": "operations", "certainty": "high"}
+{"query": "Debug why the orchestrator returns a 500 on the roster endpoint", "suggested": "code", "department": "operations", "certainty": "high"}
+{"query": "What is our monthly spend across the model providers?", "suggested": "retrieval", "department": "operations", "certainty": "high"}
+{"query": "Plan the delivery schedule for three concurrent engagements", "suggested": "advisory", "department": "operations", "certainty": "medium"}
+{"query": "Refactor the indexer so it stops rebuilding the whole corpus", "suggested": "code", "department": "operations", "certainty": "high"}
+{"query": "Summarise what changed in the repo this week", "suggested": "summary", "department": "operations", "certainty": "high"}
+{"query": "Is this invoice already paid?", "suggested": "classification", "department": "operations", "certainty": "medium"}
+{"query": "Work out whether we can afford to run the GPU workers continuously", "suggested": "reasoning", "department": "operations", "certainty": "medium"}
+{"query": "What is the process for a student to appeal a final grade?", "suggested": "retrieval", "department": "academic_affairs_registry", "certainty": "high"}
+{"query": "Process a credit transfer application and record the RPL decision", "suggested": "advisory", "department": "academic_affairs_registry", "certainty": "high"}
+{"query": "Draft the admissions criteria for an undergraduate certificate in law", "suggested": "advisory", "department": "academic_affairs_registry", "certainty": "medium", "note": "hard negative: course-shaped, but admissions rules sit with registry"}
+{"query": "Are these two units equivalent for advanced standing?", "suggested": "classification", "department": "academic_affairs_registry", "certainty": "high"}
+{"query": "How can we improve retention for first-year online students?", "suggested": "advisory", "department": "student_experience_success", "certainty": "high"}
+{"query": "Design the referral process for a student in crisis", "suggested": "advisory", "department": "student_experience_success", "certainty": "high"}
+{"query": "Explain why our online completion rates dropped this year", "suggested": "reasoning", "department": "student_experience_success", "certainty": "low", "note": "genuinely contested: could equally be research and intelligence"}
+{"query": "Summarise what students said in the open-text survey responses", "suggested": "summary", "department": "student_experience_success", "certainty": "medium"}
+{"query": "Find peer-reviewed sources on academic integrity in the age of generative AI", "suggested": "retrieval", "department": "library_scholarly_services", "certainty": "high"}
+{"query": "Can we reuse this figure from a published paper in our client report?", "suggested": "classification", "department": "library_scholarly_services", "certainty": "high"}
+{"query": "Write guidance for staff on citing AI-generated content", "suggested": "creative", "department": "library_scholarly_services", "certainty": "medium", "note": "hard negative: could read as academic development"}
+{"query": "Prepare a human research ethics submission for the interview study", "suggested": "advisory", "department": "research_innovation", "certainty": "high"}
+{"query": "Draft an ARC linkage application for an industry partnership", "suggested": "creative", "department": "research_innovation", "certainty": "high"}
+{"query": "What are the research integrity obligations when we publish client data?", "suggested": "retrieval", "department": "research_innovation", "certainty": "medium", "note": "hard negative: obligations language could pull to governance"}
+{"query": "Assess the compliance risk of a new student data-sharing arrangement", "suggested": "reasoning", "department": "governance_risk_assurance", "certainty": "high"}
+{"query": "Draft the privacy notice for the new intake form", "suggested": "creative", "department": "governance_risk_assurance", "certainty": "high"}
+{"query": "Prepare the academic board paper on the assessment policy change", "suggested": "advisory", "department": "governance_risk_assurance", "certainty": "medium"}
+{"query": "Write a position description for a senior learning designer", "suggested": "creative", "department": "people_culture", "certainty": "high"}
+{"query": "How should we structure workload allocation for a small teaching team?", "suggested": "advisory", "department": "people_culture", "certainty": "medium", "note": "hard negative: workload could read as operations"}
+{"query": "Verify whether this candidate's qualifications meet the scholarship requirement", "suggested": "classification", "department": "people_culture", "certainty": "high"}
