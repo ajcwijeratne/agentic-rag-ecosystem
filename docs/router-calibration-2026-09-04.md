@@ -64,14 +64,41 @@ old rule. A tie still falls to hybrid, which is the safe answer.
 into `student_experience_success`, which had been scoring 0 for 4 because the
 research list was claiming its vocabulary.
 
-## Thresholds: deliberately unchanged
+## Thresholds: unchanged, but the reporting on them was wrong
 
 `ROUTER_MIN_CONFIDENCE` stays at 0.45 and `ROUTER_MIN_MARGIN` at 0.15.
-`tune_router.py` recommends 0.30 / 0.00, worth two more rows (91.8% against
-89.0%). That is not worth taking. The gate never fires on this set anyway
-(0 of 73 low-confidence defaults), so the recommendation is really "switch the
-safety net off for no measured benefit on the cases it is meant to catch". It
-exists for queries unlike anything in a 73-row set.
+
+`tune_router.py` reported "Low-conf default: 0/73", which is what made the gate
+look inert. That counter was only watching the confidence arm; the gate has two
+arms and the margin arm was doing all the work. An exact two-way tie scores 0.50
+confidence and 0.00 margin, so it clears the confidence test and fails the
+margin test, and the old counter never saw it. Fixed.
+
+The real behaviour: 14 of 73 rows hit the default. On 12 of them the heuristic
+top pick was already `advisory`, so the gate changed nothing. On the other 2 it
+overrode a correct specific answer:
+
+| query | heuristic said | gold | gate said |
+|---|---|---|---|
+| Compare our two proposal templates and recommend which one converts better | reasoning | reasoning | advisory |
+| Debug why the orchestrator returns a 500 on the roster endpoint | code | code | advisory |
+
+Both are exact ties between two *specific* task types. The gate cannot tell that
+apart from "nothing matched", and falling back to a generic default is the wrong
+answer when the query is plainly "compare and recommend" or "debug why".
+
+On this set the margin gate therefore costs 2 rows and saves none. That is not
+an argument for switching it off — 73 rows cannot show what a safety net catches
+in the tail — but it is an argument for a decision rather than a default.
+The options, with the numbers:
+
+- **Leave it.** 89.0%. Ambiguity routes to a general agent, which is the
+  behaviour it was designed for. Costs 2 rows of the 73.
+- **`ROUTER_MIN_MARGIN=0.0`, confidence unchanged.** 91.8%, confident-wrong
+  stays at 1 of 73. Releases exact ties to their top pick; the confidence arm
+  still catches queries with no real signal.
+
+This is left as Aaron's call. Nothing here changes it.
 
 ## Remaining errors
 

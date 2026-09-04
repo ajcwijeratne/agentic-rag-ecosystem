@@ -90,7 +90,13 @@ def run_labelled(rows: list[tuple[str, str]]) -> int:
         confusion[gold][pred] += 1
         if pred == gold:
             correct += 1
-        if pred == DEFAULT_TASK and top != DEFAULT_TASK and p < MIN_CONFIDENCE:
+        # The gate has two arms and this counter only ever watched one, so it
+        # read 0 while the margin arm was diverting 14 of 73 rows. A tie scores
+        # high confidence and zero margin, which is exactly the ambiguous case
+        # the default exists for.
+        if pred == DEFAULT_TASK and top != DEFAULT_TASK and (
+            p < MIN_CONFIDENCE or margin < MIN_MARGIN
+        ):
             low_conf += 1
         if pred != DEFAULT_TASK and pred != gold:
             confident_wrong += 1
