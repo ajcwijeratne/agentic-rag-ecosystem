@@ -70,5 +70,9 @@ sector-intel/logs/
 # are regenerable, so none of them are tracked.
 **/remote_deploy_credentials.json
 deploy/*.zip
+# Helper scripts that carry a key inline so they can be run on the other
+# machine. They are meant to be written, run once, and deleted.
+deploy/set-*-api-key.ps1
+deploy/set-*-api-key.bat
 webhook_test2.log
 deploy/webhook_audit.log

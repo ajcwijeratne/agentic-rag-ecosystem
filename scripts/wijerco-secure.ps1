@@ -1,9 +1,14 @@
 # ============================================================================
-#  wijerco-secure.ps1  -  4 Sep 2026
+#  wijerco-secure.ps1  -  v2, 5 Sep 2026
 #
 #  Run this ON WIJERCO, via wijerco-secure.bat (double-click).
 #
-#  Does four things, in this order, and stops at the first one that fails:
+#  Does four things. Every step is independent: a step that fails reports why
+#  and the next one still runs. v1 set $ErrorActionPreference='Stop' and then
+#  called python with 2>&1, which throws a terminating error the moment python
+#  writes to stderr. The import check in step 1 was always going to do that
+#  while the orchestrator is broken, so v1 died at step 1 and did nothing.
+#
 #    1. Says why port 8000 is down, and does not guess.
 #    2. Moves any plaintext remote_deploy_credentials.json out of the repo.
 #    3. Rotates the n8n deploy webhook secret. The old one was published on a
@@ -14,188 +19,225 @@
 #  Safe to re-run. It backs up .env before touching it and restores that backup
 #  if the orchestrator will not come up afterwards.
 #
-#  SECRETS ARE NEVER WRITTEN TO THE LOG. They go to a single file in your user
-#  folder, named at the end. Move them into your password manager and delete it.
+#  SECRETS ARE NEVER WRITTEN TO THE LOG. They go to one file in your user
+#  folder, named at the end. Move them to your password manager, delete it.
 # ============================================================================
 
-$ErrorActionPreference = 'Stop'
-$stamp    = Get-Date -Format 'yyyyMMdd-HHmmss'
-$repo     = if (Test-Path 'C:\dev\agentic-rag-ecosystem\docker-compose.yml') { 'C:\dev\agentic-rag-ecosystem' } else { 'C:\dev\agentic-rag' }
-$log      = Join-Path $PSScriptRoot "wijerco_secure_log.txt"
-$secrets  = Join-Path $env:USERPROFILE "wijerco-secrets-$stamp.txt"
-$quar     = Join-Path 'C:\dev' "_quarantine\$stamp"
-$tailIP   = '100.109.75.69'
+$ErrorActionPreference = 'Continue'      # deliberate. see the note above.
+$ProgressPreference    = 'SilentlyContinue'
 
-function Say([string]$m) { $m | Tee-Object -FilePath $log -Append | Write-Host }
-function NewKey { $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b).TrimEnd('=').Replace('+','-').Replace('/','_') }
+$stamp   = Get-Date -Format 'yyyyMMdd-HHmmss'
+$repo    = if (Test-Path 'C:\dev\agentic-rag-ecosystem\docker-compose.yml') { 'C:\dev\agentic-rag-ecosystem' } else { 'C:\dev\agentic-rag' }
+$log     = Join-Path $env:USERPROFILE "wijerco_secure_log_$stamp.txt"
+$secrets = Join-Path $env:USERPROFILE "wijerco-secrets-$stamp.txt"
+$quar    = Join-Path 'C:\dev' "_quarantine\$stamp"
+$tailIP  = '100.109.75.69'
+$lines   = New-Object Collections.ArrayList
 
-Set-Content -Path $log -Value "wijerco secure - $(Get-Date -Format o)" -Encoding UTF8
+function Say([string]$m) { [void]$lines.Add($m); Write-Host $m }
+
+# Runs a native command without letting stderr become a terminating error.
+function Native([string]$cmdline) {
+    try { $o = cmd /c "$cmdline 2>&1"; if ($null -eq $o) { @() } else { @($o) } }
+    catch { @("could not run: $($_.Exception.Message)") }
+}
+
+# Runs a step. A failure inside it is reported, never fatal.
+function Step([string]$title, [scriptblock]$body) {
+    Say ""
+    Say $title
+    try { & $body } catch { Say ("  STEP FAILED: {0}" -f $_.Exception.Message); Say "  Continuing to the next step." }
+}
+
+function NewKey {
+    $b = New-Object byte[] 32
+    [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+    [Convert]::ToBase64String($b).TrimEnd('=').Replace('+','-').Replace('/','_')
+}
+
+Say "wijerco secure v2 - $(Get-Date -Format o)"
 Say "Repo: $repo"
-Say ""
+Say "Host: $env:COMPUTERNAME   PowerShell: $($PSVersionTable.PSVersion)"
 
 # --- 1. Why is 8000 down? ----------------------------------------------------
-Say "[1/4] Orchestrator on port 8000"
-$listening = @(Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue)
-if ($listening.Count -gt 0) {
-    Say "  Port 8000 is listening. Nothing to diagnose."
-} else {
+Step "[1/4] Orchestrator on port 8000" {
+    $listening = @(Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue)
+    if ($listening.Count -gt 0) { Say "  Port 8000 is listening. Nothing to diagnose."; return }
+
     Say "  Port 8000 is NOT listening."
     $py = @(Get-Process python, pythonw -ErrorAction SilentlyContinue)
     Say ("  python processes running: {0}" -f $py.Count)
     foreach ($p in $py) { Say ("    pid {0}  started {1}" -f $p.Id, $p.StartTime) }
+
+    if (-not (Test-Path (Join-Path $repo '.venv\Scripts\python.exe'))) {
+        Say "  NO VIRTUALENV at $repo\.venv. That alone would stop every start script."
+    } else {
+        Say "  Import check (what the update script tests before restarting):"
+        foreach ($l in (Native "cd /d ""$repo"" && .venv\Scripts\python.exe -c ""import orchestrator.main; print('imports OK')""")) { Say "    $l" }
+    }
+
     $logDir = Join-Path $repo 'logs'
     if (Test-Path $logDir) {
-        $recent = Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue |
-                  Sort-Object LastWriteTime -Descending | Select-Object -First 3
+        $recent = Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3
+        if (-not $recent) { Say "  No .log files in $logDir" }
         foreach ($f in $recent) {
             Say ""
-            Say ("  --- last 25 lines of {0} (modified {1}) ---" -f $f.Name, $f.LastWriteTime)
-            Get-Content $f.FullName -Tail 25 -ErrorAction SilentlyContinue | ForEach-Object { Say "    $_" }
+            Say ("  --- last 25 lines of {0}  (modified {1}) ---" -f $f.Name, $f.LastWriteTime)
+            foreach ($l in (Get-Content $f.FullName -Tail 25 -ErrorAction SilentlyContinue)) { Say "    $l" }
         }
-    } else {
-        Say "  No logs directory at $logDir"
-    }
-    Say ""
-    Say "  Import check (this is what the update script tests before restarting):"
-    Push-Location $repo
-    $imp = & .\.venv\Scripts\python.exe -c "import orchestrator.main; print('imports OK')" 2>&1
-    Pop-Location
-    $imp | ForEach-Object { Say "    $_" }
+    } else { Say "  No logs directory at $logDir" }
 }
-Say ""
 
 # --- 2. Plaintext credential -------------------------------------------------
-Say "[2/4] Plaintext deploy credential"
-$found = @(Get-ChildItem -Path $repo -Recurse -Filter 'remote_deploy_credentials.json' -ErrorAction SilentlyContinue)
-if ($found.Count -eq 0) {
-    Say "  None found in the repo. Good."
-} else {
-    New-Item -ItemType Directory -Force -Path $quar | Out-Null
+Step "[2/4] Plaintext deploy credential" {
+    $found = @(Get-ChildItem -Path $repo -Recurse -Filter 'remote_deploy_credentials.json' -ErrorAction SilentlyContinue)
+    if ($found.Count -eq 0) { Say "  None found in the repo. Good."; return }
+    New-Item -ItemType Directory -Force -Path $quar -ErrorAction SilentlyContinue | Out-Null
     foreach ($f in $found) {
-        Move-Item $f.FullName (Join-Path $quar $f.Name) -Force
+        Move-Item $f.FullName (Join-Path $quar $f.Name) -Force -ErrorAction SilentlyContinue
         Say ("  Moved out of the repo: {0}" -f $f.FullName)
     }
     Say "  Now in: $quar"
     Say "  Nothing was deleted. Delete that folder yourself once you are happy."
 }
-Say ""
 
 # --- 3. Rotate the n8n deploy webhook secret ---------------------------------
-Say "[3/4] Rotating the n8n deploy webhook secret"
-$newDeploy = NewKey
-$credPath  = Join-Path $repo 'n8n\workflows\remote_deploy_credentials.json'
-$cred = @(@{ id = 'deploy-webhook-header-auth'; name = 'Deploy Webhook Secret'; type = 'httpHeaderAuth'; data = @{ name = 'x-deploy-secret'; value = $newDeploy } })
-$rotated = $false
-try {
-    New-Item -ItemType Directory -Force -Path (Split-Path $credPath) | Out-Null
-    [IO.File]::WriteAllText($credPath, ($cred | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding($false)))
-    Push-Location $repo
-    $out = & docker compose exec -T n8n n8n import:credentials --input=/home/node/.n8n/workflows/remote_deploy_credentials.json 2>&1
-    Pop-Location
-    $out | ForEach-Object { Say "    $_" }
-    if ($LASTEXITCODE -eq 0) {
-        Push-Location $repo; & docker compose restart n8n 2>&1 | Out-Null; Pop-Location
-        Say "  Imported and n8n restarted. The old secret no longer works."
-        $rotated = $true
-    } else {
-        Say "  IMPORT FAILED. The old secret is still live. Nothing else was changed by this step."
+$script:newDeploy = NewKey
+$script:rotated   = $false
+Step "[3/4] Rotating the n8n deploy webhook secret" {
+    $credPath = Join-Path $repo 'n8n\workflows\remote_deploy_credentials.json'
+    try {
+        New-Item -ItemType Directory -Force -Path (Split-Path $credPath) -ErrorAction SilentlyContinue | Out-Null
+        $cred = @(@{ id='deploy-webhook-header-auth'; name='Deploy Webhook Secret'; type='httpHeaderAuth'; data=@{ name='x-deploy-secret'; value=$script:newDeploy } })
+        [IO.File]::WriteAllText($credPath, ($cred | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding($false)))
+
+        foreach ($l in (Native "cd /d ""$repo"" && docker compose exec -T n8n n8n import:credentials --input=/home/node/.n8n/workflows/remote_deploy_credentials.json")) { Say "    $l" }
+        $probe = Native "cd /d ""$repo"" && docker compose ps --status running --services"
+        if ($probe -contains 'n8n') {
+            foreach ($l in (Native "cd /d ""$repo"" && docker compose restart n8n")) { Say "    $l" }
+            $script:rotated = $true
+            Say "  Imported and n8n restarted. Verify below."
+        } else {
+            Say "  n8n does not appear to be running under docker compose here."
+            Say "  Nothing was rotated. The old secret is still live."
+        }
+    } finally {
+        if (Test-Path $credPath) { Remove-Item $credPath -Force -ErrorAction SilentlyContinue; Say "  Temporary credential file removed from the repo." }
     }
-} catch {
-    Say ("  ROTATION FAILED: {0}" -f $_.Exception.Message)
-    Say "  The old secret is still live. Step 4 continues regardless."
-} finally {
-    if (Test-Path $credPath) { Remove-Item $credPath -Force; Say "  Temporary credential file removed from the repo." }
 }
-Say ""
 
 # --- 4. RBAC keys ------------------------------------------------------------
-Say "[4/4] RBAC keys"
-$envPath = Join-Path $repo '.env'
-if (-not (Test-Path $envPath)) { Say "  No .env at $envPath. Stopping."; exit 1 }
-$backup = "$envPath.bak-$stamp"
-Copy-Item $envPath $backup -Force
-Say "  .env backed up to $backup"
+$script:viewer = NewKey; $script:operator = NewKey; $script:admin = NewKey
+$script:backup = ""
+Step "[4/4] RBAC keys" {
+    $envPath = Join-Path $repo '.env'
+    if (-not (Test-Path $envPath)) { Say "  No .env at $envPath. Skipping this step."; return }
 
-$viewer = NewKey; $operator = NewKey; $admin = NewKey
-$json = "{`"viewer`":`"$viewer`",`"operator`":`"$operator`",`"admin`":`"$admin`"}"
-$lines = [IO.File]::ReadAllLines($envPath)
-$done = $false
-$new = foreach ($l in $lines) {
-    if ($l -match '^\s*RBAC_ROLE_KEYS\s*=') { $done = $true; "RBAC_ROLE_KEYS=$json" } else { $l }
-}
-if (-not $done) { $new = @($new) + @("", "# Three separate keys so viewer, operator and admin actually differ.", "RBAC_ROLE_KEYS=$json") }
-[IO.File]::WriteAllLines($envPath, $new, (New-Object Text.UTF8Encoding($false)))
-Say "  RBAC_ROLE_KEYS written with three distinct keys."
+    $script:backup = "$envPath.bak-$stamp"
+    Copy-Item $envPath $script:backup -Force
+    Say "  .env backed up to $($script:backup)"
 
-Say ""
-Say "  Restarting the core services ..."
-try {
-    Push-Location $repo
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'scripts\start_all.ps1') 2>&1 | ForEach-Object { Say "    $_" }
-    Pop-Location
-} catch {
-    Say ("  RESTART THREW: {0}" -f $_.Exception.Message)
-    Copy-Item $backup $envPath -Force
-    Say "  .env restored from $backup so the machine is no worse than before."
-    Say "  Keys were not applied. Send this log."
-    exit 1
-}
-Start-Sleep -Seconds 25
+    $json = "{`"viewer`":`"$($script:viewer)`",`"operator`":`"$($script:operator)`",`"admin`":`"$($script:admin)`"}"
+    $src  = [IO.File]::ReadAllLines($envPath)
+    $done = $false
+    $new  = foreach ($l in $src) { if ($l -match '^\s*RBAC_ROLE_KEYS\s*=') { $done = $true; "RBAC_ROLE_KEYS=$json" } else { $l } }
+    if (-not $done) { $new = @($new) + @("", "# Three separate keys so viewer, operator and admin actually differ.", "RBAC_ROLE_KEYS=$json") }
+    [IO.File]::WriteAllLines($envPath, $new, (New-Object Text.UTF8Encoding($false)))
+    Say ("  RBAC_ROLE_KEYS written with three distinct keys (replaced an existing line: {0})." -f $done)
 
-function Code([string]$url, [string]$key) {
-    try {
-        $h = @{}; if ($key) { $h['x-api-key'] = $key }
-        (Invoke-WebRequest -Uri $url -Headers $h -TimeoutSec 10 -UseBasicParsing).StatusCode
-    } catch { if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { -1 } }
-}
+    $starter = Join-Path $repo 'scripts\start_all.ps1'
+    if (-not (Test-Path $starter)) { Say "  No scripts\start_all.ps1 here. Not restarting; keys are written but not live."; return }
 
-Say ""
-Say "  Verifying (over the tailnet address, because loopback is always admin):"
-$health = Code "http://localhost:8000/health" $null
-Say ("    /health (local)                       -> {0}   want 200" -f $health)
-if ($health -ne 200) {
+    Say "  Restarting the core services ..."
+    foreach ($l in (Native "powershell -NoProfile -ExecutionPolicy Bypass -File ""$starter""")) { Say "    $l" }
+    Start-Sleep -Seconds 25
+
+    function Code([string]$url, [string]$key) {
+        try {
+            $h = @{}; if ($key) { $h['x-api-key'] = $key }
+            (Invoke-WebRequest -Uri $url -Headers $h -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop).StatusCode
+        } catch { if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { -1 } }
+    }
+
     Say ""
-    Say "  ORCHESTRATOR DID NOT COME UP. Restoring the previous .env and stopping."
-    Copy-Item $backup $envPath -Force
-    Say "  .env restored from $backup. Re-run start_all.ps1, then send this log."
-    Say "  The rotated webhook secret is unaffected and is in $secrets"
-} else {
-    $r = @(
-        @{ n = "no key      -> /ops/status "; c = (Code "http://${tailIP}:8000/ops/status"  $null);     want = "401 or 403" },
-        @{ n = "viewer key  -> /ops/status "; c = (Code "http://${tailIP}:8000/ops/status"  $viewer);   want = "200" },
-        @{ n = "viewer key  -> /ops/backups"; c = (Code "http://${tailIP}:8000/ops/backups" $viewer);   want = "403" },
-        @{ n = "operator    -> /ops/backups"; c = (Code "http://${tailIP}:8000/ops/backups" $operator); want = "200" },
-        @{ n = "admin       -> /ops/backups"; c = (Code "http://${tailIP}:8000/ops/backups" $admin);    want = "200" }
+    $health = Code "http://localhost:8000/health" $null
+    Say ("    /health (local)              -> {0}   want 200" -f $health)
+    if ($health -ne 200) {
+        Say ""
+        Say "  ORCHESTRATOR DID NOT COME UP."
+        Copy-Item $script:backup $envPath -Force
+        Say "  .env restored from $($script:backup). The machine is no worse than before."
+        Say "  Step 1 above is the place to look."
+        return
+    }
+    Say "  Verifying over the tailnet address, because loopback is always admin:"
+    $checks = @(
+        @{ n='no key     -> /ops/status '; c=(Code "http://${tailIP}:8000/ops/status"  $null);            w='401 or 403' },
+        @{ n='viewer     -> /ops/status '; c=(Code "http://${tailIP}:8000/ops/status"  $script:viewer);   w='200' },
+        @{ n='viewer     -> /ops/backups'; c=(Code "http://${tailIP}:8000/ops/backups" $script:viewer);   w='403' },
+        @{ n='operator   -> /ops/backups'; c=(Code "http://${tailIP}:8000/ops/backups" $script:operator); w='200' },
+        @{ n='admin      -> /ops/backups'; c=(Code "http://${tailIP}:8000/ops/backups" $script:admin);    w='200' }
     )
-    foreach ($x in $r) { Say ("    {0} -> {1}   want {2}" -f $x.n, $x.c, $x.want) }
-    Say ""
-    Say "  If the viewer key returns 200 on /ops/backups, the roles are NOT separating."
+    foreach ($x in $checks) { Say ("    {0} -> {1}   want {2}" -f $x.n, $x.c, $x.w) }
+    Say "  A 200 for the viewer key on /ops/backups means the roles are NOT separating."
 }
 
-# --- secrets file ------------------------------------------------------------
-$body = @(
-    "WijerCo secrets generated $(Get-Date -Format o) on wijerco.",
+# --- verify the rotation actually took ---------------------------------------
+Step "[extra] Deploy webhook state" {
+    $u = "http://${tailIP}:5678/webhook/deploy-file"
+    $c = try { (Invoke-WebRequest -Uri $u -Method POST -Body '{}' -ContentType 'application/json' -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop).StatusCode }
+         catch { if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { -1 } }
+    Say ("  POST $u with no auth -> {0}" -f $c)
+    Say "  403 means the webhook is live and demanding the header."
+    Say "  404 means that workflow is not active in n8n at all, so nothing can call it."
+}
+
+# --- secrets file, log, and getting the log back -----------------------------
+[IO.File]::WriteAllLines($secrets, @(
+    "WijerCo secrets generated $(Get-Date -Format o) on $env:COMPUTERNAME.",
     "Put these in your password manager, then delete this file.",
     "",
-    "n8n deploy webhook  x-deploy-secret : $newDeploy   (rotated: $rotated)",
+    "n8n deploy webhook  x-deploy-secret : $($script:newDeploy)   (rotated: $($script:rotated))",
     "",
     "RBAC_ROLE_KEYS",
-    "  viewer   : $viewer",
-    "  operator : $operator",
-    "  admin    : $admin",
+    "  viewer   : $($script:viewer)",
+    "  operator : $($script:operator)",
+    "  admin    : $($script:admin)",
     "",
     "The cockpit over the tailnet needs the operator key. Loopback on this",
-    "machine is always admin and needs no key at all.",
+    "machine is always admin and needs no key.",
     "",
-    "Previous .env: $backup"
-)
-[IO.File]::WriteAllLines($secrets, $body, (New-Object Text.UTF8Encoding($false)))
+    "Previous .env: $($script:backup)"
+), (New-Object Text.UTF8Encoding($false)))
 
 Say ""
 Say "============================================================"
-Say " Done $(Get-Date -Format o)"
-Say " Keys and the new webhook secret: $secrets"
-Say " This log (no secrets in it): $log"
+Say " Finished $(Get-Date -Format o)"
+Say " Secrets (not in this log): $secrets"
 Say "============================================================"
 
-try { & 'C:\Program Files\Tailscale\tailscale.exe' file cp $log wijwork: 2>&1 | Out-Null; Say " Log sent to wijwork via Taildrop." } catch { Say " Taildrop failed; send $log by hand." }
+[IO.File]::WriteAllLines($log, $lines, (New-Object Text.UTF8Encoding($false)))
+
+# Three ways home, because Taildrop alone failed last time.
+$delivered = @()
+# Best path home: this exact folder is a connected folder on wijwork, so a file
+# landing here syncs straight to where Aaron's session can read it. Taildrop has
+# never actually delivered a log from this machine, so it is the fallback now.
+if ($env:OneDrive -and (Test-Path $env:OneDrive)) {
+    $d = Join-Path $env:OneDrive "Documents\Agents\agentic-rag-ecosystem\_logs"
+    New-Item -ItemType Directory -Force -Path $d -ErrorAction SilentlyContinue | Out-Null
+    $dest = Join-Path $d (Split-Path $log -Leaf)
+    Copy-Item $log $dest -Force -ErrorAction SilentlyContinue
+    if (Test-Path $dest) { $delivered += "OneDrive (syncs to wijwork): $dest" }
+    else { $delivered += "OneDrive copy failed" }
+} else { $delivered += "No OneDrive on this machine" }
+$ts = @('C:\Program Files\Tailscale\tailscale.exe','C:\Program Files (x86)\Tailscale\tailscale.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($ts) { $out = Native "\"$ts\" file cp \"$log\" wijwork:"; if ($LASTEXITCODE -eq 0) { $delivered += "Taildrop to wijwork" } else { $delivered += "Taildrop FAILED: $($out -join ' ')" } }
+else { $delivered += "Taildrop skipped: tailscale.exe not found" }
+
+Write-Host ""
+Write-Host "Log written to: $log"
+foreach ($d in $delivered) { Write-Host "  also: $d" }
+Write-Host ""
+Write-Host "If none of those reached Aaron's other machine, the whole log is printed"
+Write-Host "above and can be copied straight out of this window."
