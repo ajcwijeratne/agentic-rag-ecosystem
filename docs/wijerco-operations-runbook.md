@@ -24,7 +24,11 @@ Without autostart, after any reboot: open a PowerShell prompt in the repo root a
 
 ## 2. The update path (wijwork → wijerco)
 
-One command on wijwork ships a change to wijerco: `deploy\wijerco-update-2026-08-16\deploy.bat` (or run from wherever the current deploy bundle lives — check `deploy/` for the newest dated folder). It auto-detects which repo it's running against (`C:\dev\agentic-rag-ecosystem` if present, else `C:\dev\agentic-rag`), so the same script runs unmodified on either machine.
+**Two paths, and picking the wrong one is why a deploy silently does nothing.**
+
+**Code changes (Python, tests, anything outside `ui/`): `deploy\wijerco-update.bat`.** The webhook path below CANNOT carry these — it is allowlisted to `ui/`, `n8n/workflows/` and `docker-compose.yml`, so a Python change shipped that way is simply dropped. Git is the sync layer for code. Taildrop the script to wijerco (`tailscale file cp deploy\wijerco-update.bat wijerco:`), then double-click it there; Tailscale SSH does not work against Windows targets and wijerco's port 8000 is firewalled, so there is no way to drive it remotely from wijwork. It stops if the working tree is dirty, pulls fast-forward only, import-checks the orchestrator *before* restarting anything (a failed check restarts nothing and leaves the running system untouched), restarts only the seven core services, and Taildrops its own log back to wijwork so the result can be read without a second trip to the machine.
+
+**UI and config only:** one command on wijwork ships a change to wijerco: `deploy\wijerco-update-2026-08-16\deploy.bat` (or run from wherever the current deploy bundle lives — check `deploy/` for the newest dated folder). It auto-detects which repo it's running against (`C:\dev\agentic-rag-ecosystem` if present, else `C:\dev\agentic-rag`), so the same script runs unmodified on either machine.
 
 It bundles the changed files, ships them to wijerco through the n8n `remote_deploy` webhook (Header Auth protected, path-prefix allowlisted to `ui/`, `n8n/workflows/`, `docker-compose.yml`, with a symlink guard and an append-only audit log at `deploy/webhook_audit.log`), installs them, and verifies: `/health`, `/kb/overview`, `/app/command_centre.html` all return 200, the service worker cache version on disk matches what was shipped, a known-fixed nav bug hasn't regressed, and the deploy webhook itself answers 403 to an unauthenticated probe (proof it's still locked down, not proof it's broken).
 
