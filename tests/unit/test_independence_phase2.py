@@ -13,6 +13,30 @@ import pytest
 def iso_env(tmp_path, monkeypatch):
     monkeypatch.setenv("MEDIA_DB_PATH", str(tmp_path / "media.db"))
     monkeypatch.setenv("CONSOLIDATION_STATE_PATH", str(tmp_path / "consol.json"))
+
+    # Isolate the SEMANTIC store too, not just the SQLite DB and the state
+    # file. digest_completed_tasks() writes each digest to project memory AND
+    # to memory_store.store, which talks to the live Qdrant on QDRANT_URL.
+    # Redirecting the DB does nothing about that, so until 4 Sep 2026 every
+    # run of this suite wrote two digests ("TEQSA" and "general") into the
+    # real agent_memory collection. They accumulated: 45 entries with only 12
+    # distinct texts, one repeated ten times, and they came back in live
+    # recall, which is why unrelated questions kept being answered with
+    # "Daily digest: 1 task(s) completed - Research the requirement".
+    # A test must never be able to write into production memory.
+    class _NullStore:
+        async def add(self, entity, content, source="test"):
+            return "test-id"
+
+        async def recall(self, query, top_k=5, entity=None):
+            return []
+
+        def format_for_prompt(self, memories):
+            return ""
+
+    ms = importlib.import_module("memory.memory_store")
+    monkeypatch.setattr(ms, "store", _NullStore())
+
     from orchestrator import operating
     importlib.reload(operating)
     yield tmp_path
