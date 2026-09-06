@@ -81,11 +81,10 @@ def run(rows: list[dict], ref: dict, fixture: bool = False) -> dict:
     # relying on any single number. See docs from the Stage 2.3 data-rights
     # review (31 Aug/1 Sep 2026) for the underlying licence research.
     #
-    # QILT's licence line is deliberately not marked as cleared: QILT publishes
-    # no open licence for its report tables (unlike DoE's CC BY 4.0) and its
-    # copyright page directs reuse requests to qilt@srcentre.com.au. Update the
-    # licence string below once that permission is actually granted or denied
-    # — do not silently upgrade it based on assumption.
+    # QILT/SRC confirmed CC BY 4.0 permission for the SES national report
+    # tables on 6 Sep 2026 (requested 1 Sep, via the Stage 2.3 data-rights
+    # review). The licence line below reflects that confirmation and now
+    # matches DoE's existing CC BY 4.0 terms.
     data_sources = [
         {
             "publisher": "Department of Education, Australian Government",
@@ -97,8 +96,8 @@ def run(rows: list[dict], ref: dict, fixture: bool = False) -> dict:
         {
             "publisher": "QILT (Social Research Centre, on behalf of the Department of Education)",
             "collection": "Student Experience Survey (SES) national report tables",
-            "licence": "No open licence published — commercial reuse requires permission from QILT/SRC (requested, not yet confirmed as of 1 Sep 2026)",
-            "attribution": "Source: QILT, qilt.edu.au",
+            "licence": "CC BY 4.0 — commercial reuse and derivative works permitted with attribution",
+            "attribution": "Source: QILT, qilt.edu.au, CC BY 4.0",
             "source_url": "https://www.qilt.edu.au/",
         },
     ]
