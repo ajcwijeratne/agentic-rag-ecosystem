@@ -1937,6 +1937,125 @@ async def stream_hybrid(req: StreamRequest):
     )
 
 
+@app.post("/wijerco/stream")
+async def stream_wijerco(req: StreamRequest):
+    """
+    SSE streaming variant of /wijerco.
+
+    Dispatch by force, same as /wijerco: a caller sets department (or
+    subagent) directly rather than routing through /classify, matching how
+    the Command Centre department cards work (/classify only landed the
+    right department in 3 of 12 test queries — see department-cards-phase1
+    in project memory, that's why cards force it instead of trusting it).
+
+    Mirrors call_wijerco_agent's system prompt, long-term memory recall and
+    evidence recording, but streams tokens as they arrive instead of
+    returning one block. Falls back to auto-classification only when no
+    department or subagent was given at all.
+    """
+    sub = _resolve_subagent(req.subagent, req.department)
+    if sub:
+        department = sub["department"]
+    elif req.department:
+        department = req.department
+    else:
+        classification = classify_intent(req.query)
+        department = classification.department or "orchestrator"
+
+    selected_subagent = req.subagent
+    if not selected_subagent and department != "orchestrator":
+        selected_subagent, _, _ = select_subagent(req.query, department)
+
+    from .wijerco_agent import _build_system_prompt, _DEPT_TASK_TYPE
+    system    = _build_system_prompt(department, None, subagent=selected_subagent)
+    task_type = _DEPT_TASK_TYPE.get(department, "advisory")
+
+    # Prepend long-term memories, same as the non-streaming path.
+    try:
+        from memory.memory_agent import recall as memory_recall
+        memory_block = await memory_recall(query=req.query, department=department)
+        if memory_block:
+            system = memory_block + "\n\n---\n\n" + system
+    except Exception:
+        pass
+
+    chat_files = uploads_mod.get_chat_context(req.session_id)
+    if chat_files:
+        system = chat_files + "\n\n---\n\n" + system
+
+    history = req.conversation_history or get_history_for_llm(req.session_id)
+
+    async def _gen() -> AsyncGenerator[dict, None]:
+        yield {
+            "type":       "meta",
+            "route":      "wijerco",
+            "department": department,
+            "subagent":   selected_subagent,
+            "session_id": req.session_id,
+            "uploaded":   uploads_mod.list_chat_context(req.session_id),
+            "done":       False,
+        }
+        full = ""
+        final = {}
+
+        if req.tools:
+            from .agent_executor import run_agentic_turn
+            source = run_agentic_turn(req.query, system, history, req.max_tier,
+                                      force_model_key=req.force_model_key)
+        else:
+            source = stream_with_fallback(
+                user_message    = req.query,
+                system_prompt   = system,
+                history         = history,
+                force_model_key = req.force_model_key,
+                force_task_type = task_type,
+                max_tier        = req.max_tier,
+            )
+
+        async for event in source:
+            # Agentic events already carry a "type"; normal stream events don't.
+            if "type" not in event:
+                event["type"] = "token" if not event.get("done") else "end"
+            if event.get("token") and not event.get("done"):
+                full += event["token"]
+            if event.get("done"):
+                final = event
+            yield event
+
+        # Persist the turn so it appears in the session list and feeds memory
+        try:
+            add_message(req.session_id, "user", req.query)
+            add_message(req.session_id, "assistant", full,
+                        model_key=final.get("model_key"), cost_usd=final.get("cost_usd", 0.0))
+            from memory.episodic import summarise_session
+            msgs = get_messages(req.session_id, limit=50)
+            if len([m for m in msgs if m.role == "user"]) % 3 == 0:
+                asyncio.ensure_future(summarise_session(req.session_id, department))
+        except Exception:
+            pass
+
+        # Record candidate facts as evidence, same as call_wijerco_agent.
+        # Not written to recallable memory directly: this reply is generated
+        # text, and only verify_candidates() can promote a claim once the KB
+        # corroborates it.
+        try:
+            from memory.memory_agent import extract_and_record_evidence
+            asyncio.ensure_future(
+                extract_and_record_evidence(department, req.query, full)
+            )
+        except Exception:
+            pass
+
+    return StreamingResponse(
+        _sse_generator(_gen()),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.post("/webhook")
 async def n8n_webhook(payload: WebhookPayload, background_tasks: BackgroundTasks):
     """
