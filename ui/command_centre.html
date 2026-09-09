@@ -4466,26 +4466,56 @@ function DepartmentsView(){
     } catch { setSuggest({failed:true}); }
   };
 
+  // Streams from /wijerco/stream so a card's answer fills in token by token
+  // instead of a spinner-then-block. deptKey is captured up front, not read
+  // off `current` mid-stream, so switching cards while a run is in flight
+  // updates the right card's state, not whichever one happens to be selected
+  // when a chunk lands.
   const dispatch = async () => {
     if(!current || !brief.trim() || busy) return;
     setBusy(true);
-    setRuns(r=>({...r, [current.key]: {...(r[current.key]||{}), state:'running'}}));
+    const deptKey = current.key;
+    setRuns(r=>({...r, [deptKey]: {...(r[deptKey]||{}), state:'running', answer:'', error:null}}));
+    let full = '';
+    let meta = {};
     try {
-      const body = {query: brief, department: current.key, session_id: sessionFor(current.key)};
+      const body = {query: brief, department: deptKey, session_id: sessionFor(deptKey), conversation_history: []};
       if(agent) body.subagent = agent;
-      const d = await fetch(`${API}/wijerco`, {
+      const resp = await fetch(`${API}/wijerco/stream`, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify(body),
-      }).then(r=>r.ok?r.json():Promise.reject(new Error('HTTP '+r.status)));
-      setRuns(r=>({...r, [current.key]: {
-        state: d.error ? 'blocked' : 'done',
-        answer: d.answer, model: d.model, subagent: d.subagent,
-        tokens: d.tokens_used, error: d.error,
+      });
+      if(!resp.ok || !resp.body) throw new Error('HTTP '+resp.status);
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      while(true) {
+        const {done,value} = await reader.read();
+        if(done) break;
+        buf += dec.decode(value,{stream:true});
+        const parts = buf.split('\n\n'); buf = parts.pop()||'';
+        for(const part of parts) {
+          if(!part.startsWith('data: ')) continue;
+          const raw = part.slice(6).trim();
+          if(!raw) continue;
+          let ev;
+          try { ev = JSON.parse(raw); } catch { continue; }
+          if(ev.type==='meta'){ meta = {...meta, ...ev}; }
+          else if(!ev.done && ev.token){
+            full += ev.token;
+            setRuns(r=>({...r, [deptKey]: {...(r[deptKey]||{}), state:'running', answer: full}}));
+          } else if(ev.done){ meta = {...meta, ...ev}; }
+        }
+      }
+      setRuns(r=>({...r, [deptKey]: {
+        state: 'done',
+        answer: full, model: meta.model_label||meta.model_key, subagent: meta.subagent,
+        tokens: meta.tokens_used, error: null,
         at: new Date().toLocaleTimeString(),
       }}));
     } catch(e) {
-      setRuns(r=>({...r, [current.key]: {
-        state:'blocked', error: String((e && e.message) || e),
+      setRuns(r=>({...r, [deptKey]: {
+        state:'blocked', error: String((e && e.message) || e), answer: full,
         at: new Date().toLocaleTimeString(),
       }}));
     }
@@ -4565,12 +4595,14 @@ function DepartmentsView(){
             </div>
           )}
 
-          {run.state && run.state!=='idle' && run.state!=='running' && (
+          {run.state && run.state!=='idle' && (
             <div style={{marginTop:16,paddingTop:14,borderTop:'1px solid var(--border)'}}>
-              <div className="cap-tag">
-                {run.subagent ? run.subagent+' · ' : ''}{run.model||''}{run.tokens ? ' · '+run.tokens+' tokens' : ''}
-                {run.at ? ' · '+run.at : ''}
-              </div>
+              {run.state!=='running' && (
+                <div className="cap-tag">
+                  {run.subagent ? run.subagent+' · ' : ''}{run.model||''}{run.tokens ? ' · '+run.tokens+' tokens' : ''}
+                  {run.at ? ' · '+run.at : ''}
+                </div>
+              )}
               {run.error
                 ? <div className="mini" style={{marginTop:8,color:'var(--rose,#f87171)'}}>{String(run.error)}</div>
                 : <div style={{marginTop:8,whiteSpace:'pre-wrap',fontSize:14,lineHeight:1.55,color:'var(--ink)'}}>{run.answer}</div>}
