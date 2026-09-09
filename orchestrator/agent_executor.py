@@ -233,6 +233,44 @@ _LOCAL_TOOLS = [
         },
     },
     {
+        "name": "update_operating_task",
+        "description": (
+            "Update an existing operating-plan task: change its status, note, assignee, "
+            "priority, or target_id. Use this to record an answer a human gave for a blocked "
+            "task (write it into note, then set status to todo or done) instead of guessing "
+            "at a Content Studio production tool. task_id here is an operating task ID, not a "
+            "Content Studio production_id — the two are different records."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "Operating task ID to update."},
+                "status": {"type": "string", "enum": ["todo", "doing", "blocked", "waiting_approval", "done", "cancelled"]},
+                "note": {"type": "string", "description": "Replace the task's note, e.g. with the answer just received."},
+                "assignee": {"type": "string"},
+                "priority": {"type": "integer"},
+                "target_id": {"type": "string"},
+            },
+            "required": ["task_id"],
+        },
+    },
+    {
+        "name": "activate_operating_plan",
+        "description": (
+            "Turn a proposed (blocked) operating plan live: sets it active and releases every "
+            "task still in 'blocked' status to 'todo' so the daemon can pick up the chain again. "
+            "Use this after unblocking the first task in a plan (e.g. via update_operating_task) "
+            "if the rest of the plan's tasks are still sitting blocked."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "string", "description": "Operating plan ID to activate."},
+            },
+            "required": ["plan_id"],
+        },
+    },
+    {
         "name": "get_operating_daily_brief",
         "description": "Return the current daily operating brief: priorities, pending approvals, productions, and project memory.",
         "input_schema": {"type": "object", "properties": {}},
@@ -286,6 +324,11 @@ _TOOL_USE_GUIDANCE = (
     "- For Content Studio production requests, prefer the local tools: create_content_production, "
     "advance_content_production, advance_content_production_until_blocked, get_content_production, "
     "and list_content_productions.\n"
+    "- For an operating-plan task (title, note, status on an operating plan's task list, e.g. a "
+    "blocked 'clarify the brief' step) never call a Content Studio production tool with the task_id — "
+    "operating tasks and Content Studio productions are different records with different ID spaces. "
+    "Use update_operating_task to write an answer into the task and change its status, and "
+    "activate_operating_plan if the rest of that plan's tasks are still sitting in 'blocked'.\n"
     "- If the user asks to automate stages between Content Studio agents, create or locate the "
     "production, then advance it until the requested stopping point, normally review.\n"
     "- Do NOT repeat a search or reference call you have already made — reuse the result you have.\n"
@@ -492,6 +535,28 @@ async def _execute_local_tool(func_name: str, args: dict) -> str:
             result = {"task_id": task_id, "overview": operating_store.overview()}
         except KeyError:
             result = {"error": "plan not found"}
+        return json.dumps(result, ensure_ascii=False)
+
+    if func_name == "update_operating_task":
+        task_id = str(args.get("task_id") or "")
+        fields = {}
+        for key in ("status", "note", "assignee", "priority", "target_id"):
+            if args.get(key) is not None:
+                fields[key] = args[key]
+        try:
+            updated = operating_store.update_task(task_id, **fields)
+        except ValueError as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+        if not updated:
+            return json.dumps({"error": "task not found", "task_id": task_id}, ensure_ascii=False)
+        return json.dumps({"task_id": task_id, "updated": True, "fields": fields}, ensure_ascii=False)
+
+    if func_name == "activate_operating_plan":
+        plan_id = str(args.get("plan_id") or "")
+        try:
+            result = operating_store.activate_plan(plan_id, actor="agent")
+        except KeyError:
+            return json.dumps({"error": "plan not found", "plan_id": plan_id}, ensure_ascii=False)
         return json.dumps(result, ensure_ascii=False)
 
     if func_name == "get_operating_daily_brief":
