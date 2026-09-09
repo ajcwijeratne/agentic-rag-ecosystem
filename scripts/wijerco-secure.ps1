@@ -32,6 +32,13 @@ $log     = Join-Path $env:USERPROFILE "wijerco_secure_log_$stamp.txt"
 $secrets = Join-Path $env:USERPROFILE "wijerco-secrets-$stamp.txt"
 $quar    = Join-Path 'C:\dev' "_quarantine\$stamp"
 $tailIP  = '100.109.75.69'
+# Raw port 8000 was deliberately never opened on the firewall (see
+# minipc-deployment memory, 15 Jul 2026): remote access goes through
+# `tailscale serve --bg 8000`, which proxies HTTPS from this hostname to
+# localhost:8000. A raw connect to $tailIP:8000 gets silently dropped, not
+# refused, which can hang Invoke-WebRequest well past -TimeoutSec. Use the
+# real address for anything that has to reach port 8000 from off-box.
+$publicBase = 'https://wijerco.taila4c185.ts.net'
 $lines   = New-Object Collections.ArrayList
 
 function Say([string]$m) { [void]$lines.Add($m); Write-Host $m }
@@ -170,13 +177,13 @@ Step "[4/4] RBAC keys" {
         Say "  Step 1 above is the place to look."
         return
     }
-    Say "  Verifying over the tailnet address, because loopback is always admin:"
+    Say "  Verifying over the public tailnet address, because loopback is always admin:"
     $checks = @(
-        @{ n='no key     -> /ops/status '; c=(Code "http://${tailIP}:8000/ops/status"  $null);            w='401 or 403' },
-        @{ n='viewer     -> /ops/status '; c=(Code "http://${tailIP}:8000/ops/status"  $script:viewer);   w='200' },
-        @{ n='viewer     -> /ops/backups'; c=(Code "http://${tailIP}:8000/ops/backups" $script:viewer);   w='403' },
-        @{ n='operator   -> /ops/backups'; c=(Code "http://${tailIP}:8000/ops/backups" $script:operator); w='200' },
-        @{ n='admin      -> /ops/backups'; c=(Code "http://${tailIP}:8000/ops/backups" $script:admin);    w='200' }
+        @{ n='no key     -> /ops/status '; c=(Code "$publicBase/ops/status"  $null);            w='401 or 403' },
+        @{ n='viewer     -> /ops/status '; c=(Code "$publicBase/ops/status"  $script:viewer);   w='200' },
+        @{ n='viewer     -> /ops/backups'; c=(Code "$publicBase/ops/backups" $script:viewer);   w='403' },
+        @{ n='operator   -> /ops/backups'; c=(Code "$publicBase/ops/backups" $script:operator); w='200' },
+        @{ n='admin      -> /ops/backups'; c=(Code "$publicBase/ops/backups" $script:admin);    w='200' }
     )
     foreach ($x in $checks) { Say ("    {0} -> {1}   want {2}" -f $x.n, $x.c, $x.w) }
     Say "  A 200 for the viewer key on /ops/backups means the roles are NOT separating."
