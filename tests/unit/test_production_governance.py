@@ -70,7 +70,7 @@ def test_board_envelope_shape(stores):
     production.create_production("Board card", None, "course_teaser", None)
     board = production.board()
 
-    assert set(board) == {"Ideas", "Drafting", "In Production", "Review", "Published"}
+    assert set(board) == {"Ideas", "Drafting", "In Production", "Review", "Published", "Cancelled"}
     assert board["Ideas"][0]["title"] == "Board card"
     assert board["Ideas"][0]["cap"] == "course_teaser"
     assert board["Ideas"][0]["next_action"] == "Build brief"

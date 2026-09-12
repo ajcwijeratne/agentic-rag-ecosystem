@@ -22,6 +22,7 @@ STATES = (
     "review",
     "publish",
     "measure",
+    "cancelled",
 )
 STATE_ORDER = {state: i for i, state in enumerate(STATES)}
 FORMATS = (
@@ -50,6 +51,7 @@ _NEXT_ACTIONS = {
     "review": ("Approve publish", "operator", "Clear governance gates before anything goes live."),
     "publish": ("Record measures", "operator", "Capture outcome and performance signals."),
     "measure": ("Complete", "operator", "Production is through the measured workflow."),
+    "cancelled": ("None", "n/a", "This production was cancelled and will not advance further."),
 }
 
 ACTION_DEFINITIONS = {
@@ -195,6 +197,21 @@ def _priority(prod: dict[str, Any], pending_gates: list[dict[str, Any]]) -> int:
 
 def _intelligence(prod: dict[str, Any]) -> dict[str, Any]:
     state = prod.get("state") or "idea"
+    if state == "cancelled":
+        label, actor, reason = _NEXT_ACTIONS["cancelled"]
+        return {
+            "next_action": label,
+            "next_actor": actor,
+            "next_reason": reason,
+            "next_state": None,
+            "gate_status": "cancelled",
+            "pending_gates": [],
+            "asset_status": _asset_status(prod),
+            "missing_slices": [],
+            "readiness": "cancelled",
+            "confidence": "n/a",
+            "priority": 0,
+        }
     label, actor, reason = _NEXT_ACTIONS.get(state, ("Review production", "operator", "Check the production state."))
     next_state = STATES[min(STATE_ORDER.get(state, 0) + 1, len(STATES) - 1)] if state in STATE_ORDER else state
     pending_gates: list[dict[str, Any]] = []
@@ -466,7 +483,7 @@ def _render_props(prod: dict) -> dict:
 
 
 def board() -> dict[str, list[dict[str, str]]]:
-    columns = {"Ideas": [], "Drafting": [], "In Production": [], "Review": [], "Published": []}
+    columns = {"Ideas": [], "Drafting": [], "In Production": [], "Review": [], "Published": [], "Cancelled": []}
     mapping = {
         "idea": "Ideas",
         "brief": "Ideas",
@@ -478,6 +495,7 @@ def board() -> dict[str, list[dict[str, str]]]:
         "review": "Review",
         "publish": "Published",
         "measure": "Published",
+        "cancelled": "Cancelled",
     }
     for prod in list_productions(limit=500):
         state = prod["state"]

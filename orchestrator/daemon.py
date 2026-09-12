@@ -303,42 +303,63 @@ async def run_cycle(state: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         logger.exception("sync failed")
 
-    rec = operating.recommend_next_action()
-    task = rec.get("task")
+    # Pick the next actionable task. A waiting_approval/manual task always
+    # sorts first (it's the highest-leverage unblocker), but it can't be
+    # executed, so notify on it once and keep looking rather than let it
+    # starve every todo task behind it forever. Concurrency stays 1: this
+    # loop only ever notifies, it never executes more than the one task we
+    # break out with below.
+    notified = state.setdefault("notified_tasks", [])
+    exclude: set[str] = set()
+    task: dict[str, Any] | None = None
+    rec: dict[str, Any] = {}
+    while True:
+        rec = operating.recommend_next_action(exclude_ids=exclude)
+        candidate = rec.get("task")
+        if not candidate:
+            break
+        c_id = candidate["task_id"]
+        c_kind = candidate.get("type")
+        if c_kind in ("approval", "manual") or candidate.get("status") == "waiting_approval":
+            if c_id not in notified:
+                body = (f"{c_kind or 'task'}: {candidate['title']}\nTask {c_id}. "
+                        "Approve in the Command Centre or by Telegram.")
+                gate = (candidate.get("meta") or {}).get("gate")
+                target = candidate.get("target_id")
+                if gate and target:
+                    try:
+                        from .inbox import approval_links
+                        links = approval_links(gate, target)
+                        if links:
+                            body += (f"\nApprove: {links['approve']}"
+                                     f"\nReject: {links['reject']}")
+                        base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+                        if base:
+                            body += f"\nPreview: {base}/productions/{target}/preview"
+                    except Exception:
+                        pass
+                await _notify("Waiting on you", body)
+                notified.append(c_id)
+                state["notified_tasks"] = notified[-200:]
+                # Persist immediately. The main loop re-reads state after each
+                # cycle so pause/resume changes made mid-cycle win; without this
+                # write, that re-read discards the notify-once marker.
+                save_state(state)
+                _log_decision("notify_waiting", {"task_id": c_id, "type": c_kind, "title": candidate["title"]})
+            if task is None:
+                task = candidate  # fallback: report this if nothing else is runnable
+            exclude.add(c_id)
+            continue
+        task = candidate
+        break
+
     if not task:
-        return {"picked": None, "reason": rec.get("reason")}
+        return {"picked": None, "reason": rec.get("reason", "No unblocked actionable task found.")}
 
     kind = task.get("type")
     task_id = task["task_id"]
 
-    # Gated and manual work: notify once, never execute.
     if kind in ("approval", "manual") or task.get("status") == "waiting_approval":
-        notified = state.setdefault("notified_tasks", [])
-        if task_id not in notified:
-            body = (f"{kind or 'task'}: {task['title']}\nTask {task_id}. "
-                    "Approve in the Command Centre or by Telegram.")
-            gate = (task.get("meta") or {}).get("gate")
-            target = task.get("target_id")
-            if gate and target:
-                try:
-                    from .inbox import approval_links
-                    links = approval_links(gate, target)
-                    if links:
-                        body += (f"\nApprove: {links['approve']}"
-                                 f"\nReject: {links['reject']}")
-                    base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
-                    if base:
-                        body += f"\nPreview: {base}/productions/{target}/preview"
-                except Exception:
-                    pass
-            await _notify("Waiting on you", body)
-            notified.append(task_id)
-            state["notified_tasks"] = notified[-200:]
-            # Persist immediately. The main loop re-reads state after each
-            # cycle so pause/resume changes made mid-cycle win; without this
-            # write, that re-read discards the notify-once marker.
-            save_state(state)
-            _log_decision("notify_waiting", {"task_id": task_id, "type": kind, "title": task["title"]})
         return {"picked": task_id, "action": "waiting_on_human", "type": kind}
 
     if kind not in AUTO_TYPES:

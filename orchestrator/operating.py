@@ -508,12 +508,20 @@ def _title_from_goal(goal: str) -> str:
     return clean[:69].rstrip() + "..."
 
 
-def recommend_next_action(*, plan_id: str | None = None, project: str | None = None) -> dict[str, Any]:
+def recommend_next_action(
+    *,
+    plan_id: str | None = None,
+    project: str | None = None,
+    exclude_ids: set[str] | None = None,
+) -> dict[str, Any]:
     tasks = list_tasks(plan_id=plan_id, project=project, limit=500)
     by_id = {task["task_id"]: task for task in tasks}
+    exclude_ids = exclude_ids or set()
     blocked = []
     candidates = []
     for task in tasks:
+        if task["task_id"] in exclude_ids:
+            continue
         if task["status"] not in ("todo", "doing", "waiting_approval"):
             continue
         planner = (task.get("meta") or {}).get("planner") or {}
@@ -630,7 +638,7 @@ def sync_production_tasks() -> list[dict]:
     }
     for prod in production.list_productions(limit=500):
         state = prod.get("state")
-        if state in {"publish", "measure"}:
+        if state in {"publish", "measure", "cancelled"}:
             continue
         intel = prod.get("intelligence") or {}
         if intel.get("gate_status") == "blocked":
