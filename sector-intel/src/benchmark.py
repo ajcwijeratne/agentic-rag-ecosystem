@@ -81,10 +81,16 @@ def run(rows: list[dict], ref: dict, fixture: bool = False) -> dict:
     # relying on any single number. See docs from the Stage 2.3 data-rights
     # review (31 Aug/1 Sep 2026) for the underlying licence research.
     #
-    # QILT/SRC confirmed CC BY 4.0 permission for the SES national report
-    # tables on 6 Sep 2026 (requested 1 Sep, via the Stage 2.3 data-rights
-    # review). The licence line below reflects that confirmation and now
-    # matches DoE's existing CC BY 4.0 terms.
+    # QILT/SRC correction (13 Sep 2026): the 7 Sep commit (e786bbe) recorded
+    # this as "CC BY 4.0" by assumption, which the code comment it replaced
+    # explicitly said not to do. It isn't CC BY 4.0 — Aaron has now relayed
+    # the actual grant from QILT/SRC: a 5-year permission (from 6 Sep 2026,
+    # when it was confirmed, to 6 Sep 2031), commercial use of figures
+    # permitted, but no distribution of QILT's raw tables — only WijerCo's
+    # own derived/aggregate figures may be published. Our proposed attribution
+    # wording was accepted as-is, with no further conditions. This is a
+    # bespoke time-boxed licence, not an open one; do not describe it as
+    # CC BY 4.0 or as unconditional anywhere downstream (UI, briefings, docs).
     data_sources = [
         {
             "publisher": "Department of Education, Australian Government",
@@ -96,9 +102,12 @@ def run(rows: list[dict], ref: dict, fixture: bool = False) -> dict:
         {
             "publisher": "QILT (Social Research Centre, on behalf of the Department of Education)",
             "collection": "Student Experience Survey (SES) national report tables",
-            "licence": "CC BY 4.0 — commercial reuse and derivative works permitted with attribution",
-            "attribution": "Source: QILT, qilt.edu.au, CC BY 4.0",
+            "licence": "Bespoke 5-year permission from QILT/SRC (granted 6 Sep 2026, expires 6 Sep 2031) — commercial use of derived/aggregate figures permitted; redistribution of QILT's raw tables is NOT permitted",
+            "attribution": "Source: QILT, qilt.edu.au",
             "source_url": "https://www.qilt.edu.au/",
+            "granted": "2026-09-06",
+            "expires": "2031-09-06",
+            "restriction": "no_raw_table_redistribution",
         },
     ]
     rights_note = ("Derived metrics, benchmarks and comparisons in this dataset are WijerCo's own "
