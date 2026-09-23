@@ -71,11 +71,33 @@ def test_budget_warn_and_stop(monkeypatch, tmp_path):
 # Inbox classification
 # ---------------------------------------------------------------------------
 
+def test_unparsed_approval_returns_help_not_a_task():
+    """The guard answers the sender instead of queueing work."""
+    from orchestrator.inbox import InboxMessage, _handle_approval_help
+
+    out = _handle_approval_help(
+        InboxMessage(channel="telegram", sender="8686289834", text="approve")
+    )
+    assert out["kind"] == "approval_help"
+    assert out["ok"] is False
+    assert "nothing was approved" in out["message"]
+    assert "approve <gate> <target_id>" in out["usage"]
+    assert isinstance(out["pending"], list)
+    assert "task_id" not in out
+
+
 def test_inbox_classification():
     from orchestrator.inbox import classify_inbox
     assert classify_inbox("approve external_publish abc-123") == "approval"
     assert classify_inbox("Reject paid_job xyz money reasons") == "approval"
     assert classify_inbox("plan: launch the TEQSA briefing series") == "plan"
+    # A bare or half-formed approval must never become agent work. Aaron tapped
+    # approve from Telegram on 23 Sep 2026 and got three agent tasks that then
+    # asked him what they were meant to approve; the gates stayed unapproved.
+    assert classify_inbox("approve") == "approval_help"
+    assert classify_inbox("Approve task") == "approval_help"
+    assert classify_inbox("approve the content plan please") == "approval_help"
+    assert classify_inbox("reject") == "approval_help"
     assert classify_inbox("What did we tell Swinburne about the MBA redesign?") == "ask"
     assert classify_inbox("Draft a LinkedIn post on adaptive leadership") == "task"
     # Mode override wins.

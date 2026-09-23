@@ -262,6 +262,22 @@ async def _handle_text(client: httpx.AsyncClient, chat_id: str, text: str) -> No
     elif kind == "approval":
         await _send(client, chat_id, f"{result.get('status')}: {result.get('gate')} "
                                      f"for {result.get('target_id')}")
+    elif kind == "approval_help":
+        lines = [result.get("message") or "Approval not understood.",
+                 "", "Usage: " + (result.get("usage") or "")]
+        pend = result.get("pending") or []
+        if pend:
+            lines.append("")
+            lines.append("Pending now:")
+            for item in pend:
+                lines.append(f"  approve {item.get('gate')} {item.get('target_id')}"
+                             f"   {item.get('title') or ''}".rstrip())
+        else:
+            lines.append("")
+            lines.append("Nothing is pending approval right now.")
+        lines.append("")
+        lines.append(result.get("hint") or "")
+        await _send(client, chat_id, "\n".join(lines).strip())
     elif kind == "outcome":
         if result.get("ok"):
             await _send(client, chat_id,
@@ -294,7 +310,14 @@ async def _handle_callback(client: httpx.AsyncClient, callback: dict) -> None:
     await client.post(f"{TG}/answerCallbackQuery",
                       data={"callback_query_id": callback.get("id"), "text": result.get("status", "done")},
                       timeout=30)
-    await _send(client, chat_id, f"{result.get('status', 'done')}: {gate} for {target}")
+    if result.get("kind") == "approval_help":
+        # The button payload did not reach the approval parser. Say so plainly
+        # rather than reporting "done" for something that did not happen.
+        await _send(client, chat_id,
+                    f"Approval NOT recorded for {gate} on {target}. "
+                    f"{result.get('message') or ''}".strip())
+    else:
+        await _send(client, chat_id, f"{result.get('status', 'done')}: {gate} for {target}")
 
 
 # ---------------------------------------------------------------------------

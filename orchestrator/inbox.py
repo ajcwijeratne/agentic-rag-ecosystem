@@ -50,6 +50,12 @@ _APPROVE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A message that opens with approve or reject but carries no gate and target
+# used to fall through to the task path: a mistyped approval silently became
+# agent work and the sender was told it had been queued. Recognise the shape
+# so it can be answered with usage and the live pending list instead.
+_APPROVE_PREFIX_RE = re.compile(r"^\s*(approve|reject)\b", re.IGNORECASE)
+
 # "outcome <id> 4200 views 38 comments" — an id token followed by a digit.
 _OUTCOME_RE = re.compile(r"^\s*outcome\s+[\w-]+\s+.*\d", re.IGNORECASE)
 
@@ -76,8 +82,14 @@ def classify_inbox(text: str, mode: str = "auto") -> str:
     if mode in ("ask", "task", "plan"):
         return mode
     stripped = text.strip()
-    if _APPROVE_RE.match(stripped):
+    approve_match = _APPROVE_RE.match(stripped)
+    if approve_match and approve_match.group("gate").lower() in governance.GATES:
         return "approval"
+    if approve_match or _APPROVE_PREFIX_RE.match(stripped):
+        # Opens like an approval but names no real gate, or no target at all.
+        # "approve the content plan please" parses as gate="the", target="content",
+        # which used to reach the approval handler and 400. Answer it instead.
+        return "approval_help"
     if _OUTCOME_RE.match(stripped):
         return "outcome"
     if _START_PLAN_RE.match(stripped):
@@ -156,6 +168,31 @@ def _handle_approval(msg: InboxMessage) -> dict[str, Any]:
             "target_id": m.group("target"), "actor": actor}
 
 
+def _handle_approval_help(msg: InboxMessage) -> dict[str, Any]:
+    """An approval that could not be parsed. Answer it; never create work from it."""
+    try:
+        items = governance.pending().get("items") or []
+    except Exception:  # listing must never break the reply
+        items = []
+    return {
+        "kind": "approval_help",
+        "ok": False,
+        "message": ("That looked like an approval, but it did not name a gate and a "
+                    "target, so nothing was approved and no task was created."),
+        "usage": "approve <gate> <target_id>   (reject works the same way)",
+        "gates": list(governance.GATES),
+        "pending": [
+            {
+                "gate": i.get("gate"),
+                "target_id": i.get("target_id") or i.get("production_id"),
+                "title": i.get("title") or i.get("reason") or "",
+            }
+            for i in items[:10]
+        ],
+        "hint": "In Telegram, /pending gives tap-to-approve buttons.",
+    }
+
+
 def _handle_outcome(msg: InboxMessage) -> dict[str, Any]:
     result = outcomes.record_from_text(msg.text, source=msg.channel or "api")
     if not result.get("ok"):
@@ -184,6 +221,8 @@ async def inbox(msg: InboxMessage) -> dict[str, Any]:
     kind = classify_inbox(msg.text, msg.mode)
     if kind == "approval":
         return _handle_approval(msg)
+    if kind == "approval_help":
+        return _handle_approval_help(msg)
     if kind == "start_plan":
         return _handle_start_plan(msg)
     if kind == "outcome":
