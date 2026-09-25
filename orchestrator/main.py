@@ -76,6 +76,10 @@ app.add_middleware(CORSMiddleware, **cors_kwargs())
 # memory overview, sector intel, routing inspector, scheduled runs)
 app.include_router(dashboard_router)
 
+# Deliverables: documents drafted, rendered, reviewed and approved
+from .deliverables import router as deliverables_router
+app.include_router(deliverables_router)
+
 # Inbox front door (all channels) + operating daemon controls
 from .inbox import router as inbox_router
 app.include_router(inbox_router)
