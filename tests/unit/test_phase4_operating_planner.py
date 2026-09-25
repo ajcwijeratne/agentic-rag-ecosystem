@@ -108,6 +108,95 @@ def test_blocked_production_syncs_as_approval_not_production_task(tmp_path, monk
     assert not [t for t in overview["production_tasks"] if t["target_id"] == pid]
 
 
+def _stub_llm(monkeypatch, content):
+    """Point the planner's model call at canned content."""
+    from orchestrator import fallback_chain
+
+    class _Resp:
+        def __init__(self, text):
+            self.content = text
+            self.error = None
+            self.model = "stub-model"
+
+    async def _fake(**kwargs):
+        return _Resp(content)
+
+    monkeypatch.setattr(fallback_chain, "call_with_fallback", _fake)
+
+
+def test_planner_uses_goal_specific_tasks_when_llm_enabled(tmp_path, monkeypatch):
+    operating, _p, _g, _o, _a, _c = _modules(tmp_path, monkeypatch)
+    monkeypatch.setenv("PLANNER_LLM", "1")
+    _stub_llm(monkeypatch, json.dumps({"tasks": [
+        {"title": "Pull QILT online cohort scores for 2024", "type": "agent",
+         "depends_on": [], "success_criteria": ["scores recorded with source"]},
+        {"title": "Compare Deakin against the Go8 median", "type": "agent", "depends_on": [0]},
+        {"title": "Write the two-page benchmarking note", "type": "agent", "depends_on": [1]},
+    ]}))
+
+    generated = operating.generate_plan_from_goal(
+        "Benchmark Deakin's online cohort against the Go8", create=True)
+
+    titles = [task["title"] for task in generated["tasks"]]
+    assert "Pull QILT online cohort scores for 2024" in titles
+    assert "Define the outcome, constraints, and decision owner" not in titles
+    assert generated["plan"]["meta"]["planner"]["task_source"] == "llm"
+    # A low-risk goal can start itself: no manual first step.
+    assert generated["next_action"]["type"] == "agent"
+
+
+def test_planner_rejects_generic_titles_and_falls_back(tmp_path, monkeypatch):
+    operating, _p, _g, _o, _a, _c = _modules(tmp_path, monkeypatch)
+    monkeypatch.setenv("PLANNER_LLM", "1")
+    # The exact boilerplate the change exists to prevent.
+    _stub_llm(monkeypatch, json.dumps({"tasks": [
+        {"title": "Define the outcome, constraints, and decision owner", "type": "manual", "depends_on": []},
+        {"title": "Collect relevant context, memory, and existing state", "type": "agent", "depends_on": [0]},
+        {"title": "Execute the first deliverable", "type": "manual", "depends_on": [1]},
+    ]}))
+
+    generated = operating.generate_plan_from_goal("Tidy the knowledge base", create=True)
+    assert generated["plan"]["meta"]["planner"]["task_source"] == "template"
+
+
+def test_planner_forces_an_approval_gate_on_risky_goals(tmp_path, monkeypatch):
+    operating, _p, _g, _o, _a, _c = _modules(tmp_path, monkeypatch)
+    monkeypatch.setenv("PLANNER_LLM", "1")
+    # Three agent tasks, no gate offered by the model.
+    _stub_llm(monkeypatch, json.dumps({"tasks": [
+        {"title": "Draft the client-facing sector briefing", "type": "agent", "depends_on": []},
+        {"title": "Check every figure against the source tables", "type": "agent", "depends_on": [0]},
+        {"title": "Lay the briefing out as a two-page PDF", "type": "agent", "depends_on": [1]},
+    ]}))
+
+    generated = operating.generate_plan_from_goal(
+        "Publish the sector briefing to the client list", create=True)
+
+    types = [task["type"] for task in generated["tasks"]]
+    assert "approval" in types, "a publish goal must keep a human gate"
+
+
+def test_planner_validation_rejects_bad_proposals(tmp_path, monkeypatch):
+    operating, _p, _g, _o, _a, _c = _modules(tmp_path, monkeypatch)
+
+    with pytest.raises(ValueError):  # too few tasks
+        operating._validate_llm_tasks(json.dumps({"tasks": [{"title": "Only one thing", "type": "agent"}]}))
+    with pytest.raises(ValueError):  # unknown type
+        operating._validate_llm_tasks(json.dumps({"tasks": [
+            {"title": "One", "type": "agent"}, {"title": "Two", "type": "sudo"}, {"title": "Three", "type": "agent"}]}))
+    with pytest.raises(ValueError):  # forward dependency would deadlock the daemon
+        operating._validate_llm_tasks(json.dumps({"tasks": [
+            {"title": "Alpha step here", "type": "agent", "depends_on": [2]},
+            {"title": "Beta step here", "type": "agent"},
+            {"title": "Gamma step here", "type": "agent"}]}))
+
+    good = operating._validate_llm_tasks("```json\n" + json.dumps({"tasks": [
+        {"title": "Alpha step here", "type": "agent"},
+        {"title": "Beta step here", "type": "agent", "depends_on": [0]},
+        {"title": "Gamma step here", "type": "approval", "depends_on": [1]}]}) + "\n```")
+    assert len(good) == 3 and good[2]["type"] == "approval"
+
+
 def test_generate_plan_from_goal_creates_dependencies_and_next_action(tmp_path, monkeypatch):
     operating, production, governance, obsidian_projects, agent_executor, client = _modules(tmp_path, monkeypatch)
 

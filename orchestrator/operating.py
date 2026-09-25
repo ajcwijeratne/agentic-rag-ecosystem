@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
+import re
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -371,6 +374,199 @@ def _risk_flags(goal: str, workflow: str) -> list[str]:
     return sorted(set(flags))
 
 
+logger = logging.getLogger("operating.planner")
+
+# Every title the templates ship with. A model that returns one of these has not
+# engaged with the goal, so the whole proposal is rejected and the template runs.
+_TEMPLATE_TITLES = {
+    step["title"].strip().lower()
+    for steps in WORKFLOW_TEMPLATES.values()
+    for step in steps
+}
+
+_PLANNER_SYSTEM = (
+    "You break a goal into the smallest set of concrete tasks that would actually "
+    "deliver it.\n"
+    "Reply with JSON only, no prose and no code fences:\n"
+    '{"tasks": [{"title": "...", "type": "agent|manual|approval|production|memory", '
+    '"depends_on": [0], "success_criteria": ["..."]}]}\n'
+    "Rules:\n"
+    "- Between 3 and 7 tasks.\n"
+    "- Every title names the specific work for THIS goal. Never generic steps such as "
+    "'Define the outcome', 'Collect relevant context' or 'Execute the first deliverable'.\n"
+    "- Titles under 90 characters, imperative, one task each.\n"
+    "- type 'agent' for work an AI agent can do alone: research, drafting, analysis, "
+    "summarising, checking. Prefer it.\n"
+    "- type 'manual' ONLY when a human must decide or act outside the system.\n"
+    "- type 'approval' for a human sign-off gate.\n"
+    "- depends_on holds 0-based indexes of earlier tasks only."
+)
+
+
+def _planner_llm_enabled() -> bool:
+    """Off unless PLANNER_LLM is truthy, so offline tests keep the template path."""
+    return os.getenv("PLANNER_LLM", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _run_async(coro: Any) -> Any:
+    """Run a coroutine from sync code, whether or not a loop is already running."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
+def _strip_fences(text: str) -> str:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z]*\s*", "", cleaned)
+        cleaned = re.sub(r"```\s*$", "", cleaned)
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start != -1 and end > start:
+        cleaned = cleaned[start:end + 1]
+    return cleaned.strip()
+
+
+def _validate_llm_tasks(raw: str) -> list[dict[str, Any]]:
+    """Parse and validate a model proposal. Raises ValueError on anything suspect."""
+    payload = json.loads(_strip_fences(raw))
+    tasks = payload.get("tasks") if isinstance(payload, dict) else None
+    if not isinstance(tasks, list):
+        raise ValueError("no tasks list")
+    if not 3 <= len(tasks) <= 7:
+        raise ValueError(f"task count {len(tasks)} outside 3-7")
+
+    seen: set[str] = set()
+    clean: list[dict[str, Any]] = []
+    for index, task in enumerate(tasks):
+        if not isinstance(task, dict):
+            raise ValueError("task is not an object")
+        title = str(task.get("title", "")).strip()
+        if not 5 <= len(title) <= 90:
+            raise ValueError(f"title length {len(title)}")
+        lowered = title.lower()
+        if lowered in _TEMPLATE_TITLES:
+            raise ValueError(f"generic template title: {title}")
+        if lowered in seen:
+            raise ValueError(f"duplicate title: {title}")
+        seen.add(lowered)
+
+        task_type = str(task.get("type", "agent")).strip().lower()
+        if task_type not in TASK_TYPES:
+            raise ValueError(f"unknown type: {task_type}")
+
+        deps = task.get("depends_on") or []
+        if not isinstance(deps, list):
+            raise ValueError("depends_on is not a list")
+        dep_indexes = []
+        for dep in deps:
+            if not isinstance(dep, int) or not 0 <= dep < index:
+                raise ValueError(f"dependency {dep} is not an earlier task")
+            dep_indexes.append(dep)
+
+        criteria = task.get("success_criteria") or []
+        if not isinstance(criteria, list):
+            raise ValueError("success_criteria is not a list")
+
+        clean.append({
+            "title": title,
+            "type": task_type,
+            "depends_on": dep_indexes,
+            "success_criteria": [str(c).strip() for c in criteria if str(c).strip()][:3],
+        })
+    return clean
+
+
+def _llm_task_proposal(goal: str, workflow: str, risks: list[str]) -> list[dict[str, Any]] | None:
+    """Ask a model for goal-specific tasks. Returns None on any failure."""
+    if not _planner_llm_enabled():
+        return None
+    from .fallback_chain import call_with_fallback
+
+    prompt = (
+        f"Goal: {goal}\n"
+        f"Closest standard workflow: {workflow}\n"
+        f"Risk flags: {', '.join(risks) if risks else 'none'}\n\n"
+        "Produce the task list."
+    )
+    try:
+        response = _run_async(call_with_fallback(
+            user_message=prompt,
+            system_prompt=_PLANNER_SYSTEM,
+            force_task_type="reasoning",
+        ))
+        content = getattr(response, "content", "") or ""
+        if getattr(response, "error", None):
+            raise ValueError(str(response.error))
+        tasks = _validate_llm_tasks(content)
+        logger.info("planner: %d goal-specific tasks from %s", len(tasks),
+                    getattr(response, "model", "?"))
+        return tasks
+    except Exception as exc:
+        logger.warning("planner: falling back to template (%s)", exc)
+        return None
+
+
+def _llm_task_specs(goal: str, workflow: str, risks: list[str],
+                    context: dict[str, Any], proposal: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Turn a validated proposal into task specs, with gates forced back in."""
+    keys = [f"llm{index + 1}" for index in range(len(proposal))]
+    specs = []
+    for index, task in enumerate(proposal):
+        meta = {
+            "planner": {
+                "key": keys[index],
+                "sequence": index + 1,
+                "depends_on_keys": [keys[dep] for dep in task["depends_on"]],
+                "success_criteria": task["success_criteria"] or [f"'{task['title']}' has a clear done state"],
+                "risk_flags": risks,
+                "source": "llm",
+            }
+        }
+        if context:
+            meta["planner"]["context"] = context
+        specs.append({
+            "title": task["title"],
+            "type": task["type"],
+            "status": "todo",
+            "assignee": context.get("assignee") or context.get("owner"),
+            "priority": 5 if index == 0 else max(3, 5 - index // 2),
+            "note": f"Generated from goal: {goal}",
+            "meta": meta,
+        })
+
+    # Gates are not the model's to remove. A risk-flagged goal always ends with a
+    # human sign-off, and a state-changing one always starts with a human decision.
+    if risks and not any(spec["type"] == "approval" for spec in specs):
+        gate_key = "llm_gate"
+        specs.append({
+            "title": "Human sign-off before anything leaves the system",
+            "type": "approval",
+            "status": "todo",
+            "assignee": context.get("assignee") or context.get("owner"),
+            "priority": 5,
+            "note": f"Forced gate. Risk flags: {', '.join(risks)}. Goal: {goal}",
+            "meta": {
+                "planner": {
+                    "key": gate_key,
+                    "sequence": len(specs) + 1,
+                    "depends_on_keys": [keys[-1]] if keys else [],
+                    "success_criteria": ["a human has approved or rejected, explicitly"],
+                    "risk_flags": risks,
+                    "source": "forced_gate",
+                }
+            },
+        })
+    if "state_change" in risks and specs and specs[0]["type"] != "manual":
+        specs[0]["type"] = "manual"
+        specs[0]["meta"]["planner"]["forced_manual"] = "state_change risk"
+    return specs
+
+
 def _task_specs_for_goal(goal: str, workflow: str, context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     context = context or {}
     risks = _risk_flags(goal, workflow)
@@ -439,14 +635,22 @@ def generate_plan_from_goal(
     inferred = infer_workflow(goal, workflow)
     selected_workflow = inferred["workflow"]
     context = {"owner": owner, **(context or {})}
-    task_specs = _task_specs_for_goal(goal, selected_workflow, context)
+    risks = _risk_flags(goal, selected_workflow)
+    proposal = _llm_task_proposal(goal, selected_workflow, risks)
+    if proposal:
+        task_specs = _llm_task_specs(goal, selected_workflow, risks, context, proposal)
+        task_source = "llm"
+    else:
+        task_specs = _task_specs_for_goal(goal, selected_workflow, context)
+        task_source = "template"
     planner_meta = {
         "planner": {
             "generated": True,
             "workflow": selected_workflow,
             "confidence": inferred["confidence"],
             "reason": inferred["reason"],
-            "risk_flags": _risk_flags(goal, selected_workflow),
+            "risk_flags": risks,
+            "task_source": task_source,
         }
     }
     if not create:
