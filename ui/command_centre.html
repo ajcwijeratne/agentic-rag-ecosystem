@@ -425,6 +425,45 @@ const speakText = (text, {maxChars = 1200} = {}) => new Promise(resolve => {
   } catch { resolve("error"); }
 });
 
+// Streaming speech. speakText above cancels whatever is playing before it
+// starts, which is right for a one-shot reply and fatal for a streamed one —
+// each arriving fragment would cut off the one before it. These queue instead,
+// so sentences play back to back while later ones are still being generated.
+let speechQueue = 0;
+const enqueueSpeech = (text) => {
+  if (!window.speechSynthesis) return;
+  const clean = speakableText(text).slice(0, 1200);
+  if (!clean) return;
+  try {
+    const u = new SpeechSynthesisUtterance(clean);
+    const v = pickVoice();
+    if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = parseFloat(localStorage.getItem("cc_tts_rate") || "1.05");
+    speechQueue += 1;
+    const done = () => { speechQueue = Math.max(0, speechQueue - 1); };
+    u.onend = done; u.onerror = done;
+    speechSynthesis.speak(u);
+  } catch { /* speech unavailable: the text is still on screen */ }
+};
+
+// Resolves once the queue has drained, so the mic is only reopened after the
+// assistant has actually stopped talking.
+const speechDone = (timeoutMs = 60000) => new Promise(resolve => {
+  const t0 = Date.now();
+  const poll = () => {
+    const idle = speechQueue === 0 &&
+      !(window.speechSynthesis && (speechSynthesis.speaking || speechSynthesis.pending));
+    if (idle || Date.now() - t0 > timeoutMs) return resolve();
+    setTimeout(poll, 120);
+  };
+  poll();
+});
+
+const cancelSpeech = () => {
+  speechQueue = 0;
+  try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
+};
+
 // Short tones so you know the state without looking at the screen: a rising
 // pair when it wakes and starts listening, a single low tone when it stops.
 let cueCtx = null;
@@ -4663,6 +4702,9 @@ function App() {
   const speakRepliesRef = useRef(true);
   const wakeWordRef = useRef(false);
   const bargeOkRef = useRef(false);
+  const ackRef = useRef(null);            // the delayed "one moment" timer
+  const spokeThisTurnRef = useRef(false); // did this turn stream any speech
+  const [streamedReply,setStreamedReply] = useState('');
   useEffect(()=>{ wakeWordRef.current = wakeWord;
     try { localStorage.setItem('cc_wake_word', String(wakeWord)); } catch {} },[wakeWord]);
   useEffect(()=>{ bargeOkRef.current = bargeOk; },[bargeOk]);
@@ -4846,8 +4888,9 @@ function App() {
       else if (m.type === 'sleep') { setAsleep(true); cue('sleep'); setPartial(''); }
 
       else if (m.type === 'barge_in') {
-        // The server heard an interrupt word over the reply. Cut it off.
-        try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
+        // The server heard an interrupt word over the reply. Cut it off, queue
+        // and all — otherwise the next buffered fragment just starts playing.
+        cancelSpeech();
         setSpeaking(false);
         setVoiceState('listening');
       }
@@ -4867,7 +4910,36 @@ function App() {
         }
       }
 
-      else if (m.type === 'thinking') { setThinking(true); }
+      else if (m.type === 'thinking') {
+        setThinking(true);
+        // A short tone the moment the question is understood, so the pause that
+        // follows reads as "working" rather than "did it hear me?".
+        cue('wake');
+        // If retrieval runs long, say something. Cancelled as soon as the first
+        // real fragment arrives, so a fast answer never hears it.
+        clearTimeout(ackRef.current);
+        ackRef.current = setTimeout(() => {
+          if (speakRepliesRef.current && !spokeThisTurnRef.current) speakText('One moment.');
+        }, 2500);
+      }
+
+      else if (m.type === 'speak') {
+        // A finished sentence, sent while the rest is still being generated.
+        // Speaking it now is what removes the long silence before the reply.
+        clearTimeout(ackRef.current);
+        if (m.index === 0) {
+          spokeThisTurnRef.current = true;
+          setThinking(false);
+          setSpeaking(true);
+          setVoiceState('replying');
+          try { if (ws.readyState === 1) ws.send(JSON.stringify({type:'speaking_start'})); } catch {}
+          if (!bargeOkRef.current) mutedRef.current = true;
+        }
+        setStreamedReply(prev => (prev ? prev + ' ' : '') + m.text);
+        // Not awaited: speechSynthesis queues, so fragments play back to back
+        // while later ones are still arriving.
+        if (speakRepliesRef.current) enqueueSpeech(m.text);
+      }
 
       else if (m.type === 'skipped') {
         // Heard, but deliberately not sent to a model. Say so rather than
@@ -4898,19 +4970,24 @@ function App() {
           id: Date.now(), role: 'assistant', content: empty ? `⚠️ ${text}` : text,
           modelLabel: m.model || '', cost_usd: m.cost_usd || 0, streaming: false,
         }]);
+        clearTimeout(ackRef.current);
+        // Audio keeps flowing while it talks. The server switches to a
+        // grammar-constrained detector matching only interrupt words, so the
+        // reply cannot be transcribed back as a question but "stop" still cuts
+        // in. Without VOSK there is no detector, so the mic is muted instead.
         if (speakRepliesRef.current) {
-          // Audio keeps flowing while it talks. The server switches to a
-          // grammar-constrained detector that only matches interrupt words, so
-          // the reply cannot be transcribed back as a question, but you can cut
-          // in by saying "stop". When VOSK is unavailable there is no detector,
-          // so fall back to muting the mic rather than letting it hear itself.
-          setSpeaking(true);
-          setVoiceState('replying');
-          try { if (ws.readyState === 1) ws.send(JSON.stringify({type:'speaking_start'})); } catch {}
-          if (!bargeOkRef.current) mutedRef.current = true;
-
-          await speakText(text);
-
+          if (!spokeThisTurnRef.current) {
+            // Nothing streamed — a command, a screen answer, or an error. Speak
+            // it in one go.
+            setSpeaking(true);
+            setVoiceState('replying');
+            try { if (ws.readyState === 1) ws.send(JSON.stringify({type:'speaking_start'})); } catch {}
+            if (!bargeOkRef.current) mutedRef.current = true;
+            await speakText(text);
+          } else {
+            // Streamed: wait for the queued fragments to finish playing.
+            await speechDone();
+          }
           setSpeaking(false);
           setTimeout(() => {
             mutedRef.current = false;
@@ -4918,6 +4995,8 @@ function App() {
             setVoiceState(r => r === 'replying' ? 'listening' : r);
           }, 200);
         }
+        spokeThisTurnRef.current = false;
+        setStreamedReply('');
       }
 
       else if (m.type === 'transcript') {
@@ -4947,7 +5026,7 @@ function App() {
   // back. With the mic gated during playback the assistant cannot hear you
   // interrupt, so there has to be a deliberate way to take the floor.
   const shutUp = useCallback(() => {
-    try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
+    cancelSpeech();
     setSpeaking(false);
     const ws = voiceRef.current.ws;
     try {

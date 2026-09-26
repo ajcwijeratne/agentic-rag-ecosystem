@@ -989,3 +989,114 @@ def test_content_pipeline_counts_a_flat_column_mapping():
     assert "published" not in said            # empty stages are not read aloud
 
     assert "empty" in _say_pipeline({}).lower()
+
+
+# ---------------------------------------------------------------------------
+# Streamed speech
+# ---------------------------------------------------------------------------
+
+def test_first_fragment_arrives_well_before_the_answer_ends():
+    """
+    The whole point of chunking: start speaking early. Measured, the blocking
+    path spent 86% of wake-to-audio waiting for the complete answer.
+    """
+    from orchestrator.speech_chunks import SentenceChunker
+
+    answer = ("The content pipeline has twenty two pieces right now. Nine are ideas, "
+              "six are drafts, and three are published. The oldest draft is three "
+              "weeks old and probably worth a look before anything else.")
+    chunker = SentenceChunker()
+    seen = 0
+    first_at = None
+    for word in answer.split(" "):
+        seen += len(word) + 1
+        if chunker.push(word + " ") and first_at is None:
+            first_at = seen
+
+    assert first_at is not None, "never emitted a fragment"
+    assert first_at < len(answer) * 0.5, (
+        f"first audio only after {first_at}/{len(answer)} chars — too late to help")
+
+
+def test_chunker_does_not_split_decimals_abbreviations_or_ellipses():
+    """Splitting "3.5" into two utterances makes the speech audibly stutter."""
+    from orchestrator.speech_chunks import split_for_speech
+
+    for text in ("The rate is 3.5 per cent this year.",
+                 "Dr. Smith replied to the brief.",
+                 "See fig. 4 for the breakdown.",
+                 "Wait... it is still running."):
+        assert split_for_speech(text, first_min_chars=5) == [text], text
+
+
+def test_chunker_reassembles_to_the_original_text():
+    """Nothing may be dropped or duplicated between generation and speech."""
+    from orchestrator.speech_chunks import SentenceChunker
+
+    answer = ("First sentence here. Second one follows, with a clause. "
+              "Third and final sentence to close it out.")
+    chunker = SentenceChunker()
+    out = []
+    for ch in answer:
+        out.extend(chunker.push(ch))
+    out.extend(chunker.flush())
+
+    assert " ".join(out).split() == answer.split()
+
+
+def test_runaway_sentence_is_still_broken_up():
+    """A model that never emits a full stop must not hold speech hostage."""
+    from orchestrator.speech_chunks import split_for_speech
+
+    rambling = " ".join(["word"] * 200)
+    parts = split_for_speech(rambling)
+    assert len(parts) > 1
+    assert all(len(p) <= 400 for p in parts)
+
+
+def test_sentence_cap_enforces_brevity_the_prompt_only_requests():
+    from orchestrator.speech_chunks import cap_sentences
+
+    assert cap_sentences("One. Two. Three. Four. Five.", 3) == "One. Two. Three."
+    # Nothing to cap: left alone rather than mangled.
+    assert cap_sentences("Only one sentence here", 3) == "Only one sentence here"
+    assert cap_sentences("", 3) == ""
+
+
+def test_voice_persona_reaches_the_streaming_path():
+    """
+    Regression: run_hybrid builds the graph's initial_state from `query` alone,
+    so conversation_history — which carried the brevity instruction — never
+    reached the RAG route and spoken answers ran to hundreds of characters. The
+    streaming path assembles the system prompt itself, so it cannot be lost.
+    """
+    import inspect
+
+    from orchestrator import voice
+
+    # Behavioural, not source-inspection: assert the prompt a spoken turn
+    # actually sends carries the brevity rules, wherever it is assembled.
+    prompt = voice.spoken_system_prompt(
+        [{"text": "The Diagnostic Sprint is a two week audit.", "file": "kb/sprint.md"}]
+    )
+    assert "read aloud" in prompt.lower(), "persona missing from the spoken prompt"
+    assert str(voice.VOICE_MAX_SENTENCES) in prompt, "no sentence limit in the prompt"
+    assert "Diagnostic Sprint" in prompt, "retrieved context missing from the prompt"
+
+    # And the prompt is only a request, so a hard cap must back it.
+    assert "cap_sentences" in inspect.getsource(voice.stream_spoken_answer)
+
+
+async def test_commands_bypass_streaming():
+    """A navigation command has nothing to stream and must answer in one event."""
+    from orchestrator.voice import _direct_answer
+
+    result = await _direct_answer("show me deliverables", "t-stream")
+    assert result is not None
+    assert result["ui"]["navigate"] == "library"
+
+
+async def test_ordinary_questions_are_left_to_the_streaming_path():
+    from orchestrator.voice import _direct_answer
+
+    assert await _direct_answer("what is agentic RAG", "t-stream2") is None

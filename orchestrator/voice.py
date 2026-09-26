@@ -62,6 +62,46 @@ VOICE_ASSISTANT_NAME: str = os.getenv("VOICE_ASSISTANT_NAME", "Apex")
 VOICE_MAX_SENTENCES: int = int(os.getenv("VOICE_MAX_SENTENCES", "3"))
 VOICE_PERSONA: str = os.getenv("VOICE_PERSONA", "").strip()
 
+# Model used for spoken turns. Providers differ enormously in when they emit the
+# first token, which is the only thing that matters once answers are streamed
+# into speech. Measured on this stack with a short prompt:
+#
+#   anthropic/claude-sonnet-4-6   first token 1.45s of 3.09s   34 chunks
+#   openai/gpt-4o                 first token 1.78s of 2.07s   39 chunks
+#   openai/gpt-4o-mini            first token 2.57s of 3.01s   54 chunks
+#   google/gemini-2.5-flash-lite  first token 1.38s of 1.43s    3 chunks
+#
+# Gemini buffers server-side and delivers in a couple of bursts, so streaming
+# buys nothing there however fast the total is. Blank falls back to the normal
+# router, which optimises for cost rather than time-to-first-word.
+VOICE_MODEL_KEY: str = os.getenv("VOICE_MODEL_KEY", "anthropic/claude-sonnet-4-6").strip()
+
+# Context chunks kept for a spoken answer. Retrieval returns a dozen, which is
+# right for a written reply that can cite them all and wrong for three spoken
+# sentences: the extra chunks are pure prompt-processing latency before the
+# first word is heard. Written chat is unaffected.
+VOICE_CONTEXT_CHUNKS: int = int(os.getenv("VOICE_CONTEXT_CHUNKS", "4"))
+
+# Send a compact prompt for spoken turns instead of the full written brief. The
+# written one is about 40,000 characters before any context is added; see
+# spoken_system_prompt for what that costs a listener.
+VOICE_LEAN_PROMPT: bool = os.getenv("VOICE_LEAN_PROMPT", "true").lower() in ("1", "true", "yes")
+
+# Hang guard on retrieval, not a latency optimisation.
+#
+# It is tempting to cut this short: the three agents run in parallel but finish
+# unevenly, local_data returning useful chunks in about 1.0s while the cloud
+# agent takes about 3.9s and returns nothing. But rag_node gathers all three, so
+# it is all-or-nothing — measured, a 1.5s deadline produced zero chunks rather
+# than local_data's twelve, and spoken answers regressed to "I don't have any
+# information about that in my knowledge base". Trading vault answers for
+# latency is the wrong trade.
+#
+# Shortening this safely means per-agent deadlines inside rag_node, so a slow
+# agent is dropped while the fast ones still count. Until then this only stops a
+# wedged agent hanging the turn forever.
+VOICE_RETRIEVAL_TIMEOUT_S: float = float(os.getenv("VOICE_RETRIEVAL_TIMEOUT_S", "8.0"))
+
 
 def voice_system_prompt() -> str:
     """The framing sent with every spoken turn."""
@@ -218,6 +258,37 @@ async def voice_transcribe(
 # Speak-to-answer
 # ---------------------------------------------------------------------------
 
+async def _direct_answer(query: str, session_id: str, force_route: str | None = None):
+    """
+    Answers that need no model and so cannot be streamed: Command Centre
+    control, and questions about what is on screen. Returns None to fall
+    through to the streaming agent path.
+    """
+    from .screen import answer_about_screen
+    from .voice_commands import (
+        execute as run_command, interpret, resolve_pending, set_pending,
+    )
+
+    approved, reply = resolve_pending(session_id, query)
+    if approved is not None:
+        return await run_command(approved)
+    if reply is not None:
+        return {"answer": reply, "route": "ui", "model": "", "cost_usd": 0.0}
+
+    cmd = interpret(query)
+    if cmd is not None:
+        if cmd.confirm:
+            set_pending(session_id, cmd)
+            return {"answer": cmd.confirm, "route": "ui", "model": "", "cost_usd": 0.0,
+                    "ui": {"pending": cmd.target, "kind": cmd.kind}}
+        return await run_command(cmd)
+
+    seen = await answer_about_screen(query, spoken=True)
+    if seen is not None:
+        return seen
+    return None
+
+
 async def _run_hybrid(
     query: str,
     session_id: str,
@@ -321,6 +392,164 @@ async def voice_ask(
     return {"session_id": session_id, "transcript": transcript, **answer}
 
 
+def spoken_system_prompt(rag_context: list) -> str:
+    """
+    A compact system prompt for spoken turns.
+
+    The written path builds about 40,000 characters — roughly 10,000 tokens of
+    department brief, ABOUT ME and knowledge base — before any retrieved context
+    is added. That is right for a written answer that must hold the whole
+    business in mind, and wrong for three spoken sentences: measured, it pushed
+    time-to-first-token from about 1.5s to about 6s, and the listener hears all
+    of that as silence.
+
+    A spoken turn therefore gets identity, the retrieved context and the brevity
+    rules, and nothing else. VOICE_LEAN_PROMPT=false restores the full brief.
+    """
+    if not VOICE_LEAN_PROMPT:
+        from .wijerco_agent import _build_system_prompt
+
+        full = _build_system_prompt("research_intelligence", rag_context)
+        return full + "\n\n---\n\n" + voice_system_prompt()
+
+    parts = [
+        "You are " + VOICE_ASSISTANT_NAME + ", the voice of Aaron Wijeratne's "
+        "Command Centre. Aaron is an Academic Director in Australian higher "
+        "education; answer in that context."
+    ]
+
+    lines = []
+    for chunk in rag_context or []:
+        if isinstance(chunk, dict):
+            text = (chunk.get("text") or "").strip()
+            source = chunk.get("file") or chunk.get("source") or ""
+        else:
+            text, source = str(chunk).strip(), ""
+        if text:
+            lines.append("- " + text[:700] + ("  [" + str(source) + "]" if source else ""))
+    if lines:
+        parts.append(
+            "Answer from this retrieved context where it is relevant:\n"
+            + "\n".join(lines)
+        )
+
+    parts.append(voice_system_prompt())
+    return "\n\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Streaming spoken answers
+# ---------------------------------------------------------------------------
+
+async def stream_spoken_answer(query: str, session_id: str, force_route: str | None = None):
+    """
+    Answer a spoken question, yielding speakable fragments as they are generated.
+
+    This exists because the blocking path made the assistant unusable by voice:
+    measured end to end, it waited 12.7s for the complete answer before making
+    any sound, which was 86% of the time from wake word to first audio. Here the
+    first sentence is spoken as soon as it exists, so the wait collapses to
+    roughly time-to-first-sentence while the rest generates behind it.
+
+    Yields:
+        {"type": "speak",  "text": "...", "index": 0}   one per fragment
+        {"type": "answer", "answer": "...", "route": ..., "model": ...}
+
+    Also fixes where the voice persona was being lost. run_hybrid builds the
+    graph's initial_state from `query` alone, so conversation_history — which
+    carried the brevity instruction — never reached the RAG route, and spoken
+    replies ran to hundreds of characters. Here the system prompt is assembled
+    directly, so the persona always applies, and cap_sentences enforces it
+    afterwards rather than trusting the model to obey.
+    """
+    from .fallback_chain import stream_with_fallback
+    from .main import graph
+    from .session_store import get_history_for_llm
+    from .speech_chunks import SentenceChunker, cap_sentences
+    from .state import AgentState
+    from .wijerco_router import classify_intent
+
+    route = force_route or classify_intent(query).target
+    department = None
+    if route not in ("rag",):
+        department = classify_intent(query).department or "research_intelligence"
+
+    # Retrieval only — deliberately not the whole graph.
+    #
+    # graph.ainvoke runs route -> rag -> llm -> synthesize, so invoking it just
+    # to collect context_chunks fires a complete model call whose answer is then
+    # thrown away, and the real answer is generated a second time below. That
+    # doubling is what made a streamed turn measure 62s against 12.7s for the
+    # blocking path. rag_node is the retrieval step on its own.
+    rag_context: list = []
+    if route in ("rag", "hybrid"):
+        try:
+            from .graph import rag_node
+
+            state: AgentState = {
+                "messages": [], "query": query, "routing": None,
+                "context_chunks": [], "output_payload": {},
+                "agents_used": [], "errors": [], "finished": False,
+            }
+            try:
+                retrieved = await asyncio.wait_for(
+                    rag_node(state), timeout=VOICE_RETRIEVAL_TIMEOUT_S
+                )
+                rag_context = (retrieved.get("context_chunks", []) or [])[:VOICE_CONTEXT_CHUNKS]
+            except asyncio.TimeoutError:
+                # Answer from the model's own knowledge rather than make the
+                # listener wait on a straggling agent.
+                rag_context = []
+        except Exception:
+            pass
+
+    system = spoken_system_prompt(rag_context)
+
+    chunker = SentenceChunker()
+    spoken_index = 0
+    full = ""
+    model_key = ""
+    cost = 0.0
+
+    async for event in stream_with_fallback(
+        user_message=query, system_prompt=system,
+        history=get_history_for_llm(session_id),
+        force_model_key=VOICE_MODEL_KEY or None,
+    ):
+        token = event.get("token") or ""
+        if token:
+            full += token
+            for fragment in chunker.push(token):
+                yield {"type": "speak", "text": fragment, "index": spoken_index}
+                spoken_index += 1
+        if event.get("done"):
+            model_key = event.get("model_key", "") or model_key
+            cost = event.get("cost_usd", 0.0) or cost
+
+    for fragment in chunker.flush():
+        yield {"type": "speak", "text": fragment, "index": spoken_index}
+        spoken_index += 1
+
+    answer = cap_sentences(full.strip(), VOICE_MAX_SENTENCES)
+    add_voice_turn(session_id, query, answer, model_key, cost)
+    yield {
+        "type": "answer", "answer": answer, "route": route,
+        "department": department, "model": model_key, "cost_usd": cost,
+        "spoken_fragments": spoken_index,
+    }
+
+
+def add_voice_turn(session_id: str, query: str, answer: str, model_key: str, cost: float) -> None:
+    """Record a spoken turn so follow-up questions have context."""
+    try:
+        from .session_store import add_message
+
+        add_message(session_id, "user", query, cost_usd=0.0)
+        add_message(session_id, "assistant", answer, model_key=model_key, cost_usd=cost)
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Live websocket
 # ---------------------------------------------------------------------------
@@ -376,9 +605,24 @@ async def voice_ws(client: WebSocket):
         return
 
     async def pump_up() -> None:
-        """Browser -> voice service."""
+        """Browser -> voice service, intercepting the commands we handle here."""
         while True:
             message = await client.receive()
+
+            # A typed question routed through the spoken pipeline. Lets the
+            # composer use the same streaming answer path as the microphone,
+            # and makes that path testable without audio.
+            text_frame = message.get("text")
+            if text_frame:
+                try:
+                    parsed = json.loads(text_frame)
+                except json.JSONDecodeError:
+                    parsed = None
+                if isinstance(parsed, dict) and parsed.get("type") == "ask":
+                    asked = (parsed.get("text") or "").strip()
+                    if asked:
+                        asyncio.create_task(answer_utterance(asked))
+                    continue
             if message.get("type") == "websocket.disconnect":
                 await upstream.close()
                 return
@@ -404,8 +648,19 @@ async def voice_ws(client: WebSocket):
         in_flight["busy"] = True
         try:
             await client.send_json({"type": "thinking", "query": text, "session_id": session_id})
-            answer = await _run_hybrid(text, session_id, force_route, spoken=True)
-            await client.send_json({"type": "answer", "session_id": session_id, **answer})
+
+            # Commands and screen questions resolve immediately and have nothing
+            # to stream, so they answer in one event as before.
+            direct = await _direct_answer(text, session_id, force_route)
+            if direct is not None:
+                await client.send_json({"type": "answer", "session_id": session_id, **direct})
+                return
+
+            # Everything else streams: each finished sentence is sent the moment
+            # it exists so the client can start speaking, instead of waiting for
+            # the whole answer.
+            async for event in stream_spoken_answer(text, session_id, force_route):
+                await client.send_json({"session_id": session_id, **event})
         except Exception as exc:  # noqa: BLE001 — keep the socket alive
             await client.send_json({"type": "error", "message": f"Query failed: {exc}"})
         finally:
