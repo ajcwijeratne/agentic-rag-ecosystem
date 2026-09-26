@@ -99,7 +99,9 @@ GUARDRAILS = (
     "figures, names, dates, quotes, clients or results. If a needed fact is missing, write "
     "[To confirm: what is missing] instead.\n"
     "- State a cost, price, fee or rate only when it appears in a listed source, and cite it.\n"
-    "- Never claim anything was sent, published, scheduled or agreed."
+    "- Never claim anything was sent, published, scheduled or agreed.\n"
+    "- Do not use these words: elevate, disrupt, revolutionise, foster, reimagine, transform, leverage, "
+    "unlock, empower, innovate, holistic, seamless, dynamic, agile, ecosystem, game-changer, cutting-edge."
 )
 
 

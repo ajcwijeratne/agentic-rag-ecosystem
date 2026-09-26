@@ -399,7 +399,7 @@ def _pdf_for(did: str, version: int, source: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 async def _call_agent(department: str, subagent: str | None, query: str,
-                      rag_context: list[dict] | None = None) -> dict[str, Any]:
+                      rag_context: list[dict] | None = None, force_model_key: str | None = None) -> dict[str, Any]:
     from .wijerco_agent import call_wijerco_agent
 
     return await call_wijerco_agent(
@@ -408,12 +408,16 @@ async def _call_agent(department: str, subagent: str | None, query: str,
         rag_context=rag_context or [],
         conversation_history=[],
         subagent=subagent,
+        force_model_key=force_model_key,
     )
 
 
 async def _agent(department: str, subagent: str | None, query: str,
-                 rag_context: list[dict] | None = None) -> tuple[str, float]:
-    result = await _call_agent(department, subagent, query, rag_context)
+                 rag_context: list[dict] | None = None, model: str | None = None) -> tuple[str, float]:
+    if model:
+        result = await _call_agent(department, subagent, query, rag_context, force_model_key=model)
+    else:
+        result = await _call_agent(department, subagent, query, rag_context)
     if not isinstance(result, dict):
         return str(result or ""), 0.0
     answer = str(result.get("answer") or "")
@@ -447,16 +451,7 @@ def _clean_markdown(text: str, title: str) -> str:
     heading = re.search(r"(?m)^#{1,6} ", md)
     if heading and heading.start() > 0:
         md = md[heading.start():]  # drop any preamble before the first heading
-    md = re.sub(r"[ \t]*—[ \t]*", ", ", md)  # house style: no em dashes
-    # Source lines ("[1] ...") and open items ("[To confirm: ...]") arrive one
-    # per line; as bullets they stay separate in Word instead of running on.
-    lines = []
-    for line in md.split("\n"):
-        stripped = line.strip()
-        if not stripped.startswith("|") and re.match(r"^\[(\d+|To confirm)", stripped):
-            line = "- " + stripped
-        lines.append(line)
-    md = "\n".join(lines)
+    md = _house_style(md)
     if not md.startswith("# "):
         md = f"# {title}\n\n{md}"
     return md.rstrip() + "\n"
@@ -493,6 +488,24 @@ def _context_block(prod: dict[str, Any], spec: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _parse_json(text: Any) -> Any:
+    """Agent JSON, tolerating a preamble or a code fence anywhere in the reply."""
+    parsed = production._parse_agent_output(text)
+    if not (isinstance(parsed, dict) and "_raw" in parsed):
+        return parsed
+    raw = str(parsed.get("_raw") or "")
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.S)
+    candidates = [fenced.group(1)] if fenced else []
+    if "{" in raw and "}" in raw:
+        candidates.append(raw[raw.find("{"): raw.rfind("}") + 1])
+    for candidate in candidates:
+        try:
+            return json.loads(candidate)
+        except ValueError:
+            continue
+    return parsed
+
+
 def _as_json(value: Any, limit: int = 12000) -> str:
     return json.dumps(value, ensure_ascii=False, indent=1)[:limit]
 
@@ -510,7 +523,7 @@ async def _step_brief(prod: dict, did: str, spec: dict) -> dict[str, Any]:
         '"sections": [{"heading": "...", "intent": "..."}], "must_include": ["..."], "open_questions": ["..."]}'
     )
     answer, cost = await _agent(dept, sub, query)
-    parsed = production._parse_agent_output(answer)
+    parsed = _parse_json(answer)
     production.update_production(prod["production_id"], brief={"input": _inputs(prod), "brief": parsed})
     return {"note": f"brief by {dept}/{sub}", "cost": cost}
 
@@ -546,7 +559,7 @@ async def _step_research(prod: dict, did: str, spec: dict) -> dict[str, Any]:
         '"gaps": ["evidence that is missing"]}'
     )
     answer, cost = await _agent(dept, sub, query, rag_context=chunks)
-    parsed = production._parse_agent_output(answer)
+    parsed = _parse_json(answer)
     retrieved = [
         {"file": c.get("file") or c.get("source"), "section": c.get("section"), "score": c.get("score")}
         for c in chunks
@@ -574,9 +587,169 @@ async def _step_outline(prod: dict, did: str, spec: dict) -> dict[str, Any]:
         f"Evidence:\n{_as_json(evidence)}\n\n{GUARDRAILS}\n\nTask: {ask} Return only JSON:\n{shape}"
     )
     answer, cost = await _agent(dept, sub, query)
-    parsed = production._parse_agent_output(answer)
+    parsed = _parse_json(answer)
     production.update_production(prod["production_id"], script={"outline": parsed})
     return {"note": f"outline by {dept}/{sub}", "cost": cost}
+
+
+_SECTION_WEIGHT = {
+    "summary": 0.6, "decision sought": 0.5, "next steps": 0.5, "team": 0.7, "risks": 0.9,
+    "findings": 1.6, "options": 1.7, "approach": 1.6, "deliverables and timeline": 1.3,
+    "recommendation": 1.1, "recommendations": 1.1,
+}
+
+
+def _word_range(spec: dict) -> tuple[int, int]:
+    nums = [int(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", str(spec.get("words") or ""))]
+    if len(nums) >= 2:
+        return nums[0], nums[1]
+    return (nums[0], nums[0]) if nums else (1200, 2000)
+
+
+def _section_plan(prod: dict, spec: dict) -> list[dict[str, Any]]:
+    """Required sections (Sources excluded, it is built from the evidence),
+    each with the outline's points and a word budget."""
+    outline = (prod.get("script") or {}).get("outline") or {}
+    entries = outline.get("sections") if isinstance(outline, dict) else None
+    entries = [e for e in (entries or []) if isinstance(e, dict)]
+    by_heading = {_norm_heading(e.get("heading")): e for e in entries}
+    headings = [h for h in spec["sections"] if h.lower() != "sources"]
+    low, high = _word_range(spec)
+    total = (low + high) / 2
+    weights = [_SECTION_WEIGHT.get(h.lower(), 1.0) for h in headings]
+    plan = []
+    for i, heading in enumerate(headings):
+        entry = by_heading.get(_norm_heading(heading)) or (entries[i] if i < len(entries) else {})
+        points = entry.get("points") if isinstance(entry.get("points"), list) else []
+        words = max(120, int(round(total * weights[i] / sum(weights), -1)))
+        plan.append({"heading": heading, "points": [str(p) for p in points][:8], "words": words})
+    return plan
+
+
+def _norm_heading(value: Any) -> str:
+    return re.sub(r"[^a-z]+", " ", str(value or "").lower()).strip()
+
+
+def _house_style(md: str) -> str:
+    md = re.sub(r"[ \t]*—[ \t]*", ", ", md or "")  # house style: no em dashes
+    md = re.sub(r"[ \t]+–[ \t]+", ", ", md)  # nor spaced en dashes used the same way; ranges keep theirs
+    # Source lines ("[1] ...") and open items ("[To confirm: ...]") arrive one
+    # per line; as bullets they stay separate in Word instead of running on.
+    lines = []
+    for line in md.split("\n"):
+        stripped = line.strip()
+        if not stripped.startswith("|") and re.match(r"^\[(\d+|To confirm)", stripped):
+            line = "- " + stripped
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _clean_section(text: str, heading: str) -> str:
+    md = (text or "").strip()
+    fence = re.match(r"^```[a-zA-Z]*\s*\n(.*)\n```\s*$", md, re.S)
+    if fence:
+        md = fence.group(1).strip()
+    first = re.search(r"(?m)^#{1,6} ", md)
+    if first and first.start() > 0 and not md[:first.start()].strip().startswith(("-", "|", "*")):
+        md = md[first.start():]  # drop any preamble before the section heading
+    md = "\n".join(line for line in md.split("\n") if not re.match(r"^# ", line.strip()))
+    cut = re.search(r"(?mi)^#{1,3}\s*(sources|references)\s*$", md)
+    if cut:
+        md = md[:cut.start()]
+    md = md.strip()
+    head = re.match(r"^##\s+.*$", md.split("\n", 1)[0]) if md else None
+    if head:
+        md = f"## {heading}" + ("\n" + md.split("\n", 1)[1] if "\n" in md else "")
+    else:
+        md = f"## {heading}\n\n{md}"
+    return _house_style(md).rstrip() + "\n"
+
+
+def _cited_numbers(markdown: str) -> set[int]:
+    cited: set[int] = set()
+    for group in re.findall(r"\[(\d+(?:\s*[,;\-\u2013]\s*\d+)*)\]", markdown or ""):
+        for n in re.findall(r"\d+", group):
+            cited.add(int(n))
+    return cited
+
+
+def _sources_block(prod: dict, body: str = "") -> str:
+    """The Sources section, built from the research step's source list and
+    limited to sources the body actually cites."""
+    evidence = (prod.get("research") or {}).get("evidence") or {}
+    items = evidence.get("sources") if isinstance(evidence, dict) else None
+    cited = _cited_numbers(body)
+    lines = []
+    for i, source in enumerate(items or [], start=1):
+        if isinstance(source, dict):
+            ref = str(source.get("ref") or f"[{i}]").strip()
+            if not ref.startswith("["):
+                ref = f"[{ref}]"
+            title = str(source.get("title") or "").strip()
+            if title.startswith("---") or "cap:" in title:
+                title = "Retrieved vault note"  # a note's raw frontmatter is not a title
+            text = ", ".join(x for x in (title, str(source.get("detail") or "").strip()) if x)
+        else:
+            ref, text = f"[{i}]", str(source).strip()
+        number = re.search(r"\d+", ref)
+        if cited and number and int(number.group(0)) not in cited:
+            continue
+        lines.append(f"- {ref} {text or 'Source recorded without a title'}")
+    if not lines:
+        lines = ["- [To confirm: no sources were recorded for this draft]"]
+    return "## Sources\n\n" + "\n".join(lines) + "\n"
+
+
+def _draft_model() -> str | None:
+    """DELIVERABLES_DRAFT_MODEL pins the model that writes sections, for
+    example google/gemini-2.5-flash or anthropic/claude-sonnet-4-6. Unset,
+    the normal cost-ordered routing applies."""
+    value = os.getenv("DELIVERABLES_DRAFT_MODEL", "").strip()
+    return value or None
+
+
+async def _write_section(prod: dict, spec: dict, section: dict, plan: list[dict],
+                         shared: str, written: str) -> dict[str, Any]:
+    dept, sub = spec["drafting"]
+    heading, words = section["heading"], section["words"]
+    others = "; ".join(s["heading"] for s in plan if s["heading"] != heading)
+    points = "\n".join(f"- {p}" for p in section["points"]) or "- Follow the brief and the evidence."
+    earlier = (
+        "\n\nAlready written above. Do not restate its figures or points; build on them and refer back "
+        f"briefly where needed:\n{written[-7000:]}"
+        if written.strip() else ""
+    )
+    ask = (
+        f"Write only the \"## {heading}\" section of this {spec['label'].lower()}. About {words} words. "
+        f"Start with the line \"## {heading}\". Cover:\n{points}\n"
+        f"Other sections ({others}) are written separately: do not repeat their content, and do not add a "
+        "title or a sources list. Cite evidence inline as [n] using the numbered sources. Use a markdown "
+        "table if this section compares options or figures. Use short paragraphs and specific detail from "
+        "the evidence. Return only the markdown for this section."
+        + (" This is a proposal: include no fees, prices, rates or cost estimates at all."
+           if prod.get("format") == "proposal" else "")
+    )
+    model = _draft_model()
+    cost = 0.0
+    text, c = await _agent(dept, sub, f"{shared}{earlier}\n\nTask: {ask}", model=model)
+    cost += c
+    md = _clean_section(text, heading)
+    got = _render_module().word_count(md)
+    expanded = False
+    if got < 0.6 * words:
+        more, c = await _agent(
+            dept, sub,
+            f"{shared}{earlier}\n\nThis draft of the \"## {heading}\" section is {got} words; it needs about {words}. "
+            "Expand it with more specific detail, examples and implications drawn from the evidence and the "
+            "brief. Keep every citation and [To confirm] marker, do not invent facts, and do not add a title "
+            f"or a sources list. Return only the expanded section.\n\n{md}",
+            model=model,
+        )
+        cost += c
+        longer = _clean_section(more, heading)
+        if _render_module().word_count(longer) > got:
+            md, got, expanded = longer, _render_module().word_count(longer), True
+    return {"heading": heading, "target": words, "words": got, "expanded": expanded, "markdown": md, "cost": cost}
 
 
 async def _step_draft(prod: dict, did: str, spec: dict) -> dict[str, Any]:
@@ -584,6 +757,9 @@ async def _step_draft(prod: dict, did: str, spec: dict) -> dict[str, Any]:
     title = prod.get("title") or did
     research = prod.get("research") or {}
     outline = (prod.get("script") or {}).get("outline")
+    brief_json = _as_json((prod.get("brief") or {}).get("brief"))
+    cost = 0.0
+    sections_meta: list[dict[str, Any]] = []
     if spec.get("needs_source"):
         fmt = (
             "Write the deck in this exact markdown format:\n"
@@ -593,43 +769,58 @@ async def _step_draft(prod: dict, did: str, spec: dict) -> dict[str, Any]:
             "Repeat the ## block for each of 8 to 12 slides. Every slide must have a Notes: line. "
             "Use only facts from the source document."
         )
-        material = f"Source document:\n{str(research.get('excerpt') or '')[:16000]}"
-    else:
-        sections = "; ".join(spec["sections"])
-        fmt = (
-            f"Write the full {spec['label'].lower()} in markdown, about {spec.get('words', '1,500')} words. "
-            f"The first line is \"# {title}\". "
-            f"Use \"## \" for each section, in this order: {sections}. Cite evidence inline as [n] using "
-            "the source list and finish with a \"## Sources\" section with one bullet per source, "
-            "for example \"- [1] Title, detail\". Use a markdown table where you compare options or figures."
-            + (" This is a proposal: include no fees, prices, rates or cost estimates at all."
-               if prod.get("format") == "proposal" else "")
+        query = (
+            f"{_context_block(prod, spec)}\n\nStructured brief:\n{brief_json}\n\n"
+            f"Source document:\n{str(research.get('excerpt') or '')[:16000]}\n\nOutline:\n{_as_json(outline)}\n\n"
+            f"{GUARDRAILS}\n\nTask: {fmt}\nReturn only the markdown document, with no preamble."
         )
-        material = f"Evidence:\n{_as_json(research.get('evidence') or {})}"
-    query = (
-        f"{_context_block(prod, spec)}\n\nStructured brief:\n{_as_json((prod.get('brief') or {}).get('brief'))}\n\n"
-        f"{material}\n\nOutline:\n{_as_json(outline)}\n\n{GUARDRAILS}\n\nTask: {fmt}\n"
-        "Return only the markdown document, with no preamble."
-    )
-    answer, cost = await _agent(dept, sub, query)
-    markdown = _clean_markdown(answer, title)
+        answer, cost = await _agent(dept, sub, query)
+        markdown = _clean_markdown(answer, title)
+        detail = "deck"
+    else:
+        # One call per section, each with its own word budget, written in
+        # order so each section sees the ones before it and does not repeat
+        # them. A single call for the whole document came back at about half
+        # the target length.
+        plan = _section_plan(prod, spec)
+        shared = (
+            f"{_context_block(prod, spec)}\n\nStructured brief:\n{brief_json}\n\n"
+            f"Evidence (cite as [n]):\n{_as_json(research.get('evidence') or {}, 9000)}\n\n"
+            f"Outline of the whole document:\n{_as_json(outline, 5000)}\n\n{GUARDRAILS}"
+        )
+        results = []
+        for section in plan:
+            written = "\n".join(r["markdown"] for r in results)
+            results.append(await _write_section(prod, spec, section, plan, shared, written))
+        cost = sum(r["cost"] for r in results)
+        parts = [f"# {title}\n"] + [r["markdown"] for r in results]
+        if any(h.lower() == "sources" for h in spec["sections"]):
+            parts.append(_sources_block(prod, "\n".join(r["markdown"] for r in results)))
+        markdown = "\n".join(p.rstrip() + "\n" for p in parts)
+        sections_meta = [{k: r[k] for k in ("heading", "target", "words", "expanded")} for r in results]
+        expanded = sum(1 for r in results if r["expanded"])
+        detail = f"{len(results)} sections" + (f", {expanded} expanded" if expanded else "")
     polished_by = ""
     if spec.get("polish"):
         pdept, psub = spec["polish"]
+        before = _render_module().word_count(markdown)
         ptext, pcost = await _agent(
             pdept, psub,
-            f"Tighten this {spec['label'].lower()} for clarity and flow. Keep every heading, table, citation "
-            "and [To confirm] marker. Do not add facts, fees or prices. Return only the revised markdown.\n\n"
-            f"{GUARDRAILS}\n\n{markdown}",
+            f"Edit this {spec['label'].lower()} for clarity and flow. Keep its length (within 10 percent), "
+            "every heading, table, citation and [To confirm] marker. Do not add facts, fees or prices. "
+            f"Return only the revised markdown.\n\n{GUARDRAILS}\n\n{markdown}",
         )
         cost += pcost
         polished = _clean_markdown(ptext, title)
-        if len(polished) >= 0.5 * len(markdown):
+        if _render_module().word_count(polished) >= 0.85 * before:
             markdown, polished_by = polished, f", polished by {pdept}/{psub}"
+    words = _render_module().word_count(markdown)
     script = dict(prod.get("script") or {})
     script["draft"] = markdown
+    if sections_meta:
+        script["draft_sections"] = sections_meta
     production.update_production(prod["production_id"], script=script)
-    update_note(did, body=_set_document(markdown))
+    update_note(did, {"words": words}, body=_set_document(markdown))
     if prod.get("format") == "proposal":
         hits = sorted({m.group(0).strip() for m in _FEE_RE.finditer(markdown)})
         if hits:
@@ -637,7 +828,7 @@ async def _step_draft(prod: dict, did: str, spec: dict) -> dict[str, Any]:
                 "Check before approval",
                 "The proposal should carry no fees, but the draft mentions: " + ", ".join(hits[:8]),
             ))
-    return {"note": f"draft by {dept}/{sub}{polished_by}", "cost": cost}
+    return {"note": f"draft by {dept}/{sub}: {detail}, {words} words{polished_by}", "cost": cost}
 
 
 async def _step_render(prod: dict, did: str, spec: dict) -> dict[str, Any]:
@@ -671,7 +862,7 @@ async def _step_review(prod: dict, did: str, spec: dict) -> dict[str, Any]:
         f"Sources available:\n{_as_json(sources or [], 4000)}\n\nDocument:\n{doc_md[:24000]}"
     )
     answer, cost = await _agent(dept, sub, query)
-    parsed = production._parse_agent_output(answer)
+    parsed = _parse_json(answer)
     production.update_production(prod["production_id"], review=parsed)
     if isinstance(parsed, dict) and "_raw" not in parsed:
         checks = parsed.get("checks") or {}

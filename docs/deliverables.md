@@ -40,7 +40,13 @@ idea -> brief -> research -> outline -> draft -> render (DOCX v1) -> review
 Client-ready) -> measure
 
 - `POST /deliverables` creates the note and production and runs to review in
-  the background. `production.advance()` delegates document formats to
+  the background.
+- The draft is written one section at a time, in order. Each section gets a
+  word budget from the type's target (`words` in doc_types.py, weighted so
+  Options or Findings get more than a Summary) and sees the sections already
+  written, so it builds on them instead of repeating them. A section under 60%
+  of its budget gets one expansion pass. The Sources section is built from the
+  research step's source list and keeps only the sources the text cites. `production.advance()` delegates document formats to
   `deliverables.advance_document()`.
 - The daemon does not mint tasks for documents (`operating.sync_production_tasks`
   skips them), so nothing advances a document twice.
@@ -77,6 +83,7 @@ Client-ready) -> measure
 | DELIVERABLES_RETRIEVAL | on | `off` skips knowledge-base retrieval in the research step |
 | DELIVERABLES_NOTIFY | on | `off` stops "ready for approval" notifications |
 | DOC_TEMPLATE_DOCX | templates/docs/wijerco-reference.docx | Word styles template |
+| DELIVERABLES_DRAFT_MODEL | unset | Pin the model that writes sections, e.g. `google/gemini-2.5-flash` or `anthropic/claude-sonnet-4-6`. Unset uses the normal cost-ordered routing |
 
 ## Deploying to wijerco
 
@@ -86,6 +93,17 @@ Client-ready) -> measure
    python-pptx and markdown-it-py, installs Open Sans for the user if missing,
    and probes Word with a real conversion. If the probe fails, open Word once,
    clear any first-run or sign-in prompt, and run it again.
+
+## Measured on wijwork, 27 September 2026 (section-by-section drafting)
+
+| Document | Target words | Before | After | Agent cost |
+| --- | --- | --- | --- | --- |
+| Client briefing | 1,400 to 2,200 | 537, then 878 | 1,756 | US$0.015 |
+| Decision paper | 1,400 to 2,800 | about 1,200 | 2,718 | US$0.018 |
+| Proposal | 1,800 to 3,200 | not measured | 2,480 | US$0.019 |
+
+The draft step takes 20 to 50 seconds. Section drafting roughly doubles the
+agent cost of a document, still under two cents on the default routing.
 
 ## Measured on wijwork, 26 September 2026
 

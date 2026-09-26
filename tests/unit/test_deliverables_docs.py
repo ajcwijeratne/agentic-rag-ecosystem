@@ -104,15 +104,43 @@ def test_pptx_render_has_notes_on_every_slide(tmp_path):
 def test_agent_markdown_is_cleaned_to_house_style():
     from orchestrator import deliverables
 
-    raw = ("Sure, here it is.\n\n## Background\nOnline share rose \u2014 sharply.\n"
+    raw = ("Sure, here it is.\n\n## Background\nOnline share rose \u2014 sharply, then fell \u2013 briefly, in 2024\u20132025.\n"
            "[To confirm: 2025 figure]\n[To confirm: owner]\n\n## Sources\n[1] DoE 2024\n[2] QILT 2024\n"
            "| a | b |\n| --- | --- |\n| [1] | x |\n")
     md = deliverables._clean_markdown(raw, "Paper")
     assert md.startswith("# Paper\n")          # title added, preamble dropped
     assert "Sure, here it is" not in md
     assert "\u2014" not in md and "rose, sharply" in md
+    assert "fell, briefly" in md and "2024\u20132025" in md  # spaced en dash goes, ranges stay
     assert "- [To confirm: 2025 figure]" in md and "- [1] DoE 2024" in md
     assert "| [1] | x |" in md                  # tables untouched
+
+
+def test_agent_json_survives_preamble_and_fences():
+    from orchestrator import deliverables
+
+    reply = 'Here is my review.\n\n```json\n{"verdict": "revise", "checks": {"costs": "pass"}}\n```\nThanks.'
+    assert deliverables._parse_json(reply)["verdict"] == "revise"
+    assert deliverables._parse_json('{"verdict": "pass"}')["verdict"] == "pass"
+    assert "_raw" in deliverables._parse_json("no json at all")
+
+
+def test_section_budgets_add_up_to_the_type_target():
+    from orchestrator import deliverables
+    from orchestrator.doc_types import DOC_TYPES
+
+    for key in ("client_briefing", "decision_paper", "proposal"):
+        spec = DOC_TYPES[key]
+        plan = deliverables._section_plan({"script": {"outline": {"sections": [
+            {"heading": "Options", "points": ["compare three models"]}]}}}, spec)
+        low, high = deliverables._word_range(spec)
+        total = sum(s["words"] for s in plan)
+        assert "Sources" not in [s["heading"] for s in plan]
+        assert low <= total <= high, (key, total)
+        if key == "decision_paper":
+            options = next(s for s in plan if s["heading"] == "Options")
+            assert options["points"] == ["compare three models"]
+            assert options["words"] > next(s for s in plan if s["heading"] == "Decision sought")["words"]
 
 
 def test_office_convert_is_off_when_disabled(tmp_path, monkeypatch):
@@ -157,14 +185,38 @@ DECK_MD = "# {title}\nFor the executive team\n\n" + "\n\n".join(
 )
 
 
+def _filler(words: int) -> str:
+    sentence = "Online cohorts differ from campus cohorts in timing [1]."
+    return " ".join([sentence] * max(1, words // 8 + 1))
+
+
 def _fake_agent(calls):
-    async def fake(department, subagent, query, rag_context=None):
+    async def fake(department, subagent, query, rag_context=None, **kwargs):
+        import re as _re
         calls.append((department, subagent, query))
+        section = _re.search(r'Write only the "## ([^"]+)" section', query)
+        if "needs about" in query and "This draft of the" in query:
+            heading = _re.search(r'This draft of the "## ([^"]+)" section', query).group(1)
+            target = int(_re.search(r"needs about (\d+)", query).group(1))
+            return {"answer": f"## {heading}\n\n{_filler(target)}", "cost_usd": 0.001}
+        if section:
+            heading = section.group(1)
+            target = int(_re.search(r"About (\d+) words", query).group(1))
+            body = "Too short here [1]." if heading == "Background" else _filler(target)
+            if heading == "Options":
+                body += "\n\n| Option | Benefit |\n| --- | --- |\n| Hybrid | Control [1] |"
+            if heading == "Summary" or heading == "Decision sought":
+                body += " It is an operating \u2014 model question."
+            if heading == "Next steps" and "proposal" in query:
+                body += " Our day rate is $2,000."
+            return {"answer": f"Sure.\n\n## {heading}\n\n{body}\n\n## Sources\n\n- [1] model-added", "cost_usd": 0.001}
         if "structured brief for the writer" in query:
             answer = json.dumps({"purpose": "Inform", "key_questions": ["Why?"], "sections": []})
         elif "list the evidence" in query:
             answer = json.dumps({"facts": [{"claim": "68% part-time", "source": "[1]"}],
-                                 "sources": [{"ref": "[1]", "title": "DoE 2024"}], "gaps": ["No 2025 data"]})
+                                 "sources": [{"ref": "[1]", "title": "DoE 2024"},
+                                             {"ref": "[2]", "title": "--- cap: junk frontmatter ---"}],
+                                 "gaps": ["No 2025 data"]})
         elif "Outline the document" in query or "Plan a deck" in query:
             answer = json.dumps({"sections": [{"heading": "Summary", "points": ["gap"]}]})
         elif "Write the deck" in query:
@@ -176,7 +228,7 @@ def _fake_agent(calls):
             if "Proposal" in query:
                 body += "\n## Next steps\n\nOur day rate is $2,000.\n"
             answer = "Here is the document:\n\n" + body.replace("operating-model", "operating — model")
-        elif query.startswith("Tighten this"):
+        elif query.startswith("Edit this") or query.startswith("Tighten this"):
             answer = query.split("\n\n", 2)[-1]
         elif query.startswith("Review this"):
             answer = json.dumps({"verdict": "pass", "summary": "Solid.",
@@ -220,6 +272,20 @@ def test_document_runs_to_review_with_docx_v1(tmp_path, monkeypatch):
 
     detail = client.get(f"/deliverables/{did}", headers=READ).json()
     assert detail["production"]["state"] == "review"
+    # Sectioned drafting: every required section, in order, to its budget.
+    from media.doc_render import word_count
+    body = detail["body"]
+    assert word_count(body) >= 1400  # decision paper target is 1,400 to 2,800
+    order = [body.index(f"## {h}") for h in ("Decision sought", "Background", "Options", "Recommendation",
+                                              "Implementation", "Risks", "Sources")]
+    assert order == sorted(order)
+    assert body.count("## Sources") == 1 and "- [1] DoE 2024" in body and "model-added" not in body
+    assert "junk frontmatter" not in body  # uncited source [2] is left out
+    later = [q for d, s, q in calls if 'Write only the "## Background"' in q]
+    assert later and "Already written above" in later[0] and "## Decision sought" in later[0]
+    assert "Sure." not in body and "Too short here" not in body  # preamble dropped, short section expanded
+    assert detail["item"]["words"] >= 1400
+    assert any("1 expanded" in (e["note"] or "") for e in detail["production"]["events"])
     assert detail["item"]["readiness"] == "Awaiting approval"
     assert detail["item"]["readiness"] != "Client-ready"
     assert detail["versions"][0]["version"] == 1 and "docx" in detail["versions"][0]
@@ -280,7 +346,7 @@ def test_rerender_after_note_edit_keeps_v1(tmp_path, monkeypatch):
     client, main, production, deliverables = _client(tmp_path, monkeypatch)
     did = _create(client, deliverables, monkeypatch, [])
     note = tmp_path / "vault" / "13_Command Centre" / "Deliverables" / f"{did}.md"
-    note.write_text(note.read_text(encoding="utf-8").replace("The gap opens", "EDITED-IN-OBSIDIAN The gap"),
+    note.write_text(note.read_text(encoding="utf-8").replace("Online cohorts differ", "EDITED-IN-OBSIDIAN Online cohorts differ", 1),
                     encoding="utf-8")
     rendered = client.post(f"/deliverables/{did}/render", headers=ADMIN)
     assert rendered.status_code == 200, rendered.text
