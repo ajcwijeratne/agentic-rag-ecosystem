@@ -689,6 +689,23 @@ class LiveSession:
         self._was_speaking = False
         self.asleep = True
 
+    def wake(self) -> bool:
+        """
+        Wake without the phrase: the client says the user is holding the talk
+        key, which is addressing the assistant as clearly as saying its name.
+        Returns True if the session was asleep. The idle timer restarts, so the
+        normal wake timeout still sends it back to sleep afterwards.
+        """
+        self._last_voice_at = time.monotonic()
+        if not self.asleep:
+            return False
+        self.asleep = False
+        if self._wake is not None:
+            self._wake.reset()
+        self._preroll.clear()
+        self._preroll_bytes = 0
+        return True
+
     def _feed_awake(self, pcm_chunk: bytes) -> list:
         """The normal transcription path, once the session is awake."""
         events: list = []

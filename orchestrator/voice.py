@@ -21,8 +21,10 @@ The websocket is a transparent proxy to the voice service socket, with one
 addition: when `auto_query` is set, every completed utterance is run through
 /hybrid as it lands and the answer is pushed back down the same socket. That is
 what makes the loop hands-free — speak, get an answer, keep talking — rather
-than one-shot. Queries are serialised, and utterances too short to be a real
-question are dropped before they cost anything.
+than one-shot. One turn runs at a time and the newest wins: a new utterance,
+the talk key, Esc or a spoken "stop" cancels the answer in flight (see
+TurnRunner). Utterances too short to be a real question are dropped before
+they cost anything.
 
 Auth follows the house rules. The HTTP routes inherit the app-level
 require_api_key dependency; /voice/ask additionally requires the `operator`
@@ -554,6 +556,61 @@ def add_voice_turn(session_id: str, query: str, answer: str, model_key: str, cos
 # Live websocket
 # ---------------------------------------------------------------------------
 
+class TurnRunner:
+    """
+    One spoken turn at a time, and the newest wins.
+
+    A new utterance, the talk key, Esc, or a spoken "stop" cancels the turn in
+    flight instead of being skipped. Asking again is the clearest signal there
+    is that the old answer is no longer wanted, and cancelling the task closes
+    the model stream with it, so an abandoned answer stops generating (and
+    costing) at once. Turns still never run in parallel, so a burst of speech
+    cannot fan out into concurrent paid calls.
+
+    Every event a turn sends carries its number, so the browser can drop a
+    straggler that was already on the wire when its turn was cancelled.
+    """
+
+    def __init__(self, send, run):
+        self._send = send            # async (dict) -> None
+        self._run = run              # async (text, turn_no, send) -> None
+        self._task: asyncio.Task | None = None
+        self._lock = asyncio.Lock()
+        self.n = 0
+
+    @property
+    def busy(self) -> bool:
+        return self._task is not None and not self._task.done()
+
+    async def cancel(self, reason: str = "interrupted") -> bool:
+        """Stop the turn in flight, if any, and tell the browser which one died."""
+        task = self._task
+        if task is None or task.done():
+            return False
+        task.cancel()
+        # wait() rather than awaiting the task: it neither re-raises the task's
+        # CancelledError nor swallows a cancellation aimed at this coroutine.
+        await asyncio.wait({task})
+        try:
+            await self._send({"type": "turn_cancelled", "turn": self.n, "reason": reason})
+        except Exception:  # noqa: BLE001 — the socket may already be gone
+            pass
+        return True
+
+    async def start(self, text: str) -> int:
+        """Cancel whatever is running and answer `text` as a new turn."""
+        async with self._lock:
+            await self.cancel("superseded")
+            self.n += 1
+            n = self.n
+
+            async def tagged(event: dict) -> None:
+                await self._send({**event, "turn": n})
+
+            self._task = asyncio.create_task(self._run(text, n, tagged))
+            return n
+
+
 @router.websocket("/ws")
 async def voice_ws(client: WebSocket):
     """
@@ -621,7 +678,12 @@ async def voice_ws(client: WebSocket):
                 if isinstance(parsed, dict) and parsed.get("type") == "ask":
                     asked = (parsed.get("text") or "").strip()
                     if asked:
-                        asyncio.create_task(answer_utterance(asked))
+                        asyncio.create_task(turns.start(asked))
+                    continue
+                # The talk key or Esc: stop the answer being generated, not just
+                # the audio. The voice service has no use for this frame.
+                if isinstance(parsed, dict) and parsed.get("type") == "interrupt":
+                    asyncio.create_task(turns.cancel("interrupted"))
                     continue
             if message.get("type") == "websocket.disconnect":
                 await upstream.close()
@@ -631,40 +693,41 @@ async def voice_ws(client: WebSocket):
             elif message.get("text") is not None:
                 await upstream.send(message["text"])
 
-    # Hands-free state. `in_flight` serialises queries: a second utterance that
-    # lands while the agent is still answering is skipped rather than queued, so
-    # a burst of speech cannot fan out into parallel paid model calls.
-    in_flight = {"busy": False}
+    # Several coroutines write to this socket now (the relay below and the turn
+    # task), so sends are serialised.
+    send_lock = asyncio.Lock()
 
-    async def answer_utterance(text: str) -> None:
-        """Run one spoken utterance through the pipeline and return the answer."""
-        if in_flight["busy"]:
-            await client.send_json({
-                "type": "skipped", "reason": "busy", "text": text,
-                "detail": "Still answering the previous question.",
-            })
-            return
+    async def send_json(obj: dict) -> None:
+        async with send_lock:
+            await client.send_json(obj)
 
-        in_flight["busy"] = True
+    async def send_text(raw: str) -> None:
+        async with send_lock:
+            await client.send_text(raw)
+
+    async def answer_utterance(text: str, turn_no: int, send) -> None:
+        """Run one spoken utterance through the pipeline, as turn `turn_no`."""
         try:
-            await client.send_json({"type": "thinking", "query": text, "session_id": session_id})
+            await send({"type": "thinking", "query": text, "session_id": session_id})
 
             # Commands and screen questions resolve immediately and have nothing
             # to stream, so they answer in one event as before.
             direct = await _direct_answer(text, session_id, force_route)
             if direct is not None:
-                await client.send_json({"type": "answer", "session_id": session_id, **direct})
+                await send({"type": "answer", "session_id": session_id, **direct})
                 return
 
             # Everything else streams: each finished sentence is sent the moment
             # it exists so the client can start speaking, instead of waiting for
             # the whole answer.
             async for event in stream_spoken_answer(text, session_id, force_route):
-                await client.send_json({"session_id": session_id, **event})
+                await send({"session_id": session_id, **event})
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001 — keep the socket alive
-            await client.send_json({"type": "error", "message": f"Query failed: {exc}"})
-        finally:
-            in_flight["busy"] = False
+            await send({"type": "error", "message": f"Query failed: {exc}"})
+
+    turns = TurnRunner(send_json, answer_utterance)
 
     async def pump_down() -> None:
         """
@@ -679,17 +742,20 @@ async def voice_ws(client: WebSocket):
         async for raw in upstream:
             if isinstance(raw, bytes):
                 continue
-            await client.send_text(raw)
-
-            if not auto_query:
-                continue
+            await send_text(raw)
 
             try:
                 event = json.loads(raw)
             except json.JSONDecodeError:
                 continue
 
-            if event.get("type") != "final":
+            # "Stop" over the reply stops the answer too, not only the speaker;
+            # otherwise the rest of it keeps streaming in and starts talking again.
+            if event.get("type") == "barge_in":
+                await turns.cancel("barge_in")
+                continue
+
+            if not auto_query or event.get("type") != "final":
                 continue
 
             text = (event.get("text") or "").strip()
@@ -702,16 +768,18 @@ async def voice_ws(client: WebSocket):
                 text = strip_wake_prefix(text, wake_phrases) or text
 
             if len(text) < auto_query_min_chars:
-                await client.send_json({
+                await send_json({
                     "type": "skipped", "reason": "too_short", "text": text,
                     "detail": f"Under {auto_query_min_chars} characters; treated as noise.",
                 })
                 continue
 
-            await answer_utterance(text)
+            # Not awaited to completion: the relay has to keep flowing while the
+            # answer streams, or partials and a spoken "stop" queue up behind it.
+            await turns.start(text)
 
     try:
-        await client.send_json({"type": "connected", "session_id": session_id, "auto_query": auto_query})
+        await send_json({"type": "connected", "session_id": session_id, "auto_query": auto_query})
         await upstream.send(json.dumps(config))
 
         up = asyncio.create_task(pump_up())
@@ -732,6 +800,10 @@ async def voice_ws(client: WebSocket):
         except Exception:
             pass
     finally:
+        try:
+            await turns.cancel("closed")
+        except Exception:
+            pass
         try:
             await upstream.close()
         except Exception:

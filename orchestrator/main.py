@@ -83,6 +83,8 @@ app.include_router(inbox_router)
 # Voice: VAD-gated speech recognition (Whisper + VOSK), file and live socket
 from .voice import router as voice_router
 app.include_router(voice_router)
+from .voice_tts import router as voice_tts_router
+app.include_router(voice_tts_router)   # POST /voice/tts: spoken-reply audio
 
 # Screen awareness: look at the display and describe it. Read-only.
 from .screen import router as screen_router

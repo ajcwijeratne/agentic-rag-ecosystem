@@ -418,59 +418,79 @@ def test_auto_query_min_chars_default_is_sane():
         assert len(real) >= voice.AUTO_QUERY_MIN_CHARS, real
 
 
-async def test_hands_free_answers_each_utterance_and_guards_noise(monkeypatch):
+async def test_a_new_utterance_supersedes_the_turn_in_flight():
     """
-    The conversational loop: every `final` above the length floor is answered as
-    it lands, short ones are reported as skipped, and a second utterance arriving
-    mid-answer is skipped rather than run in parallel.
+    The conversational loop answers one turn at a time and the newest wins: a
+    second utterance arriving mid-answer cancels the first (which stops its
+    model stream) instead of being skipped, and nothing runs in parallel. The
+    browser is told which turn died, and every event carries its turn number.
     """
     import asyncio
 
-    from orchestrator import voice
+    from orchestrator.voice import TurnRunner
 
     sent = []
     started = asyncio.Event()
     release = asyncio.Event()
+    live = {"n": 0, "peak": 0}
+    cancelled = []
 
-    async def slow_hybrid(text, session_id, force_route=None):
-        started.set()
-        await release.wait()
-        return {"answer": f"answer to {text}", "model": "test", "cost_usd": 0.0}
+    async def send(obj):
+        sent.append(obj)
 
-    monkeypatch.setattr(voice, "_run_hybrid", slow_hybrid)
-
-    # Rebuild the closure the websocket handler creates, with the same guards.
-    in_flight = {"busy": False}
-
-    class FakeClient:
-        async def send_json(self, obj):
-            sent.append(obj)
-
-    client = FakeClient()
-
-    async def answer_utterance(text: str) -> None:
-        if in_flight["busy"]:
-            await client.send_json({"type": "skipped", "reason": "busy", "text": text})
-            return
-        in_flight["busy"] = True
+    async def run(text, turn_no, send_tagged):
+        live["n"] += 1
+        live["peak"] = max(live["peak"], live["n"])
         try:
-            await client.send_json({"type": "thinking", "query": text})
-            result = await voice._run_hybrid(text, "s1", None)
-            await client.send_json({"type": "answer", **result})
+            await send_tagged({"type": "thinking", "query": text})
+            started.set()
+            await release.wait()
+            await send_tagged({"type": "answer", "answer": f"answer to {text}"})
+        except asyncio.CancelledError:
+            cancelled.append(text)
+            raise
         finally:
-            in_flight["busy"] = False
+            live["n"] -= 1
 
-    first = asyncio.create_task(answer_utterance("what is agentic rag"))
+    turns = TurnRunner(send, run)
+    first = await turns.start("what is agentic rag")
     await started.wait()
-    await answer_utterance("and what about vosk")   # arrives mid-answer
+    second = await turns.start("and what about vosk")      # arrives mid-answer
     release.set()
-    await first
+    await asyncio.sleep(0.05)
 
-    kinds = [e["type"] for e in sent]
-    assert kinds.count("thinking") == 1, kinds
-    assert kinds.count("answer") == 1, kinds
-    skipped = [e for e in sent if e["type"] == "skipped"]
-    assert len(skipped) == 1 and skipped[0]["reason"] == "busy", sent
+    assert (first, second) == (1, 2)
+    assert cancelled == ["what is agentic rag"]
+    assert live["peak"] == 1, "two turns ran at once"
+    kinds = [(e["type"], e.get("turn")) for e in sent]
+    assert ("turn_cancelled", 1) in kinds, kinds
+    assert ("answer", 2) in kinds and ("answer", 1) not in kinds, kinds
+    assert kinds.index(("turn_cancelled", 1)) < kinds.index(("thinking", 2)), kinds
+
+
+async def test_interrupt_cancels_without_starting_a_new_turn():
+    import asyncio
+
+    from orchestrator.voice import TurnRunner
+
+    sent = []
+    gate = asyncio.Event()
+
+    async def send(obj):
+        sent.append(obj)
+
+    async def run(text, n, send_tagged):
+        await send_tagged({"type": "thinking"})
+        await gate.wait()
+
+    turns = TurnRunner(send, run)
+    await turns.start("tell me about the TEQSA changes")
+    await asyncio.sleep(0)
+    assert turns.busy
+    assert await turns.cancel("interrupted") is True
+    assert not turns.busy
+    assert sent[-1] == {"type": "turn_cancelled", "turn": 1, "reason": "interrupted"}
+    assert await turns.cancel("interrupted") is False     # nothing left to cancel
 
 
 # ---------------------------------------------------------------------------

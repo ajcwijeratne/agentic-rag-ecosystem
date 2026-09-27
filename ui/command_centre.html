@@ -318,6 +318,10 @@
 </head>
 <body>
 <div id="root"></div>
+<!-- Apex voice: neural speech, talk key, thinking cue and the Radial stage.
+     Optional: every hook below checks window.ApexVoice and falls back to the
+     browser voice when the file is missing. -->
+<script src="apex_voice.js?v=1.0.0"></script>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback} = React;
 const STATIC_PREVIEW_PORTS = new Set(["5179","5500","5501"]);
@@ -410,6 +414,9 @@ const speakableText = md => (md || "")
 // Speak `text`, resolving when finished or cancelled. Never rejects: a failed
 // utterance must not strand the hands-free loop with the mic still muted.
 const speakText = (text, {maxChars = 1200} = {}) => new Promise(resolve => {
+  // Real audio (Kokoro / ElevenLabs) when apex_voice.js is loaded; it falls
+  // back to the browser voice by itself when no engine can speak.
+  if (window.ApexVoice) { ApexVoice.cancel(); return ApexVoice.speakText(String(text || "").slice(0, maxChars)).then(resolve); }
   if (!window.speechSynthesis) return resolve("unsupported");
   const clean = speakableText(text).slice(0, maxChars);
   if (!clean) return resolve("empty");
@@ -431,6 +438,7 @@ const speakText = (text, {maxChars = 1200} = {}) => new Promise(resolve => {
 // so sentences play back to back while later ones are still being generated.
 let speechQueue = 0;
 const enqueueSpeech = (text) => {
+  if (window.ApexVoice) { ApexVoice.speakText(text); return; }
   if (!window.speechSynthesis) return;
   const clean = speakableText(text).slice(0, 1200);
   if (!clean) return;
@@ -449,6 +457,10 @@ const enqueueSpeech = (text) => {
 // Resolves once the queue has drained, so the mic is only reopened after the
 // assistant has actually stopped talking.
 const speechDone = (timeoutMs = 60000) => new Promise(resolve => {
+  if (window.ApexVoice) {
+    const cap = setTimeout(resolve, timeoutMs);
+    return ApexVoice.speechDone().then(() => { clearTimeout(cap); resolve(); });
+  }
   const t0 = Date.now();
   const poll = () => {
     const idle = speechQueue === 0 &&
@@ -461,6 +473,7 @@ const speechDone = (timeoutMs = 60000) => new Promise(resolve => {
 
 const cancelSpeech = () => {
   speechQueue = 0;
+  if (window.ApexVoice) ApexVoice.cancel();
   try { window.speechSynthesis && speechSynthesis.cancel(); } catch {}
 };
 
@@ -4815,6 +4828,7 @@ function App() {
     try { v.node?.disconnect(); v.source?.disconnect(); } catch {}
     try { v.stream?.getTracks().forEach(t=>t.stop()); } catch {}
     try { v.ctx?.close(); } catch {}
+    if (window.ApexVoice) ApexVoice.untapMic();
     voiceRef.current = {ws: v.ws};   // keep the socket open for the closing transcript
     setRecording(false);
     setVoiceState('idle');
@@ -4840,6 +4854,7 @@ function App() {
 
     const ctx = new (window.AudioContext||window.webkitAudioContext)();
     const source = ctx.createMediaStreamSource(stream);
+    if (window.ApexVoice) ApexVoice.tapMic(stream);
     const ws = new WebSocket(voiceWsUrl());
     ws.binaryType = 'arraybuffer';
     voiceRef.current = {ws, stream, ctx, source};
@@ -4847,6 +4862,8 @@ function App() {
     // Drop frames while the assistant is speaking, so it never hears itself.
     const pump = f32 => {
       if (mutedRef.current) return;
+      // Push to talk: frames only flow while the talk key is held.
+      if (window.ApexVoice && !ApexVoice.micGate()) return;
       if (ws.readyState === 1) ws.send(floatToPCM16(f32));
     };
 
@@ -4857,7 +4874,8 @@ function App() {
         vad_backend: 'auto',
         partials:    true,
         auto_query:  handsFreeRef.current,          // hands-free answers each utterance
-        wake_word:   wakeWordRef.current,           // only act when addressed
+        // Only act when addressed. In push to talk the key IS the address.
+        wake_word:   window.ApexVoice ? ApexVoice.wakeWord(wakeWordRef.current) : wakeWordRef.current,
         session_id:  sessionId,
       }));
 
@@ -4881,6 +4899,7 @@ function App() {
 
     ws.onmessage = async ev => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (window.ApexVoice && ApexVoice.onEvent(m) === false) return;
 
       if (m.type === 'ready') { setAsleep(!!m.asleep); setBargeOk(!!m.barge_in); }
 
@@ -4921,6 +4940,17 @@ function App() {
         ackRef.current = setTimeout(() => {
           if (speakRepliesRef.current && !spokeThisTurnRef.current) speakText('One moment.');
         }, 2500);
+      }
+
+      else if (m.type === 'turn_cancelled') {
+        // The server stopped this answer: a newer question, the talk key, Esc,
+        // or "stop". Clear the turn so the next one starts clean.
+        clearTimeout(ackRef.current);
+        spokeThisTurnRef.current = false;
+        setThinking(false);
+        setStreamedReply('');
+        cancelSpeech();
+        setSpeaking(false);
       }
 
       else if (m.type === 'speak') {
@@ -5069,6 +5099,18 @@ function App() {
     voiceErr, engines: voiceEngines,
     startVoice, stopVoice, shutUp, setWakeWord, setHandsFree,
   };
+
+  // The talk key, the stage and the voice console drive this same session.
+  useEffect(() => {
+    if (!window.ApexVoice) return;
+    ApexVoice.attach({
+      startVoice: () => startVoiceRef.current && startVoiceRef.current(),
+      stopVoice: (graceful) => stopVoice(graceful),
+      shutUp: () => shutUp(),
+      send: (obj) => { const ws = voiceRef.current.ws; if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); },
+      isRecording: () => !!voiceRef.current.node,
+    });
+  }, [stopVoice, shutUp]);
 
   // Always-on by default: open the mic on load rather than waiting for a click.
   // With the wake word on this is cheap and private — only the local grammar
