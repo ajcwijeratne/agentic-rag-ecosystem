@@ -9,10 +9,10 @@ REM
 REM   1. Snapshots installed packages once (pip freeze), for rollback.
 REM   2. Installs the CPU-only voice packages: faster-whisper, vosk,
 REM      webrtcvad-wheels, kokoro-onnx. No torch.
-REM   3. Runs wijerco-update.bat (the one Taildropped beside this
-REM      script, else the repo copy; from a temp copy so the pull
-REM      cannot rewrite it mid-run): pull, import check that rolls
-REM      the pull back on failure, restart the core services.
+REM   3. Runs wijerco-update.bat (the repo copy, else one beside this
+REM      script; from a temp copy so the pull cannot rewrite it
+REM      mid-run): pull, import check that rolls the pull back on
+REM      failure, restart the core services.
 REM   4. Checks the native libraries load (media.tts --doctor). v1
 REM      found onnxruntime and ctranslate2 installed but unloadable:
 REM      the Microsoft Visual C++ runtime was missing. If anything
@@ -71,8 +71,10 @@ if errorlevel 1 echo   pip reported an error. Continuing: the update below impor
 
 echo.
 echo [3/7] Pulling the new code and restarting services ...
-set "UPD=%~dp0wijerco-update.bat"
-if not exist "!UPD!" set "UPD=%REPO%\deploy\wijerco-update.bat"
+REM The repo copy first: a stale wijerco-update.bat from an older Taildrop
+REM can sit in Downloads (v2 run 27 Sep picked one up that had no git lookup).
+set "UPD=%REPO%\deploy\wijerco-update.bat"
+if not exist "!UPD!" set "UPD=%~dp0wijerco-update.bat"
 if not exist "!UPD!" ( echo   wijerco-update.bat not found next to this script or in the repo. Stopping. & goto :eof )
 echo   Using !UPD!
 copy /y "!UPD!" "%TEMP%\wijerco-update-run.bat" >nul

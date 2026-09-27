@@ -172,6 +172,31 @@
       .trim();
   }
 
+  /**
+   * Cut text into pieces for speech: the first about `first` characters, each
+   * next one up to `growth` times the last. Prefers a sentence end, then a
+   * clause mark, then a space. Each piece carries the pause to leave before it.
+   */
+  function speechPieces(text, first, growth) {
+    const out = [];
+    let rest = text.trim(), target = first;
+    while (rest.length > target * 1.35 && out.length < 6) {
+      const win = rest.slice(0, Math.round(target * 1.1));
+      let cut = -1, gap = 0;
+      let m;
+      const reSent = /[.!?](?=\s)/g, reClause = /[,;:](?=\s)/g;
+      while ((m = reSent.exec(win))) if (m.index >= target * 0.5) { cut = m.index + 1; gap = 0.08; }
+      if (cut < 0) while ((m = reClause.exec(win))) if (m.index >= target * 0.5) { cut = m.index + 1; gap = 0.04; }
+      if (cut < 0) { const sp = win.lastIndexOf(" "); if (sp >= target * 0.6) { cut = sp; gap = 0; } }
+      if (cut < 0 || rest.length - cut < 12) break;
+      out.push({ text: rest.slice(0, cut).trim(), gap: out.length ? out[out.length - 1].nextGap : 0.08, nextGap: gap });
+      rest = rest.slice(cut).trim();
+      target = Math.round(target * growth);
+    }
+    out.push({ text: rest, gap: out.length ? out[out.length - 1].nextGap : 0.08 });
+    return out.map((p) => ({ text: p.text, gap: p.gap }));
+  }
+
   /* ------------------------------------------------------------------ tts */
   const SLOW_RTF = 0.85;    // slower than this and local speech falls behind playback
   const tts = {
@@ -292,18 +317,23 @@
       const clean = speakable(text);
       if (!clean) return Promise.resolve("empty");
       const engine = (opts && opts.engine) || tts.pick();
-      // The first words decide how long the silence lasts. A long opening
-      // fragment is split at its first clause so a short piece synthesises
-      // first and the voice starts sooner; the rest renders while it plays.
-      // Measured on wijwork, Kokoro takes about 0.55 s per second of speech, so
-      // "Morning Aaron." is heard ~0.5 s after it arrives where the full opening
-      // sentence pair would take ~1.4 s.
+      // The first words decide how long the silence lasts. Local speech is
+      // slower than real time only by a margin (0.55x on wijwork, 0.65 to 0.76x
+      // on wijerco), so a whole opening sentence can mean 3 to 4 s of silence.
+      // The opening fragment is cut into a short first piece and pieces that
+      // grow by about 1/rtf, so each one is synthesised before the one ahead
+      // of it finishes playing.
       if (!this.current && !this.queue.length && engine !== "browser" && clean.length > 45) {
-        const m = /^(.{12,90}?[.!?,;:])\s+(.{12,})$/.exec(clean)
-          || /^(.{25,90}?)\s+((?:and|but|so|because|which|while)\s+.+)$/.exec(clean);
-        if (m) { this.say(m[1], { engine }); return this.say(m[2], { engine }); }
+        const growth = clamp(0.9 / (tts.rtf || 0.7), 1.2, 2.5);
+        const pieces = speechPieces(clean, 38, growth);
+        if (pieces.length > 1) {
+          let last = null;
+          pieces.forEach((pc, i) => { last = this.say(pc.text, { engine, gap: i ? pc.gap : 0.08, _piece: true }); });
+          return last;
+        }
       }
-      const item = { text: clean, turn: this.turn, engine, ctrl: null, speechP: null, cancelled: false, stopFn: null };
+      const item = { text: clean, turn: this.turn, engine, ctrl: null, speechP: null, cancelled: false, stopFn: null,
+        gap: opts && typeof opts.gap === "number" ? opts.gap : 0.08 };
       item.done = new Promise((res) => { item.resolve = res; });
       if (engine !== "browser" && audio.ensure()) {
         // Fetch now, play later: the next fragment synthesises while this one plays.
@@ -347,8 +377,9 @@
         let settled = false;
         const fin = (r) => { if (!settled) { settled = true; this.lastEnd = ctx.currentTime; resolve(r); } };
         src.onended = () => fin("done");
-        // A short breath between fragments reads as a pause between sentences.
-        const gap = ctx.currentTime - this.lastEnd < 0.35 ? 0.08 : 0;
+        // A short breath between sentences; none when a sentence was cut at a
+        // word to start speaking sooner, so the join is not heard.
+        const gap = ctx.currentTime - this.lastEnd < 0.35 ? (item.gap || 0) : 0;
         src.start(ctx.currentTime + gap);
         item.stopFn = () => { src.onended = null; try { src.stop(); } catch (e) { /* not started */ } fin("cancelled"); };
         this.started(item, got.meta, "tts");
@@ -1476,7 +1507,7 @@
 
   /* ---------------------------------------------------------------- API */
   window.ApexVoice = {
-    version: "1.0.0",
+    version: "1.0.1",
     settings, bus, stage, tts,
     attach(hooks) {
       Object.assign(page, hooks || {});
