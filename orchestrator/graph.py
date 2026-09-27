@@ -79,21 +79,86 @@ async def _fetch_agent(name: str, base: str, query: str) -> tuple[str, list[dict
         return name, [], f"[{name}] {exc}", (time.perf_counter() - t0) * 1000
 
 
+AGENT_ENDPOINTS = {
+    "local_data": ("LOCAL_DATA_AGENT_URL", "http://localhost:8001"),
+    "search":     ("SEARCH_AGENT_URL",     "http://localhost:8002"),
+    "cloud":      ("CLOUD_AGENT_URL",      "http://localhost:8003"),
+}
+
+
+async def gather_agents(query: str, timeout: float | None = None,
+                        essential: tuple = (), essential_timeout: float = 6.0) -> list:
+    """
+    Query every retrieval agent in parallel and return their results.
+
+    With `timeout`, agents that have not answered by the deadline are cancelled
+    and reported as errors, and whatever did arrive is still returned. Without
+    it, this waits for all of them — the behaviour written chat relies on.
+
+    The distinction matters because the agents finish very unevenly: local_data
+    returns useful chunks in about a second, while the cloud agent takes nearly
+    four and, in this deployment, returns nothing. gather() waits for the
+    slowest, so it set the pace for every spoken answer. Simply wrapping the
+    whole gather in wait_for was worse than useless — being all-or-nothing, a
+    short deadline produced no context at all rather than partial results, and
+    spoken answers regressed to "I don't have any information about that".
+    Cancelling per agent is what makes a deadline safe.
+
+    A single deadline is still the wrong instrument, because the agents are not
+    equally valuable. Measured here over five runs: local_data returns all
+    twelve chunks every time at a median of 1.26s, while search (0.56s) and
+    cloud (3.29s) return nothing at all. A blanket 2s deadline therefore became
+    a coin flip on the only agent that mattered — it landed right on
+    local_data's tail and dropped the vault answer one run in four.
+
+    So `essential` agents are waited for up to `essential_timeout`, and
+    everything else is held to `timeout`. The slow, empty agent stops setting
+    the pace without ever risking the answer.
+    """
+    tasks = {
+        asyncio.create_task(_fetch_agent(name, os.getenv(env, default), query)): name
+        for name, (env, default) in AGENT_ENDPOINTS.items()
+    }
+    if timeout is None:
+        await asyncio.gather(*tasks)
+        done, pending = set(tasks), set()
+    else:
+        essential_tasks = {t for t, name in tasks.items() if name in essential}
+        optional_tasks = set(tasks) - essential_tasks
+
+        # Optional agents get the short deadline; essential ones get long enough
+        # that they are effectively always waited for.
+        done_opt, pend_opt = (await asyncio.wait(optional_tasks, timeout=timeout)
+                              if optional_tasks else (set(), set()))
+        done_ess, pend_ess = (await asyncio.wait(essential_tasks, timeout=essential_timeout)
+                              if essential_tasks else (set(), set()))
+        done, pending = done_opt | done_ess, pend_opt | pend_ess
+
+    results = []
+    for task in done:
+        try:
+            results.append(task.result())
+        except Exception as exc:  # noqa: BLE001 — one agent must not sink the turn
+            results.append((tasks[task], [], f"[{tasks[task]}] {exc}", 0.0))
+
+    for task in pending:
+        task.cancel()
+        name = tasks[task]
+        results.append((name, [], f"[{name}] timed out after {timeout}s", (timeout or 0) * 1000))
+
+    return results
+
+
 async def rag_node(state: AgentState) -> AgentState:
     """Calls all three FastMCP sub-agents IN PARALLEL via asyncio.gather()."""
     query  = state["query"]
     errors = list(state.get("errors", []))
 
-    endpoints = {
-        "local_data": os.getenv("LOCAL_DATA_AGENT_URL", "http://localhost:8001"),
-        "search":     os.getenv("SEARCH_AGENT_URL",     "http://localhost:8002"),
-        "cloud":      os.getenv("CLOUD_AGENT_URL",      "http://localhost:8003"),
-    }
-
-    # Fire all three requests simultaneously
-    results = await asyncio.gather(
-        *[_fetch_agent(name, base, query) for name, base in endpoints.items()],
-        return_exceptions=False,   # individual errors are handled inside _fetch_agent
+    # No deadline: written answers wait for every agent, as before.
+    results = await gather_agents(
+        query,
+        timeout=state.get("agent_timeout_s"),
+        essential=tuple(state.get("essential_agents") or ()),
     )
 
     trace = state.get("trace")

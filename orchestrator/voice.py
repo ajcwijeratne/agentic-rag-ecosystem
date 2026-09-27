@@ -87,20 +87,25 @@ VOICE_CONTEXT_CHUNKS: int = int(os.getenv("VOICE_CONTEXT_CHUNKS", "4"))
 # spoken_system_prompt for what that costs a listener.
 VOICE_LEAN_PROMPT: bool = os.getenv("VOICE_LEAN_PROMPT", "true").lower() in ("1", "true", "yes")
 
-# Hang guard on retrieval, not a latency optimisation.
+# How long a spoken turn waits for retrieval.
 #
-# It is tempting to cut this short: the three agents run in parallel but finish
-# unevenly, local_data returning useful chunks in about 1.0s while the cloud
-# agent takes about 3.9s and returns nothing. But rag_node gathers all three, so
-# it is all-or-nothing — measured, a 1.5s deadline produced zero chunks rather
-# than local_data's twelve, and spoken answers regressed to "I don't have any
-# information about that in my knowledge base". Trading vault answers for
-# latency is the wrong trade.
+# The agents finish very unevenly: local_data returns useful chunks in about a
+# second while the cloud agent takes nearly four and, here, returns nothing. The
+# deadline is applied per agent inside rag_node, so stragglers are dropped and
+# whatever arrived still counts. Measured: 1.52s for all twelve chunks against
+# 8.54s waiting for every agent.
 #
-# Shortening this safely means per-agent deadlines inside rag_node, so a slow
-# agent is dropped while the fast ones still count. Until then this only stops a
-# wedged agent hanging the turn forever.
-VOICE_RETRIEVAL_TIMEOUT_S: float = float(os.getenv("VOICE_RETRIEVAL_TIMEOUT_S", "8.0"))
+# An earlier attempt wrapped the whole of rag_node in wait_for instead. That was
+# all-or-nothing and produced zero chunks rather than partial results, and
+# spoken answers regressed to "I don't have any information about that in my
+# knowledge base" — which is why the deadline lives per agent now.
+VOICE_RETRIEVAL_TIMEOUT_S: float = float(os.getenv("VOICE_RETRIEVAL_TIMEOUT_S", "1.0"))
+
+# Agents a spoken answer will always wait for, because they carry the vault.
+# Everything else is held to the deadline above.
+VOICE_ESSENTIAL_AGENTS: tuple = tuple(
+    a.strip() for a in os.getenv("VOICE_ESSENTIAL_AGENTS", "local_data").split(",") if a.strip()
+)
 
 
 def voice_system_prompt() -> str:
@@ -235,6 +240,19 @@ async def _transcribe_upload(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"status": "ok", "filename": filename, **transcript.to_dict()}
+
+
+@router.get("/metrics")
+async def voice_metrics(last: int = 200) -> dict:
+    """
+    What spoken turns actually cost, as medians over recent turns.
+
+    `slowest_stage_median` is the useful field: it names the stage worth working
+    on next, rather than leaving it to whichever single run was last measured.
+    """
+    from .voice_metrics import summary
+
+    return summary(last=last)
 
 
 @router.post("/transcribe")
@@ -465,11 +483,13 @@ async def stream_spoken_answer(query: str, session_id: str, force_route: str | N
     from .fallback_chain import stream_with_fallback
     from .main import graph
     from .session_store import get_history_for_llm
+    from .voice_metrics import TurnTimer
     from .speech_chunks import SentenceChunker, cap_sentences
     from .state import AgentState
     from .wijerco_router import classify_intent
 
     route = force_route or classify_intent(query).target
+    timer = TurnTimer(query, route)
     department = None
     if route not in ("rag",):
         department = classify_intent(query).department or "research_intelligence"
@@ -491,17 +511,14 @@ async def stream_spoken_answer(query: str, session_id: str, force_route: str | N
                 "context_chunks": [], "output_payload": {},
                 "agents_used": [], "errors": [], "finished": False,
             }
-            try:
-                retrieved = await asyncio.wait_for(
-                    rag_node(state), timeout=VOICE_RETRIEVAL_TIMEOUT_S
-                )
-                rag_context = (retrieved.get("context_chunks", []) or [])[:VOICE_CONTEXT_CHUNKS]
-            except asyncio.TimeoutError:
-                # Answer from the model's own knowledge rather than make the
-                # listener wait on a straggling agent.
-                rag_context = []
+            state["agent_timeout_s"] = VOICE_RETRIEVAL_TIMEOUT_S
+            state["essential_agents"] = VOICE_ESSENTIAL_AGENTS
+            retrieved = await rag_node(state)
+            rag_context = (retrieved.get("context_chunks", []) or [])[:VOICE_CONTEXT_CHUNKS]
         except Exception:
             pass
+
+    timer.mark_retrieval(len(rag_context))
 
     system = spoken_system_prompt(rag_context)
 
@@ -518,8 +535,10 @@ async def stream_spoken_answer(query: str, session_id: str, force_route: str | N
     ):
         token = event.get("token") or ""
         if token:
+            timer.mark_first_token()
             full += token
             for fragment in chunker.push(token):
+                timer.mark_first_audio()
                 yield {"type": "speak", "text": fragment, "index": spoken_index}
                 spoken_index += 1
         if event.get("done"):
@@ -527,15 +546,18 @@ async def stream_spoken_answer(query: str, session_id: str, force_route: str | N
             cost = event.get("cost_usd", 0.0) or cost
 
     for fragment in chunker.flush():
+        timer.mark_first_audio()
         yield {"type": "speak", "text": fragment, "index": spoken_index}
         spoken_index += 1
 
     answer = cap_sentences(full.strip(), VOICE_MAX_SENTENCES)
+    measured = timer.finish(answer, model_key, spoken_index)
     add_voice_turn(session_id, query, answer, model_key, cost)
     yield {
         "type": "answer", "answer": answer, "route": route,
         "department": department, "model": model_key, "cost_usd": cost,
         "spoken_fragments": spoken_index,
+        "timing": measured.stages(),
     }
 
 
