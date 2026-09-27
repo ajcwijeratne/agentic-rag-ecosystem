@@ -159,6 +159,7 @@ async def rag_node(state: AgentState) -> AgentState:
         query,
         timeout=state.get("agent_timeout_s"),
         essential=tuple(state.get("essential_agents") or ()),
+        essential_timeout=float(state.get("essential_timeout_s") or 6.0),
     )
 
     trace = state.get("trace")

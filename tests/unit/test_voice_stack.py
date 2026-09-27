@@ -1208,3 +1208,92 @@ def test_metrics_never_break_a_turn(tmp_path, monkeypatch):
     timer = voice_metrics.TurnTimer("q")
     timer.mark_retrieval(0)
     timer.finish("answer", "model")      # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Adaptive endpointing
+# ---------------------------------------------------------------------------
+
+def test_completeness_reads_the_tail_of_an_utterance():
+    """A pause after "and" is mid-thought; after a finished question it is not."""
+    from media.endpointing import completeness
+
+    assert completeness("what is the diagnostic sprint") == "complete"
+    assert completeness("summarise the content pipeline for me") == "complete"
+    assert completeness("what is agentic rag?") == "complete"
+
+    for trailing in ("what is the diagnostic sprint and",
+                     "show me the", "show me", "um", "i think we should"):
+        assert completeness(trailing) == "incomplete", trailing
+
+
+def test_silence_window_shortens_when_finished_and_lengthens_when_not():
+    from media.endpointing import silence_ms_for
+
+    base = 600
+    assert silence_ms_for("what is the diagnostic sprint", base) < base
+    assert silence_ms_for("show me the", base) > base
+    # A plain statement is left alone rather than guessed at.
+    assert silence_ms_for("the attrition rate was eight per cent", base) == base
+
+
+def test_adaptive_endpointing_can_be_turned_off(monkeypatch):
+    from media import endpointing
+
+    monkeypatch.setattr(endpointing, "ENDPOINT_ADAPTIVE", False)
+    assert endpointing.silence_ms_for("show me the", 600) == 600
+
+
+def test_segmenter_accepts_a_new_silence_window_mid_stream():
+    from media.vad import EnergyVAD, SpeechSegmenter
+
+    seg = SpeechSegmenter(EnergyVAD())
+    original = seg._silence_frames_needed
+
+    seg.set_silence_ms(seg.config.silence_ms * 2)
+    assert seg._silence_frames_needed > original
+    seg.set_silence_ms(60)
+    assert seg._silence_frames_needed >= 1          # never zero, or it closes instantly
+
+
+def test_live_session_steers_the_endpoint_from_the_partial(monkeypatch):
+    from media import asr
+
+    monkeypatch.setattr(asr, "load_whisper", lambda *a, **k: object())
+    session = asr.LiveSession(asr.LiveConfig(engine="whisper", vad_backend="energy"))
+    base = session._base_silence_ms
+
+    session._adapt_endpoint("show me the")
+    lengthened = session.segmenter.config.silence_ms
+    session._adapt_endpoint("show me the content pipeline")
+    shortened = session.segmenter.config.silence_ms
+
+    assert lengthened > base > shortened, (lengthened, base, shortened)
+
+
+def test_endpoint_window_resets_between_utterances(monkeypatch):
+    """
+    One hesitant utterance must not leave the next one waiting nearly twice as
+    long, so the window returns to the configured default when a segment closes.
+    """
+    import numpy as np
+
+    from media import asr
+
+    monkeypatch.setattr(asr, "load_whisper", lambda *a, **k: object())
+    monkeypatch.setattr(asr, "whisper_transcribe_pcm", lambda pcm, **kw: ([], ""))
+
+    session = asr.LiveSession(asr.LiveConfig(engine="whisper", vad_backend="energy"))
+    base = session._base_silence_ms
+    session._adapt_endpoint("show me the")
+    assert session.segmenter.config.silence_ms > base
+
+    rng = np.random.default_rng(3)
+    speech = float32_to_pcm(
+        (np.sin(2 * np.pi * 150 * np.arange(int(SAMPLE_RATE * 1.2)) / SAMPLE_RATE) * 0.35
+         + rng.normal(0, 0.01, int(SAMPLE_RATE * 1.2))).astype(np.float32))
+    quiet = float32_to_pcm(rng.normal(0, 0.0008, int(SAMPLE_RATE * 2.5)).astype(np.float32))
+    for i in range(0, len(speech + quiet), 3200):
+        session.feed((speech + quiet)[i:i + 3200])
+
+    assert session.segmenter.config.silence_ms == base

@@ -107,6 +107,17 @@ VOICE_ESSENTIAL_AGENTS: tuple = tuple(
     a.strip() for a in os.getenv("VOICE_ESSENTIAL_AGENTS", "local_data").split(",") if a.strip()
 )
 
+# Hang guard on the essential agents, not a latency dial.
+#
+# Set near their typical latency and it becomes a coin flip under load. The
+# vault agent answers in about 1.3s idle, but while the websocket is relaying
+# microphone audio the event loop is busy enough that the same call has been
+# observed taking over six seconds — retrieval then returned nothing and the
+# reply became "I don't have any information about that in my knowledge base".
+# Losing the answer is far worse than waiting, so this is deliberately generous
+# and only exists to stop a wedged agent hanging the turn forever.
+VOICE_ESSENTIAL_TIMEOUT_S: float = float(os.getenv("VOICE_ESSENTIAL_TIMEOUT_S", "15.0"))
+
 
 def voice_system_prompt() -> str:
     """The framing sent with every spoken turn."""
@@ -513,6 +524,7 @@ async def stream_spoken_answer(query: str, session_id: str, force_route: str | N
             }
             state["agent_timeout_s"] = VOICE_RETRIEVAL_TIMEOUT_S
             state["essential_agents"] = VOICE_ESSENTIAL_AGENTS
+            state["essential_timeout_s"] = VOICE_ESSENTIAL_TIMEOUT_S
             retrieved = await rag_node(state)
             rag_context = (retrieved.get("context_chunks", []) or [])[:VOICE_CONTEXT_CHUNKS]
         except Exception:

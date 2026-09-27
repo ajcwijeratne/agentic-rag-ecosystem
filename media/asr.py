@@ -522,6 +522,9 @@ class LiveSession:
             create_vad(self.config.vad_backend), self.config.segmenter
         )
         self._was_speaking = False
+        # Adaptive endpointing scales against the configured window, not against
+        # whatever it was last set to, so the scaling cannot drift.
+        self._base_silence_ms = self.segmenter.config.silence_ms
         self._vosk_stream = None
         self._whisper = None
         self.transcript: list = []
@@ -629,6 +632,22 @@ class LiveSession:
                 self.sleep()
         return events
 
+    def _adapt_endpoint(self, partial: str) -> None:
+        """
+        Tune the endpoint timer to how finished the utterance sounds.
+
+        Only meaningful while VOSK is producing partials — in whisper-only mode
+        there is no running transcript to read, so the fixed window stands.
+        """
+        try:
+            from .endpointing import silence_ms_for
+
+            self.segmenter.set_silence_ms(
+                silence_ms_for(partial, self._base_silence_ms)
+            )
+        except Exception:
+            pass
+
     def set_speaking(self, speaking: bool) -> None:
         """
         Tell the session the assistant has started or stopped talking.
@@ -698,6 +717,7 @@ class LiveSession:
         if self._vosk_stream is not None and self.config.emit_partials:
             for result in self._vosk_stream.accept(pcm_chunk):
                 if result.partial:
+                    self._adapt_endpoint(result.text)
                     events.append(
                         {"type": "partial", "text": result.text, "engine": "vosk"}
                     )
@@ -721,6 +741,7 @@ class LiveSession:
         self._was_speaking = self.segmenter.speaking
 
         for segment in completed:
+            self.segmenter.set_silence_ms(self._base_silence_ms)
             events.extend(self._on_segment(segment))
 
         return events
