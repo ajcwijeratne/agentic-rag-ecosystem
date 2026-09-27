@@ -344,7 +344,7 @@
 <!-- Apex voice: neural speech, talk key, thinking cue and the Radial stage.
      Optional: every hook below checks window.ApexVoice and falls back to the
      browser voice when the file is missing. -->
-<script src="apex_voice.js?v=1.0.1"></script>
+<script src="apex_voice.js?v=1.1.0"></script>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback} = React;
 const STATIC_PREVIEW_PORTS = new Set(["5179","5500","5501"]);
@@ -4262,6 +4262,15 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
   const rafRef = useRef(0);
   const stRef  = useRef(statuses);
   stRef.current = statuses;
+  // Apex's voice state for the caption: listening, thinking, speaking.
+  const [voiceWords,setVoiceWords] = useState('');
+  useEffect(()=>{
+    if(!(window.ApexVoice && ApexVoice.bus && ApexVoice.core)) return;
+    const sync=()=>setVoiceWords(ApexVoice.core.words());
+    sync();
+    const off=ApexVoice.bus.on(sync);
+    return ()=>{ off(); };
+  },[]);
 
   useEffect(()=>{
     const cv = cvRef.current; if(!cv) return;
@@ -4298,6 +4307,11 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
     };
 
     function drawCore(){
+      // The Radial (apex_voice.js) draws the centre when it is loaded; the
+      // classic core below is the fallback.
+      if(window.ApexVoice && ApexVoice.core){
+        try{ if(ApexVoice.core.draw(ctx,cx,cy,R*0.075)) return; }catch(e){ /* fall back */ }
+      }
       const beat=0.5+0.5*Math.sin(t*1.5);
       const active = Object.values(stRef.current||{}).some(v=>v==='running'||v==='queued') || APX_VOICE.active;
       const rr=R*0.075;
@@ -4404,9 +4418,10 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
           placed.filter(p=>p.g.depth>=0.5).forEach(p=>drawNode(p.g,p.n));
           // hover
           let hv=null;
-          for(const h of hits){ if(Math.hypot(mouse.x-h.x,mouse.y-h.y)<h.r){ hv=h.id; break; } }
+          if(window.ApexVoice && ApexVoice.core && ApexVoice.core.hit(mouse.x-cx,mouse.y-cy,R*0.075)) hv='__apex';
+          else for(const h of hits){ if(Math.hypot(mouse.x-h.x,mouse.y-h.y)<h.r){ hv=h.id; break; } }
           if(hv!==hovered){ hovered=hv; cv.style.cursor=hv?'pointer':'default';
-            if(setHoverName) setHoverName(hv?(APX_NODES.find(n=>n.id===hv)||{}).label:null); }
+            if(setHoverName) setHoverName(hv==='__apex'?'Apex voice':hv?(APX_NODES.find(n=>n.id===hv)||{}).label:null); }
           // advance
           if(!reduced){
             t+=0.016;
@@ -4426,6 +4441,7 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
     const onMove=e=>{ const r=cv.getBoundingClientRect(); mouse={x:e.clientX-r.left,y:e.clientY-r.top}; };
     const onLeave=()=>{ mouse={x:-999,y:-999}; };
     const onClick=e=>{ const r=cv.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
+      if(window.ApexVoice && ApexVoice.core && ApexVoice.core.hit(mx-cx,my-cy,R*0.075)){ ApexVoice.core.open(); return; }
       for(const h of hits){ if(Math.hypot(mx-h.x,my-h.y)<h.r){ setView(h.id); return; } } };
     cv.addEventListener('mousemove',onMove);
     cv.addEventListener('mouseleave',onLeave);
@@ -4439,7 +4455,7 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
       <canvas ref={cvRef} aria-hidden="true"/>
       <div className="apxo-hud">
         <div className="n">Apex</div>
-        <div className={"s"+(hoverName?' live':'')}>{hoverName?('open '+hoverName):'orchestrator standing by'}</div>
+        <div className={"s"+(hoverName||voiceWords?' live':'')}>{hoverName?('open '+hoverName):(voiceWords||'orchestrator standing by')}</div>
       </div>
     </div>
   );

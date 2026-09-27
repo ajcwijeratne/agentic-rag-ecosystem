@@ -789,8 +789,11 @@
   const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t].map((x) => x | 0);
 
   class Radial {
-    constructor(canvas) {
-      this.cv = canvas; this.g = canvas.getContext("2d");
+    constructor(canvas, opts) {
+      // Embedded: drawn into another canvas (the overview hero) in CSS pixels,
+      // with no galaxy of its own and a lighter orb.
+      this.embedded = !!(opts && opts.embedded);
+      this.cv = canvas; this.g = canvas ? canvas.getContext("2d") : null;
       this.w = 0; this.h = 0; this.dpr = 1;
       this.N = 80;
       this.bar = new Float32Array(this.N); this.peak = new Float32Array(this.N); this.prevBar = new Float32Array(this.N);
@@ -812,7 +815,7 @@
     }
 
     buildOrb() {
-      const n = this.reduced ? 1400 : 2600;
+      const n = this.embedded ? 1300 : this.reduced ? 1400 : 2600;
       this.n = n;
       this.px = new Float32Array(n); this.py = new Float32Array(n); this.pz = new Float32Array(n);
       this.r0 = new Float32Array(n); this.d = new Float32Array(n); this.v = new Float32Array(n);
@@ -952,11 +955,10 @@
     draw(dt) {
       this.resize();
       this.step(dt);
-      const g = this.g, w = this.w, h = this.h, dpr = this.dpr;
+      const g = this.g, w = this.w, h = this.h;
       const cx = w / 2, cy = h * 0.45;
       const S = Math.min(w * 1.3, h * 1.08);
       const R = S * 0.125, base = R * 1.32, len = S * 0.2;
-      const W = this.w8, L = bus.level;
 
       // Galaxy, turning on the centre.
       g.globalCompositeOperation = "source-over";
@@ -974,6 +976,24 @@
         g.fillStyle = rgba(s.c, 0.75 * tw);
         g.fillRect(x - s.s / 2, y - s.s / 2, s.s, s.s);
       }
+      this.scene(g, cx, cy, R, base, len);
+    }
+
+    /** The Radial inside another canvas: the overview's orbital map calls this
+     *  for its centre. Units are CSS pixels (that canvas is already scaled), and
+     *  the starburst is shorter so it clears the department nodes. */
+    drawEmbedded(g, cx, cy, R, dt) {
+      this.dpr = 1;
+      this.step(dt);
+      g.save();
+      g.globalAlpha = 1;
+      this.scene(g, cx, cy, R, R * 1.3, R * 1.2);
+      g.restore();
+    }
+
+    /** Everything in front of the galaxy: halo, state layers, bars, orb. */
+    scene(g, cx, cy, R, base, len) {
+      const W = this.w8, L = bus.level, dpr = this.dpr;
 
       // Halo behind the orb, tinted by state.
       const haloCol = W.think > 0.5 ? PAL.gold : W.speak > 0.3 ? PAL.gold : W.listen > 0.3 ? PAL.teal : W.error > 0.3 ? PAL.coral : PAL.blue;
@@ -1003,7 +1023,8 @@
         g.beginPath(); g.arc(cx, cy, rad, 0, TAU); g.stroke();
       }
       // Three satellites on tilted orbits: the specialist units, waiting.
-      for (let k = 0; k < 3; k++) {
+      // Embedded on the overview, the real department nodes play that part.
+      for (let k = 0; k < (this.embedded ? 0 : 3); k++) {
         const ang = this.t * (0.32 + k * 0.11) + k * 2.1;
         const tilt = 0.35 + k * 0.22, rx = base + len * (0.35 + k * 0.22), ry = rx * tilt;
         const rot = k * 1.05 - 0.4;
@@ -1505,10 +1526,39 @@
     if (rec && bus.state === "off") bus.set({ state: settings.micMode === "open" ? "listening" : "idle" });
   }, 1000);
 
+  /* ------------------------------------------------- overview hero core
+     The Command Centre's orbital map hands its centre to the Radial, so the
+     Radial lives on the overview as well as on the stage: sonar at rest, the
+     intake ring while you talk, the radar while Apex thinks, the starburst
+     while it answers. Clicking it opens the full stage. */
+  const STATE_WORDS = {
+    listening: "listening", hearing: "hearing you", thinking: "thinking",
+    speaking: "speaking", error: "voice error",
+  };
+  const core = {
+    radial: null, last: 0,
+    /** Draw the centre into `g` (CSS pixels). False means "draw your own". */
+    draw(g, cx, cy, R) {
+      if (stage.visible) return true;             // hidden behind the stage: skip the work
+      const t = performance.now();
+      const dt = this.last ? clamp((t - this.last) / 1000, 0.001, 0.05) : 0.016;
+      this.last = t;
+      if (!this.radial) this.radial = new Radial(null, { embedded: true });
+      if (!raf) sampleAudio(dt);                   // our own loop is idle: keep the bus fresh
+      this.radial.drawEmbedded(g, cx, cy, R, dt);
+      return true;
+    },
+    /** Is (dx, dy) from the centre on the core? */
+    hit(dx, dy, R) { return Math.hypot(dx, dy) < R * 1.45; },
+    open() { audio.resume(); stage.open(true); },
+    /** A few words for the overview's caption, or "" when there is nothing to say. */
+    words() { return STATE_WORDS[bus.state] || ""; },
+  };
+
   /* ---------------------------------------------------------------- API */
   window.ApexVoice = {
-    version: "1.0.1",
-    settings, bus, stage, tts,
+    version: "1.1.0",
+    settings, bus, stage, tts, core,
     attach(hooks) {
       Object.assign(page, hooks || {});
       if (bus.state === "off" && recording()) bus.set({ state: settings.micMode === "open" ? "listening" : "idle" });
