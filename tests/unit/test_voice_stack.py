@@ -1120,3 +1120,200 @@ async def test_ordinary_questions_are_left_to_the_streaming_path():
     from orchestrator.voice import _direct_answer
 
     assert await _direct_answer("what is agentic RAG", "t-stream2") is None
+
+
+# ---------------------------------------------------------------------------
+# Retrieval deadlines and telemetry
+# ---------------------------------------------------------------------------
+
+async def test_slow_optional_agent_is_dropped_but_essential_is_waited_for(monkeypatch):
+    """
+    The agents are not equally valuable: local_data returns the vault chunks in
+    about a second, while the cloud agent takes nearly four and returns nothing.
+    A blanket deadline landed on local_data's tail and dropped the vault answer
+    one run in four, so essential agents are waited for and the rest are not.
+    """
+    import asyncio
+
+    from orchestrator import graph
+
+    async def fake_fetch(name, base, query):
+        delay = {"local_data": 0.25, "search": 0.05, "cloud": 2.0}[name]
+        await asyncio.sleep(delay)
+        return (name, [{"text": "vault"}] if name == "local_data" else [], None, delay * 1000)
+
+    monkeypatch.setattr(graph, "_fetch_agent", fake_fetch)
+
+    results = await graph.gather_agents(
+        "q", timeout=0.1, essential=("local_data",), essential_timeout=5.0,
+    )
+    by_name = {name: (chunks, err) for name, chunks, err, _ in results}
+
+    assert by_name["local_data"][0], "essential agent was dropped"
+    assert by_name["local_data"][1] is None
+    assert "timed out" in (by_name["cloud"][1] or ""), "slow optional agent was not dropped"
+
+
+async def test_no_deadline_waits_for_every_agent(monkeypatch):
+    """Written chat must keep its current behaviour."""
+    import asyncio
+
+    from orchestrator import graph
+
+    async def fake_fetch(name, base, query):
+        await asyncio.sleep(0.05)
+        return (name, [{"text": name}], None, 50.0)
+
+    monkeypatch.setattr(graph, "_fetch_agent", fake_fetch)
+    results = await graph.gather_agents("q", timeout=None)
+
+    assert len(results) == 3
+    assert all(err is None for _, _, err, _ in results)
+
+
+def test_turn_timer_reports_stage_durations(tmp_path, monkeypatch):
+    """Telemetry must record stages, not just a single total."""
+    from orchestrator import voice_metrics
+
+    monkeypatch.setattr(voice_metrics, "METRICS_PATH", tmp_path / "m.jsonl")
+
+    timer = voice_metrics.TurnTimer("what is the sprint", "rag")
+    timer.mark_retrieval(12)
+    timer.mark_first_token()
+    timer.mark_first_audio()
+    measured = timer.finish("Short answer.", "test/model", fragments=2)
+
+    assert measured.grounded is True
+    assert measured.chunks == 12
+    stages = measured.stages()
+    assert set(stages) == {"retrieval", "time_to_first_token", "chunking", "rest_of_answer"}
+    assert all(v >= 0 for v in stages.values())
+    assert (tmp_path / "m.jsonl").exists()
+
+
+def test_metrics_summary_names_the_slowest_stage(tmp_path, monkeypatch):
+    """
+    The rollup exists to say what to work on next. Tuning this loop by hand,
+    single runs varied by a factor of two and two changes were made on one
+    sample each — one of which silently dropped the vault context.
+    """
+    import json
+
+    from orchestrator import voice_metrics
+
+    path = tmp_path / "m.jsonl"
+    monkeypatch.setattr(voice_metrics, "METRICS_PATH", path)
+    with path.open("w", encoding="utf-8") as fh:
+        for _ in range(5):
+            fh.write(json.dumps({
+                "retrieval_s": 1.0, "first_token_s": 6.0, "first_audio_s": 6.2,
+                "total_s": 7.0, "chunks": 12, "grounded": True,
+                "model": "m", "answer_chars": 200,
+            }) + "\n")
+
+    s = voice_metrics.summary()
+    assert s["turns"] == 5
+    assert s["grounded_rate"] == 1.0
+    assert s["median"]["first_audio_s"] == 6.2
+    # retrieval 1.0s vs time-to-first-token 5.0s — the model is the problem here.
+    assert s["slowest_stage_median"].startswith("time_to_first_token")
+
+
+def test_metrics_never_break_a_turn(tmp_path, monkeypatch):
+    """Telemetry is best-effort: an unwritable path must not raise."""
+    from orchestrator import voice_metrics
+
+    monkeypatch.setattr(voice_metrics, "METRICS_PATH",
+                        tmp_path / "nope" / "deeper" / "\x00bad.jsonl")
+    timer = voice_metrics.TurnTimer("q")
+    timer.mark_retrieval(0)
+    timer.finish("answer", "model")      # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Adaptive endpointing
+# ---------------------------------------------------------------------------
+
+def test_completeness_reads_the_tail_of_an_utterance():
+    """A pause after "and" is mid-thought; after a finished question it is not."""
+    from media.endpointing import completeness
+
+    assert completeness("what is the diagnostic sprint") == "complete"
+    assert completeness("summarise the content pipeline for me") == "complete"
+    assert completeness("what is agentic rag?") == "complete"
+
+    for trailing in ("what is the diagnostic sprint and",
+                     "show me the", "show me", "um", "i think we should"):
+        assert completeness(trailing) == "incomplete", trailing
+
+
+def test_silence_window_shortens_when_finished_and_lengthens_when_not():
+    from media.endpointing import silence_ms_for
+
+    base = 600
+    assert silence_ms_for("what is the diagnostic sprint", base) < base
+    assert silence_ms_for("show me the", base) > base
+    # A plain statement is left alone rather than guessed at.
+    assert silence_ms_for("the attrition rate was eight per cent", base) == base
+
+
+def test_adaptive_endpointing_can_be_turned_off(monkeypatch):
+    from media import endpointing
+
+    monkeypatch.setattr(endpointing, "ENDPOINT_ADAPTIVE", False)
+    assert endpointing.silence_ms_for("show me the", 600) == 600
+
+
+def test_segmenter_accepts_a_new_silence_window_mid_stream():
+    from media.vad import EnergyVAD, SpeechSegmenter
+
+    seg = SpeechSegmenter(EnergyVAD())
+    original = seg._silence_frames_needed
+
+    seg.set_silence_ms(seg.config.silence_ms * 2)
+    assert seg._silence_frames_needed > original
+    seg.set_silence_ms(60)
+    assert seg._silence_frames_needed >= 1          # never zero, or it closes instantly
+
+
+def test_live_session_steers_the_endpoint_from_the_partial(monkeypatch):
+    from media import asr
+
+    monkeypatch.setattr(asr, "load_whisper", lambda *a, **k: object())
+    session = asr.LiveSession(asr.LiveConfig(engine="whisper", vad_backend="energy"))
+    base = session._base_silence_ms
+
+    session._adapt_endpoint("show me the")
+    lengthened = session.segmenter.config.silence_ms
+    session._adapt_endpoint("show me the content pipeline")
+    shortened = session.segmenter.config.silence_ms
+
+    assert lengthened > base > shortened, (lengthened, base, shortened)
+
+
+def test_endpoint_window_resets_between_utterances(monkeypatch):
+    """
+    One hesitant utterance must not leave the next one waiting nearly twice as
+    long, so the window returns to the configured default when a segment closes.
+    """
+    import numpy as np
+
+    from media import asr
+
+    monkeypatch.setattr(asr, "load_whisper", lambda *a, **k: object())
+    monkeypatch.setattr(asr, "whisper_transcribe_pcm", lambda pcm, **kw: ([], ""))
+
+    session = asr.LiveSession(asr.LiveConfig(engine="whisper", vad_backend="energy"))
+    base = session._base_silence_ms
+    session._adapt_endpoint("show me the")
+    assert session.segmenter.config.silence_ms > base
+
+    rng = np.random.default_rng(3)
+    speech = float32_to_pcm(
+        (np.sin(2 * np.pi * 150 * np.arange(int(SAMPLE_RATE * 1.2)) / SAMPLE_RATE) * 0.35
+         + rng.normal(0, 0.01, int(SAMPLE_RATE * 1.2))).astype(np.float32))
+    quiet = float32_to_pcm(rng.normal(0, 0.0008, int(SAMPLE_RATE * 2.5)).astype(np.float32))
+    for i in range(0, len(speech + quiet), 3200):
+        session.feed((speech + quiet)[i:i + 3200])
+
+    assert session.segmenter.config.silence_ms == base
