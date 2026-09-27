@@ -840,9 +840,15 @@ def sync_production_tasks() -> list[dict]:
         for t in list_tasks(limit=500)
         if t.get("type") == "production" and t.get("target_id") and t.get("status") in active_statuses
     }
+    from .doc_types import DOC_FORMATS
+
     for prod in production.list_productions(limit=500):
         state = prod.get("state")
         if state in {"publish", "measure", "cancelled"}:
+            continue
+        if prod.get("format") in DOC_FORMATS:
+            # Documents are driven from the Deliverables section, which runs
+            # them to review itself; a daemon task would advance them twice.
             continue
         intel = prod.get("intelligence") or {}
         if intel.get("gate_status") == "blocked":

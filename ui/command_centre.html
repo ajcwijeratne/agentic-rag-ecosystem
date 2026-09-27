@@ -197,6 +197,29 @@
     .agent-action b{display:block;font-size:12.5px;line-height:1.25}
     .agent-action span{display:block;font-size:11.5px;color:var(--muted-2);margin-top:3px}
     .agent-output{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:8px;padding:12px;margin-top:10px;font-size:12.5px;color:var(--ink);line-height:1.55;white-space:pre-wrap}
+    .doc-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+    .doc-btn{display:inline-flex;align-items:center;border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:8px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--ink);text-decoration:none;white-space:nowrap}
+    .doc-btn:hover{border-color:var(--pine)}
+    .doc-btn.primary{background:var(--pine);border-color:var(--pine);color:#fff}
+    .doc-btn:disabled{opacity:.55;cursor:default}
+    .doc-stages{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+    .doc-stage{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid var(--line-soft);color:var(--muted);background:var(--surface-2)}
+    .doc-stage.done{background:var(--pine-tint);color:var(--pine);border-color:transparent}
+    .doc-stage.now{background:var(--gold-tint);color:var(--ink);border-color:var(--gold-soft);font-weight:600}
+    .doc-compose-grid{display:grid;grid-template-columns:170px minmax(200px,1.4fr) 1fr 1fr 150px;gap:8px;align-items:start}
+    .docpv{background:var(--surface);border:1px solid var(--line-soft);border-radius:8px;padding:14px 16px;max-height:440px;overflow:auto;font-size:13px;line-height:1.55;color:var(--ink)}
+    .docpv h3{font-size:18px;color:var(--pine);margin:2px 0 10px;font-weight:700}
+    .docpv h4{font-size:15px;color:var(--pine);margin:14px 0 6px;font-weight:700}
+    .docpv h5{font-size:13px;margin:10px 0 4px;font-weight:700}
+    .docpv p{margin:0 0 8px}
+    .docpv ul,.docpv ol{margin:0 0 8px 18px;padding:0}
+    .docpv table{border-collapse:collapse;width:100%;margin:6px 0 10px;font-size:12px}
+    .docpv th{background:var(--pine);color:#fff;text-align:left;padding:5px 7px;font-weight:600}
+    .docpv td{border:1px solid var(--line-soft);padding:5px 7px;vertical-align:top}
+    .docpv blockquote{margin:0 0 8px;padding-left:10px;border-left:3px solid var(--gold);color:var(--muted)}
+    .docpv code{font-size:12px;background:var(--surface-2);padding:1px 4px;border-radius:4px}
+    @media(max-width:900px){.doc-compose-grid{grid-template-columns:1fr 1fr}}
+    @media(max-width:620px){.doc-compose-grid{grid-template-columns:1fr}}
     .agent-output-error{background:#f8e8e5;border-color:#e4b4ad;color:#8f3228}
     .agent-output-running{background:var(--gold-tint);border-color:var(--gold-soft)}
     .agent-output-label{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-2);font-weight:600;margin-top:3px}
@@ -993,136 +1016,324 @@ function ViewHead({eyebrow, title, lede}) {
 }
 
 // Deliverables Library
+// Documents live as notes in the vault (13_Command Centre/Deliverables). Generated
+// ones are drafted by agents, rendered to Word or PowerPoint, and reach
+// Client-ready only after Aaron approves the client_sensitive gate. Seed items
+// show only with ?demo=1; a failed load is shown as an error, never as data.
 const SEED_DELIVERABLES = [
-  {title:"Online retention: sector benchmark and drivers", cap:"Sector Intelligence & Evidence", type:"PDF briefing", status:"Reviewed", st:"st-good", meta:"18 pages · 12 Jun"},
-  {title:"MPH curriculum map and outcomes alignment", cap:"Learning & Curriculum Design", type:"Curriculum map", status:"Draft for review", st:"st-warn", meta:"9 Jun"},
-  {title:"Academic operations: options analysis for council", cap:"Strategy & Change Advisory", type:"Decision paper", status:"Reviewed", st:"st-good", meta:"11 pages · 5 Jun"},
-  {title:"Online teaching capability, facilitation guide", cap:"Academic Capability & Leadership", type:"Facilitation guide", status:"Reviewed", st:"st-good", meta:"24 pages · 1 Jun"},
+  {id:"demo-1",title:"Online retention: sector benchmark and drivers", cap:"Sector Intelligence & Evidence", type:"PDF briefing", status:"Reviewed", st:"st-good", meta:"18 pages · 12 Jun"},
+  {id:"demo-2",title:"MPH curriculum map and outcomes alignment", cap:"Learning & Curriculum Design", type:"Curriculum map", status:"Draft for review", st:"st-warn", meta:"9 Jun"},
 ];
+const DELIVERABLES_DEMO = (()=>{ try { return new URLSearchParams(window.location.search).get("demo")==="1"; } catch { return false; } })();
+const DOC_TYPE_FALLBACK = [
+  {key:"client_briefing",label:"Client briefing",output:"docx",length:"4 to 8 pages",needs_source:false},
+  {key:"decision_paper",label:"Decision paper",output:"docx",length:"4 to 10 pages",needs_source:false},
+  {key:"proposal",label:"Proposal",output:"docx",length:"5 to 12 pages",needs_source:false},
+  {key:"slide_deck",label:"Slide deck",output:"pptx",length:"8 to 12 slides",needs_source:true},
+];
+const DOC_STAGES = [["brief","Brief"],["research","Research"],["outline","Outline"],["draft","Draft"],["render","Render"],["review","Review"],["publish","Approved"]];
+const DOC_STAGE_INDEX = {idea:-1,brief:0,research:1,outline:2,draft:3,asset_plan:3,render:4,review:5,publish:6,measure:6,cancelled:-1};
+const DOC_DRAFTING = new Set(["idea","brief","research","outline","draft","asset_plan","render"]);
 const normText = v => String(v||'').toLowerCase();
 const uniq = arr => Array.from(new Set((arr||[]).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+const fmtWhen = v => { if(!v) return "No date"; const t = Date.parse(v); if(isNaN(t)) return String(v); return new Date(t).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}); };
 function scoreDeliverable({readiness,evidence,quality,reuse_score,status}){
   let score = 35;
   if(readiness === 'Client-ready') score += 30;
-  else if(readiness === 'Internal-ready') score += 18;
-  else if(readiness === 'Needs review') score += 8;
-  else if(readiness === 'Blocked') score -= 14;
+  else if(readiness === 'Awaiting approval' || readiness === 'Internal-ready') score += 18;
+  else if(readiness === 'Needs review' || readiness === 'Drafting') score += 8;
+  else if(readiness === 'Blocked' || readiness === 'Changes requested') score -= 14;
   if(/strong/i.test(evidence)) score += 16;
   else if(/partial/i.test(evidence)) score += 6;
   else if(/missing|check/i.test(evidence)) score -= 6;
   score += Object.values(quality||{}).filter(Boolean).length * 8;
   if((reuse_score||0) >= 70) score += 6;
-  if(/draft|waiting|blocked/i.test(status)) score -= 4;
+  if(/draft|waiting|blocked|failed/i.test(status)) score -= 4;
   return Math.max(0, Math.min(100, score));
 }
 function intelligenceForDeliverable(d){
   const recs = [];
   const add=(priority,title,detail,type='action')=>recs.push({priority,title,detail,type});
+  if(d.doc_type){
+    if(d.readiness === 'Blocked') add(0,"Continue drafting", d.last_error || "Drafting stopped before review.","risk");
+    if(d.readiness === 'Changes requested') add(0,"Edit the note and re-render","Make the changes in Obsidian, re-render, then request approval again.","risk");
+    if(d.readiness === 'Awaiting approval') add(1,"Approve for the client",`Read v${d.doc_version||1}, then approve or request changes. Nothing is sent automatically.`);
+    if(d.readiness === 'Drafting') add(2,"Drafting in progress",`Stage: ${d.stage_label||d.stage||'queued'}. The drawer updates as it runs.`);
+    if(d.readiness === 'Finalising') add(2,"Finalising","Approved. The final version and PDF are being produced.");
+    if(d.readiness === 'Client-ready') add(3,"Send it to the client yourself","The approved file and its PDF are in the drawer's Files list.");
+    if(d.readiness === 'Client-ready' && (d.reuse_score||0) >= 70) add(5,"Reuse as source asset","Build a deck from it, or turn it into a template or content idea.","reuse");
+    if(recs.length === 0) add(7,"Check the record","Open the drawer to see where this document is.");
+    return recs.sort((a,b)=>a.priority-b.priority).slice(0,4);
+  }
   if(!d.quality.reviewed) add(1,"Run quality review","Review status, acceptance checks, and reviewer notes before this moves into a client-ready state.");
   if(!d.quality.evidence_checked) add(2,"Check evidence coverage","Confirm the sources are linked and strong enough for the claims this deliverable makes.");
-  if(!d.quality.brand_checked) add(3,"Run brand and format check","Confirm tone, structure, and final packaging before handoff or reuse.");
-  if(d.readiness === 'Client-ready') add(4,"Prepare client handoff","Create a short handoff note, recommended use, and any caveats before sending.");
+  if(!d.quality.brand_checked) add(3,"Render a branded file","Render the note to Word so it carries the WijerCo template.");
   if((d.reuse_score||0) >= 70) add(5,"Reuse as source asset","Turn this into a reusable template, content idea, or future proposal evidence block.","reuse");
-  if(!d.production_id && d.source !== 'Production') add(6,"Link production history","Connect this artifact to a production or engagement record so its origin is traceable.","trace");
   if(d.readiness === 'Blocked') add(0,"Resolve active blocker","Clear the governance or evidence blocker before any downstream action.","risk");
   if(recs.length === 0) add(7,"Archive with metadata","This looks stable. Preserve the source, quality state, and reuse tags for retrieval.");
   return recs.sort((a,b)=>a.priority-b.priority).slice(0,4);
 }
 const DELIVERY_AGENT_ACTIONS = [
-  {key:"summary", title:"Generate handoff summary", hint:"Client-ready brief", subagent:"responder-agent", department:"support"},
-  {key:"quality", title:"Run quality review", hint:"Acceptance checks", subagent:"quality-reviewer", department:"operations"},
-  {key:"evidence", title:"Check evidence", hint:"Claims and sources", subagent:"research-producer", department:"content_studio"},
-  {key:"reuse", title:"Find reuse paths", hint:"Content and templates", subagent:"content-creator", department:"marketing_sales"},
+  {key:"summary", title:"Generate handoff summary", hint:"Client-ready brief"},
+  {key:"quality", title:"Run quality review", hint:"Acceptance checks"},
+  {key:"evidence", title:"Check evidence", hint:"Claims and sources"},
+  {key:"reuse", title:"Find reuse paths", hint:"Content and templates"},
   {key:"task", title:"Create follow-up task", hint:"Operating layer", local:true},
   {key:"memory", title:"Save project memory", hint:"Reusable context", local:true},
 ];
-function deliveryActionPrompt(action,item){
-  const brief = [
-    `Deliverable: ${item.title}`,
-    `Capability: ${item.cap}`,
-    `Type: ${item.type || 'Artifact'}`,
-    `Status: ${item.status}`,
-    `Readiness: ${item.readiness}`,
-    `Evidence: ${item.evidence}`,
-    `Score: ${item.intelligence_score}/100`,
-    `Recommended next action: ${item.next_action}`,
-  ].join("\n");
-  const guardrail = "Use only the deliverable metadata above. Do not invent names, clients, attachments, dates, page contents, evidence, approvals, or correspondence. If detail is missing, say it is not recorded. Return concise bullets, not an email.";
-  if(action.key === "summary") return `${brief}\n\n${guardrail}\nCreate a concise handoff summary with purpose, how to use it, caveats, and next step.`;
-  if(action.key === "quality") return `${brief}\n\n${guardrail}\nRun a quality review. Return pass/fail signals for evidence, structure, audience fit, brand voice, and client readiness.`;
-  if(action.key === "evidence") return `${brief}\n\n${guardrail}\nCheck evidence coverage. Identify likely claim risks, missing source links, and what evidence should be attached before handoff.`;
-  if(action.key === "reuse") return `${brief}\n\n${guardrail}\nSuggest reuse opportunities: templates, content posts, proposal evidence, future client assets, and retrieval tags.`;
-  return brief;
-}
 function localDeliveryOutput(action,item){
   if(action.key === "summary") return `Purpose: ${item.title}\nUse: ${item.type || 'Artifact'} for ${item.cap} work where this evidence or structure applies.\nReadiness: ${item.readiness} (${item.intelligence_score}/100).\nCaveat: ${item.evidence}.\nNext: ${item.next_action}.`;
   if(action.key === "quality") return `Quality review draft\n- Review: ${item.quality.reviewed ? 'ready' : 'needs review'}\n- Evidence: ${item.quality.evidence_checked ? 'ready' : 'check sources'}\n- Brand: ${item.quality.brand_checked ? 'ready' : 'check tone and format'}\nDecision: ${item.readiness === 'Client-ready' ? 'Suitable for handoff after final operator glance.' : 'Hold until checks are complete.'}`;
   if(action.key === "evidence") return `Evidence check draft\n- Current signal: ${item.evidence}\n- Risk: ${item.risk}\n- Required action: ${item.quality.evidence_checked ? 'Preserve source links in metadata.' : 'Attach source notes and verify claims before client use.'}`;
-  if(action.key === "reuse") return `Reuse paths\n- Template: preserve structure as a reusable ${item.type || 'artifact'} pattern.\n- Content: convert core insight into a short post or article.\n- Retrieval: tag under ${item.cap} and delivery evidence.\n- Sales: use as proof point where the client problem matches.`;
+  if(action.key === "reuse") return `Reuse paths\n- Template: preserve structure as a reusable ${item.type || 'artifact'} pattern.\n- Content: convert core insight into a short post or article.\n- Retrieval: tag under ${item.cap} and delivery evidence.`;
   return item.next_action;
 }
 function inferDeliverable(d){
   const status = d.status || d.stl || "Unknown";
   const statusKey = normText(status);
-  const st = d.st || (statusKey.includes('review') || statusKey.includes('approved') || statusKey.includes('sent') ? 'st-good' : statusKey.includes('draft') || statusKey.includes('waiting') ? 'st-warn' : statusKey.includes('block') ? 'st-fail' : 'st-mute');
-  const readiness = d.readiness || (statusKey.includes('approved') || statusKey.includes('sent') || statusKey === 'reviewed' ? 'Client-ready' : statusKey.includes('review') ? 'Internal-ready' : statusKey.includes('draft') ? 'Needs review' : statusKey.includes('block') ? 'Blocked' : 'Needs triage');
-  const evidence = d.evidence_status || d.evidence || (readiness === 'Client-ready' ? 'Strong evidence' : readiness === 'Needs review' ? 'Check evidence' : 'Partial evidence');
+  const st = d.st || (statusKey.includes('approved') ? 'st-good' : statusKey.includes('review') || statusKey.includes('draft') || statusKey.includes('waiting') ? 'st-warn' : statusKey.includes('block') || statusKey.includes('fail') ? 'st-fail' : 'st-mute');
+  // Client-ready is never inferred from a status word. Generated documents get
+  // readiness from the server (production state plus the approval gate); a
+  // legacy note is Client-ready only if its frontmatter says approved: true.
+  const readiness = d.readiness || (d.approved === true ? 'Client-ready' : statusKey.includes('review') || statusKey.includes('approved') || statusKey.includes('sent') ? 'Internal-ready' : statusKey.includes('draft') ? 'Needs review' : statusKey.includes('block') ? 'Blocked' : 'Needs triage');
+  const evidence = d.evidence_status || d.evidence || (readiness === 'Client-ready' ? 'Strong evidence' : 'Check evidence');
   const confidence = d.confidence || (readiness === 'Client-ready' ? 'High' : readiness === 'Blocked' ? 'Low' : 'Medium');
-  const source = d.source || d.pipeline || (d.production_id ? 'Production' : 'Reviewed store');
-  const next_action = d.next_action || (readiness === 'Client-ready' ? 'Prepare client handoff' : readiness === 'Needs review' || readiness === 'Internal-ready' ? 'Send to quality review' : readiness === 'Blocked' ? 'Resolve blocker' : 'Triage readiness');
-  const reuse_score = d.reuse_score ?? (readiness === 'Client-ready' ? 78 : readiness === 'Internal-ready' ? 58 : 34);
-  const updated = d.updated_at || d.meta || "No date";
+  const source = d.source || d.pipeline || (d.production_id ? 'Production' : 'Vault note');
+  const next_action = d.next_action || (readiness === 'Client-ready' ? 'Send it to the client yourself' : readiness === 'Needs review' || readiness === 'Internal-ready' ? 'Send to quality review' : readiness === 'Blocked' ? 'Resolve blocker' : 'Triage readiness');
+  const reuse_score = d.reuse_score ?? (readiness === 'Client-ready' ? 78 : readiness === 'Awaiting approval' || readiness === 'Internal-ready' ? 58 : 34);
+  const when = fmtWhen(d.updated_at || d.created_at);
+  const updated = when !== "No date" ? when : (d.meta || "No date");
   const id = d.id || d.deliverable_id || d.title;
+  const stageIdx = DOC_STAGE_INDEX[d.stage] ?? -1;
   const quality = {
-    reviewed: d.quality?.reviewed ?? (/reviewed|approved|sent/i.test(status) && !/draft|for review|needs review/i.test(status)),
+    reviewed: d.quality?.reviewed ?? (d.doc_type ? stageIdx >= 5 : false),
     evidence_checked: d.quality?.evidence_checked ?? /strong/i.test(evidence),
-    brand_checked: d.quality?.brand_checked ?? readiness === 'Client-ready',
+    brand_checked: d.quality?.brand_checked ?? ((d.doc_version||0) > 0),
   };
+  const docBadge = (d.doc_version||0) > 0 ? `${String(d.doc_format||'docx').toUpperCase()} v${d.doc_version}${d.pdf_file ? ' + PDF' : ''}` : null;
   const evidenceItems = d.evidence_items || d.sources || [
-    {label:evidence, detail:/strong/i.test(evidence) ? "Evidence coverage is sufficient for handoff." : "Review source coverage before client use."},
+    {label:evidence, detail:/strong/i.test(evidence) ? "Evidence coverage checked by the quality review." : "Review source coverage before client use."},
   ];
   const related = [
-    {label:"Production", value:d.production_id || (source === 'Production' ? "Pipeline record" : "No production record")},
-    {label:"Quality", value:quality.reviewed ? "Review passed or recorded" : "Quality review needed"},
-    {label:"Governance", value:d.governance_status || (readiness === 'Blocked' ? "Gate pending" : "No active gate")},
+    {label:"Production", value:d.production_id || "No production record"},
+    {label:"Quality", value:quality.reviewed ? "Quality review recorded" : "Quality review needed"},
+    {label:"Governance", value:d.gate_status === 'approved' ? "Approved by " + (d.approved_by || 'operator') : d.gate_status === 'pending' ? "Waiting for approval" : d.gate_status === 'rejected' ? "Changes requested" : "No active gate"},
     {label:"Knowledge", value:/strong/i.test(evidence) ? "Evidence linked" : "Evidence link needed"},
     {label:"Memory", value:d.project || d.client || "No project memory linked"},
-    {label:"Content", value:(reuse_score >= 70) ? "Good candidate for reuse" : "Low reuse signal"},
+    {label:"Cost", value:d.cost_usd != null ? `US$${Number(d.cost_usd).toFixed(3)} in agent calls` : "Not recorded"},
   ];
-  const history = d.history || d.events || [
+  const history = d.history || [
     {label:"Status", detail:status, at:updated},
     {label:"Readiness", detail:readiness, at:"Current"},
   ];
-  const base = {...d,id,status,st,readiness,evidence,confidence,source,next_action,reuse_score,updated,quality,evidenceItems,related,history};
+  const base = {...d,id,status,st,readiness,evidence,confidence,source,next_action,reuse_score,updated,quality,evidenceItems,related,history,docBadge};
   const intelligence_score = d.intelligence_score ?? scoreDeliverable(base);
   const risk = intelligence_score >= 82 ? "Low" : intelligence_score >= 62 ? "Medium" : "High";
   const recommendations = d.recommendations || intelligenceForDeliverable({...base,intelligence_score,risk});
   return {...base,intelligence_score,risk,recommendations};
 }
-function DeliverableDrawer({item,onClose}){
+function readinessTag(r){ return r==='Client-ready'?'st-good':(r==='Blocked'||r==='Changes requested')?'st-fail':/review|approval|drafting|finalising|internal/i.test(r||'')?'st-warn':'st-mute'; }
+function mdInline(text, keyBase){
+  const out=[]; let rest=String(text||''); let k=0;
+  const re=/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/;
+  while(rest){
+    const m=rest.match(re);
+    if(!m){out.push(rest);break;}
+    if(m.index>0) out.push(rest.slice(0,m.index));
+    const t=m[0]; const key=`${keyBase}-${k++}`;
+    if(t.startsWith('**')) out.push(<b key={key}>{t.slice(2,-2)}</b>);
+    else if(t.startsWith('`')) out.push(<code key={key}>{t.slice(1,-1)}</code>);
+    else if(t.startsWith('[')){
+      const mm=t.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/);
+      if(mm && /^(https?:|mailto:)/i.test(mm[2])) out.push(<a key={key} href={mm[2]} target="_blank" rel="noopener noreferrer">{mm[1]}</a>);
+      else out.push(mm ? mm[1] : t);
+    }
+    else out.push(<i key={key}>{t.slice(1,-1)}</i>);
+    rest=rest.slice(m.index+t.length);
+  }
+  return out;
+}
+function DocPreview({markdown}){
+  const lines=String(markdown||'').replace(/\r/g,'').split('\n');
+  const blocks=[]; let i=0; let key=0;
+  const isList=s=>/^([-*+]|\d+[.)])\s+/.test(s);
+  const isSep=s=>/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/.test(s);
+  while(i<lines.length){
+    const s=lines[i].trim();
+    if(!s || s.startsWith('%%')){i++;continue;}
+    let m;
+    if((m=s.match(/^(#{1,6})\s+(.*)$/))){
+      const lvl=m[1].length; const k=key++;
+      if(lvl<=1) blocks.push(<h3 key={k}>{mdInline(m[2],'h'+k)}</h3>);
+      else if(lvl===2) blocks.push(<h4 key={k}>{mdInline(m[2],'h'+k)}</h4>);
+      else blocks.push(<h5 key={k}>{mdInline(m[2],'h'+k)}</h5>);
+      i++; continue;
+    }
+    if(s.startsWith('|')){
+      const rows=[]; while(i<lines.length && lines[i].trim().startsWith('|')){ rows.push(lines[i].trim()); i++; }
+      const cells=r=>r.replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>c.trim());
+      const hasHead=rows.length>1 && isSep(rows[1]);
+      const head=hasHead?cells(rows[0]):null;
+      const body=(hasHead?rows.slice(2):rows).filter(r=>!isSep(r)).map(cells);
+      const k=key++;
+      blocks.push(<table key={k}>{head&&<thead><tr>{head.map((c,j)=><th key={j}>{mdInline(c,`t${k}h${j}`)}</th>)}</tr></thead>}<tbody>{body.map((r,ri)=><tr key={ri}>{r.map((c,j)=><td key={j}>{mdInline(c,`t${k}r${ri}c${j}`)}</td>)}</tr>)}</tbody></table>);
+      continue;
+    }
+    if(isList(s)){
+      const ordered=/^\d/.test(s); const items=[];
+      while(i<lines.length){ const raw=lines[i]; const t=raw.trim(); if(!t) break; if(!isList(t) && !/^\s{2,}/.test(raw)) break; items.push({text:t.replace(/^([-*+]|\d+[.)])\s+/,''), nested:/^\s{2,}/.test(raw)}); i++; }
+      const k=key++;
+      const lis=items.map((it,j)=><li key={j} style={it.nested?{marginLeft:16}:undefined}>{mdInline(it.text,`l${k}-${j}`)}</li>);
+      blocks.push(ordered?<ol key={k}>{lis}</ol>:<ul key={k}>{lis}</ul>);
+      continue;
+    }
+    if(s.startsWith('>')){
+      const q=[]; while(i<lines.length && lines[i].trim().startsWith('>')){ q.push(lines[i].trim().replace(/^>\s?/,'')); i++; }
+      const k=key++; blocks.push(<blockquote key={k}>{mdInline(q.join(' '),'q'+k)}</blockquote>);
+      continue;
+    }
+    const para=[]; while(i<lines.length){ const t=lines[i].trim(); if(!t || /^(#{1,6}\s|\||>|%%)/.test(t) || isList(t)) break; para.push(t); i++; }
+    if(!para.length){ i++; continue; }
+    const k=key++; blocks.push(<p key={k}>{mdInline(para.join(' '),'p'+k)}</p>);
+  }
+  if(!blocks.length) return <div className="mini">No document text yet.</div>;
+  return <div className="docpv">{blocks}</div>;
+}
+async function downloadDeliverable(id, version, fmt){
+  const r=await fetch(`${API}/deliverables/${encodeURIComponent(id)}/file/${version}?fmt=${fmt}`);
+  if(!r.ok) throw new Error(`Download failed (${r.status})`);
+  const blob=await r.blob(); const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=`${id}-v${version}.${fmt}`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+function DocStages({stage}){
+  const idx = DOC_STAGE_INDEX[stage] ?? -1;
+  return (
+    <div className="doc-stages">
+      {DOC_STAGES.map(([key,label],i)=><span key={key} className={"doc-stage"+(i<idx?' done':i===idx?' now':'')}>{label}</span>)}
+    </div>
+  );
+}
+function STAGE_NAME(s){ const hit=DOC_STAGES.find(([k])=>k===s); return hit?hit[1]:(s==='measure'?'Closed':s==='cancelled'?'Cancelled':s||'Event'); }
+function DeliverableComposer({types,items,onCreated,onClose}){
+  const [form,setForm]=useState({doc_type:"decision_paper",title:"",client:"",audience:"",due:"",brief:"",sources:"",source_deliverable_id:""});
+  const [busy,setBusy]=useState(false);
+  const [msg,setMsg]=useState("");
+  const spec=(types||[]).find(t=>t.key===form.doc_type)||{};
+  const sources=(items||[]).filter(d=>d.id && (d.doc_version||0)>0 && d.doc_type && d.doc_type!=='slide_deck');
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const create=async()=>{
+    if(form.title.trim().length<3){setMsg("Give the document a title.");return;}
+    if(spec.needs_source && !form.source_deliverable_id){setMsg("Pick the document this deck is built from.");return;}
+    if(!spec.needs_source && form.brief.trim().length<10){setMsg("Write a short brief: what it is for and who reads it.");return;}
+    setBusy(true); setMsg("");
+    try{
+      const body={...form, run:true};
+      if(!spec.needs_source) delete body.source_deliverable_id;
+      const r=await fetch(`${API}/deliverables`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(typeof d.detail==='string'?d.detail:`Could not create (${r.status})`);
+      setForm(f=>({...f,title:"",brief:"",sources:"",source_deliverable_id:""}));
+      onCreated&&onCreated(d.item);
+    }catch(e){ setMsg(e.message||"Could not create the deliverable."); }
+    finally{ setBusy(false); }
+  };
+  return (
+    <div className="content-create">
+      <div className="sec-h"><span className="t">New deliverable</span><span className="x">{spec.length||''} · {String(spec.output||'docx').toUpperCase()} · drafted by agents, approved by you</span></div>
+      <div className="doc-compose-grid">
+        <select className="delivery-select" value={form.doc_type} onChange={e=>set('doc_type',e.target.value)} aria-label="Document type">
+          {(types||[]).map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
+        </select>
+        <input className="delivery-input" value={form.title} onChange={e=>set('title',e.target.value)} placeholder="Title" aria-label="Title" />
+        <input className="delivery-input" value={form.client} onChange={e=>set('client',e.target.value)} placeholder="Client or project" aria-label="Client or project" />
+        <input className="delivery-input" value={form.audience} onChange={e=>set('audience',e.target.value)} placeholder="Audience" aria-label="Audience" />
+        <input className="delivery-input" type="date" value={form.due} onChange={e=>set('due',e.target.value)} aria-label="Due date" />
+      </div>
+      {spec.needs_source ? (
+        <select className="delivery-select" style={{marginTop:8}} value={form.source_deliverable_id} onChange={e=>set('source_deliverable_id',e.target.value)} aria-label="Source deliverable">
+          <option value="">Build the deck from...</option>
+          {sources.map(d=><option key={d.id} value={d.id}>{d.title} ({d.readiness})</option>)}
+        </select>
+      ) : (
+        <>
+          <textarea className="delivery-input" style={{marginTop:8,width:'100%',minHeight:84}} value={form.brief} onChange={e=>set('brief',e.target.value)} placeholder="Brief: what the document is for, the decision or question, who reads it, anything it must cover" aria-label="Brief" />
+          <textarea className="delivery-input" style={{marginTop:8,width:'100%',minHeight:52}} value={form.sources} onChange={e=>set('sources',e.target.value)} placeholder="Optional sources to use: vault notes, reports, URLs" aria-label="Sources" />
+        </>
+      )}
+      <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
+        <button className="content-save" disabled={busy} onClick={create}>{busy?'Creating...':'Create and draft'}</button>
+        <button className="doc-btn" onClick={onClose}>Close</button>
+        {spec.key==='proposal'&&<span className="mini">Proposals carry no fees. Pricing is discussed separately.</span>}
+        {msg&&<span className="mini" style={{color:'var(--ink)'}}>{msg}</span>}
+      </div>
+    </div>
+  );
+}
+function DeliverableDrawer({item,onClose,onChanged}){
   const [busy,setBusy]=useState("");
   const [outputs,setOutputs]=useState({});
-  useEffect(()=>{setBusy("");setOutputs({});},[item?.id]);
-  if(!item) return null;
-  const checks=[
-    ["Review",item.quality.reviewed],
-    ["Evidence",item.quality.evidence_checked],
-    ["Brand",item.quality.brand_checked],
-  ];
+  const [detail,setDetail]=useState(null);
+  const [msg,setMsg]=useState("");
+  const [changeNote,setChangeNote]=useState("");
+  const [confirmArchive,setConfirmArchive]=useState(false);
+  const [showNotes,setShowNotes]=useState(false);
+  const id=item?.id;
+  const isDemo=String(id||'').startsWith('demo-');
+  const load=useCallback(()=>{
+    if(!id||isDemo) return;
+    fetch(`${API}/deliverables/${encodeURIComponent(id)}`).then(r=>r.ok?r.json():Promise.reject()).then(setDetail).catch(()=>{});
+  },[id,isDemo]);
+  useEffect(()=>{setBusy("");setOutputs({});setMsg("");setDetail(null);setChangeNote("");setConfirmArchive(false);setShowNotes(false);load();},[id]);
+  const it = detail?.item ? inferDeliverable(detail.item) : item;
+  const stage = detail?.production?.state || it?.stage;
+  const drafting = !!(it && it.doc_type && DOC_DRAFTING.has(stage));
+  const polling = !!(detail?.running || (drafting && it?.readiness!=='Blocked') || it?.readiness==='Finalising');
+  useEffect(()=>{
+    if(!id||!polling) return;
+    const t=setInterval(()=>{load(); onChanged&&onChanged();},5000);
+    return ()=>clearInterval(t);
+  },[id,polling]);
+  if(!item||!it) return null;
+  const versions=detail?.versions||[];
+  const latest=versions[0];
+  const pid=detail?.production?.production_id;
+  const post=async(path,body)=>{
+    const r=await fetch(`${API}/deliverables/${encodeURIComponent(id)}/${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(typeof d.detail==='string'?d.detail:`Request failed (${r.status})`);
+    return d;
+  };
+  const act=async(key,fn,done)=>{
+    setBusy(key); setMsg("");
+    try{ const d=await fn(); if(done) setMsg(typeof done==='function'?done(d):done); load(); onChanged&&onChanged(); }
+    catch(e){ setMsg(e.message||'Something went wrong.'); }
+    finally{ setBusy(""); }
+  };
+  const decide=status=>act(status,async()=>{
+    if(!pid) throw new Error('No production is linked to this deliverable.');
+    const r=await fetch(`${API}/governance/approve`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gate:'client_sensitive',target_id:pid,actor:'Aaron',note:status==='rejected'?changeNote:'Approved in the Deliverables drawer',status})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(typeof d.detail==='string'?d.detail:`Could not record the decision (${r.status})`);
+    setChangeNote("");
+    return d;
+  }, status==='approved' ? 'Approved. The final version and PDF are being produced.' : 'Changes requested. Edit the note in Obsidian, then re-render.');
+  const archive=async()=>{
+    if(!confirmArchive){setConfirmArchive(true);return;}
+    setBusy('archive'); setMsg("");
+    try{ await post('archive',{actor:'Aaron'}); onChanged&&onChanged(); onClose(); }
+    catch(e){ setMsg(e.message||'Could not archive.'); setBusy(""); }
+  };
+  const download=(v,fmt)=>act(`dl-${v}-${fmt}`,()=>downloadDeliverable(id,v,fmt));
   const runAgentAction=async(action)=>{
     setBusy(action.key);
     setOutputs(o=>({...o,[action.key]:"Running..."}));
     try{
       if(action.key === "task"){
         const resp=await fetch(`${API}/operating/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-          title:item.next_action,
-          type:'agent',
-          status:'todo',
-          assignee:'Command Centre',
-          priority:item.risk==='High'?5:item.risk==='Medium'?4:3,
-          target_id:item.id,
-          note:`Deliverable: ${item.title}`,
-          meta:{source:'deliverables',deliverable:item.title,readiness:item.readiness,score:item.intelligence_score}
+          title:it.next_action, type:'agent', status:'todo', assignee:'Command Centre',
+          priority:it.risk==='High'?5:it.risk==='Medium'?4:3, target_id:it.id, note:`Deliverable: ${it.title}`,
+          meta:{source:'deliverables',deliverable:it.title,readiness:it.readiness,score:it.intelligence_score}
         })});
         if(!resp.ok) throw new Error("Task service unavailable");
         const d=await resp.json();
@@ -1130,69 +1341,99 @@ function DeliverableDrawer({item,onClose}){
         return;
       }
       if(action.key === "memory"){
-        const project=item.project || item.client || item.cap || "Deliverables";
+        const project=it.project || it.client || it.cap || "Deliverables";
         const resp=await fetch(`${API}/operating/project-memory`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-          project,
-          content:`${item.title}: ${item.readiness}; ${item.evidence}; next action: ${item.next_action}`,
-          source:'deliverables',
-          meta:{deliverable:item.id,score:item.intelligence_score,risk:item.risk}
+          project, content:`${it.title}: ${it.readiness}; ${it.evidence}; next action: ${it.next_action}`, source:'deliverables',
+          meta:{deliverable:it.id,score:it.intelligence_score,risk:it.risk}
         })});
         if(!resp.ok) throw new Error("Memory service unavailable");
         const d=await resp.json();
         setOutputs(o=>({...o,[action.key]:`Project memory saved: ${d.memory_id}`}));
         return;
       }
-      const prompt=deliveryActionPrompt(action,item);
-      const resp=await fetch(`${API}/wijerco`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-        query:prompt,
-        department:action.department,
-        subagent:action.subagent,
-        session_id:`deliverable-${item.id}-${action.key}`,
-        conversation_history:[]
-      })});
-      if(!resp.ok) throw new Error("Agent service unavailable");
-      const d=await resp.json();
-      setOutputs(o=>({...o,[action.key]:d.answer || localDeliveryOutput(action,item)}));
+      const d=await post('action',{action:action.key});
+      setOutputs(o=>({...o,[action.key]:`${d.output}\n\nSaved to the note's working notes.`}));
+      load();
     }catch(e){
-      setOutputs(o=>({...o,[action.key]:localDeliveryOutput(action,item)}));
+      setOutputs(o=>({...o,[action.key]:`${localDeliveryOutput(action,it)}\n\n(Offline draft from metadata only, not saved: ${e.message||'agent unavailable'})`}));
     }finally{
       setBusy("");
     }
   };
+  const checks=[["Review",it.quality?.reviewed],["Evidence",it.quality?.evidence_checked],["Branded file",it.quality?.brand_checked]];
+  const events=(detail?.production?.events||[]).slice().reverse();
+  const history=events.length?events.map(e=>({label:STAGE_NAME(e.to_state),detail:e.note||e.actor,at:fmtWhen(e.at)})):(it.history||[]);
+  const canRender=!isDemo && !drafting && !['Client-ready','Finalising','Cancelled'].includes(it.readiness);
+  const awaiting=it.readiness==='Awaiting approval'||it.readiness==='Changes requested';
   return (
     <div className="delivery-drawer-bg" onClick={onClose}>
       <aside className="delivery-drawer" onClick={e=>e.stopPropagation()} aria-label="Deliverable detail">
         <div className="drawer-top">
           <div>
-            <div className="cap-tag">{item.cap}</div>
-            <h2 className="serif drawer-title">{item.title}</h2>
+            <div className="cap-tag">{it.cap}</div>
+            <h2 className="serif drawer-title">{it.title}</h2>
             <div className="delivery-meta">
-              <span className={"stag "+item.st}>{item.status}</span>
-              <span className={"stag "+(item.readiness==='Client-ready'?'st-good':item.readiness==='Blocked'?'st-fail':item.readiness.includes('review')?'st-warn':'st-mute')}>{item.readiness}</span>
-              <span className="tagx">{item.type || 'Artifact'}</span>
+              {it.status!==it.readiness&&<span className={"stag "+it.st}>{it.status}</span>}
+              <span className={"stag "+readinessTag(it.readiness)}>{it.readiness}</span>
+              <span className="tagx">{it.type || 'Artifact'}</span>
+              {it.docBadge&&<span className="tagx">{it.docBadge}</span>}
             </div>
           </div>
           <button className="drawer-close" onClick={onClose} aria-label="Close deliverable detail">×</button>
         </div>
 
+        {!isDemo&&<div className="drawer-section" style={{borderTop:'none',marginTop:0,paddingTop:0}}>
+          <div className="sec-h"><span className="t">Document</span><span className="x">{detail?.running?'drafting now':it.doc_type?(it.stage_label||stage||''):'vault note'}</span></div>
+          {it.doc_type&&<DocStages stage={stage}/>}
+          {it.last_error&&<div className="agent-output" style={{borderColor:'var(--gold-soft)'}}>{it.last_error}</div>}
+          {it.pdf_error&&<div className="mini" style={{marginTop:8}}>PDF not produced: {it.pdf_error}</div>}
+          <div className="doc-actions">
+            {latest&&(latest.docx||latest.pptx)&&<button className="doc-btn primary" disabled={!!busy} onClick={()=>download(latest.version,latest.docx?'docx':'pptx')}>{busy.startsWith('dl-')?'Downloading...':`Download ${latest.docx?'Word':'PowerPoint'} v${latest.version}`}</button>}
+            {latest&&latest.pdf&&<button className="doc-btn" disabled={!!busy} onClick={()=>download(latest.version,'pdf')}>PDF v{latest.version}</button>}
+            {awaiting&&pid&&<button className="doc-btn primary" disabled={!!busy} onClick={()=>decide('approved')}>{busy==='approved'?'Approving...':'Approve for client'}</button>}
+            {canRender&&<button className="doc-btn" disabled={!!busy} onClick={()=>act('render',()=>post('render',{actor:'Aaron'}),d=>`Rendered v${d.version} from the note.`)}>{busy==='render'?'Rendering...':(latest?'Re-render from note':'Render to Word')}</button>}
+            {it.readiness==='Changes requested'&&<button className="doc-btn" disabled={!!busy} onClick={()=>act('request',()=>post('request-approval'),'Approval requested again.')}>Request approval</button>}
+            {drafting&&!detail?.running&&<button className="doc-btn" disabled={!!busy} onClick={()=>act('run',()=>post('run',{actor:'Aaron'}),'Drafting restarted.')}>Continue drafting</button>}
+            {detail?.obsidian_uri&&<a className="doc-btn" href={detail.obsidian_uri}>Open in Obsidian</a>}
+            {!detail?.running&&<button className="doc-btn" disabled={!!busy} onClick={archive}>{busy==='archive'?'Archiving...':confirmArchive?'Click again to archive':'Archive'}</button>}
+          </div>
+          {awaiting&&pid&&<div style={{display:'flex',gap:8,marginTop:8}}>
+            <input className="delivery-input" value={changeNote} onChange={e=>setChangeNote(e.target.value)} placeholder="What should change? (for Request changes)" aria-label="Requested changes" />
+            <button className="doc-btn" disabled={!!busy} onClick={()=>decide('rejected')}>{busy==='rejected'?'Saving...':'Request changes'}</button>
+          </div>}
+          {msg&&<div className="mini" style={{marginTop:8,color:'var(--ink)'}}>{msg}</div>}
+          <div style={{marginTop:12}}>{detail?<DocPreview markdown={detail.body}/>:<div className="mini">Loading the document...</div>}</div>
+          {versions.length>0&&<div className="drawer-list">
+            {versions.map(v=>(
+              <div key={v.version} className="drawer-row">
+                <span><b>Version {v.version}</b><div className="mini">{fmtWhen((v.docx||v.pptx||v.pdf||{}).modified)}</div></span>
+                <span style={{display:'flex',gap:6}}>
+                  {['docx','pptx','pdf'].filter(f=>v[f]).map(f=><button key={f} className="doc-btn" style={{padding:'4px 8px'}} disabled={!!busy} onClick={()=>download(v.version,f)}>{f.toUpperCase()}</button>)}
+                </span>
+              </div>
+            ))}
+          </div>}
+        </div>}
+
         <div className="drawer-grid">
-          <div className="drawer-tile"><div className="k">Score</div><div className="v">{item.intelligence_score}/100 · {item.risk} risk</div></div>
-          <div className="drawer-tile"><div className="k">Confidence</div><div className="v">{item.confidence}</div></div>
-          <div className="drawer-tile"><div className="k">Reuse</div><div className="v">{item.reuse_score}/100</div></div>
-          <div className="drawer-tile"><div className="k">Source</div><div className="v">{item.source}</div></div>
-          <div className="drawer-tile"><div className="k">Updated</div><div className="v">{item.updated}</div></div>
+          <div className="drawer-tile"><div className="k">Score</div><div className="v">{it.intelligence_score}/100 · {it.risk} risk</div></div>
+          <div className="drawer-tile"><div className="k">Confidence</div><div className="v">{it.confidence}</div></div>
+          <div className="drawer-tile"><div className="k">Reuse</div><div className="v">{it.reuse_score}/100</div></div>
+          <div className="drawer-tile"><div className="k">Source</div><div className="v">{it.source}</div></div>
+          <div className="drawer-tile"><div className="k">Updated</div><div className="v">{it.updated}</div></div>
+          {it.approved_by&&<div className="drawer-tile"><div className="k">Approved</div><div className="v">{it.approved_by} · {fmtWhen(it.approved_at)}</div></div>}
         </div>
 
         <div className="drawer-section">
           <div className="sec-h"><span className="t">Recommended next action</span><span className="x">system</span></div>
-          <div className="sticky">{item.next_action}</div>
+          <div className="sticky">{it.next_action}</div>
         </div>
 
         <div className="drawer-section">
-          <div className="sec-h"><span className="t">Agentic actions</span><span className="x">{busy?'running':'ready'}</span></div>
+          <div className="sec-h"><span className="t">Agentic actions</span><span className="x">{busy?'running':'reads the document, saves to the note'}</span></div>
           <div className="agent-actions">
             {DELIVERY_AGENT_ACTIONS.map(a=>(
-              <button key={a.key} className="agent-action" disabled={!!busy} onClick={()=>runAgentAction(a)}>
+              <button key={a.key} className="agent-action" disabled={!!busy||isDemo} onClick={()=>runAgentAction(a)}>
                 <b>{busy===a.key?'Running...':a.title}</b>
                 <span>{a.hint}</span>
               </button>
@@ -1202,9 +1443,9 @@ function DeliverableDrawer({item,onClose}){
         </div>
 
         <div className="drawer-section">
-          <div className="sec-h"><span className="t">System recommendations</span><span className="x">{(item.recommendations||[]).length}</span></div>
+          <div className="sec-h"><span className="t">System recommendations</span><span className="x">{(it.recommendations||[]).length}</span></div>
           <div className="drawer-list">
-            {(item.recommendations||[]).map((r,i)=><div key={i} className="drawer-row"><span><b>{r.title}</b><div className="mini" style={{whiteSpace:'normal'}}>{r.detail}</div></span><span className={"stag "+(r.type==='risk'?'st-fail':r.type==='reuse'?'st-good':'st-warn')}>{r.type}</span></div>)}
+            {(it.recommendations||[]).map((r,i)=><div key={i} className="drawer-row"><span><b>{r.title}</b><div className="mini" style={{whiteSpace:'normal'}}>{r.detail}</div></span><span className={"stag "+(r.type==='risk'?'st-fail':r.type==='reuse'?'st-good':'st-warn')}>{r.type}</span></div>)}
           </div>
         </div>
 
@@ -1215,24 +1456,36 @@ function DeliverableDrawer({item,onClose}){
           </div>
         </div>
 
-        <div className="drawer-section">
-          <div className="sec-h"><span className="t">Evidence</span><span className="x">{item.evidence}</span></div>
+        {detail?.gates?.approvals?.length>0&&<div className="drawer-section">
+          <div className="sec-h"><span className="t">Approvals</span><span className="x">client_sensitive gate</span></div>
           <div className="drawer-list">
-            {(item.evidenceItems||[]).map((x,i)=><div key={i} className="drawer-row"><span><b>{x.label||x.title||'Evidence item'}</b><div className="mini" style={{whiteSpace:'normal'}}>{x.detail||x.source||x.url||'No detail recorded'}</div></span><span className="mini">{x.status||''}</span></div>)}
+            {detail.gates.approvals.map(a=><div key={a.id} className="drawer-row"><span><b>{a.status==='approved'?'Approved':'Changes requested'}</b><div className="mini" style={{whiteSpace:'normal'}}>{a.actor}{a.note?` · ${a.note}`:''}</div></span><span className="mini">{fmtWhen(a.at)}</span></div>)}
+          </div>
+        </div>}
+
+        <div className="drawer-section">
+          <div className="sec-h"><span className="t">Evidence</span><span className="x">{it.evidence}</span></div>
+          <div className="drawer-list">
+            {(it.evidenceItems||[]).map((x,i)=><div key={i} className="drawer-row"><span><b>{x.label||x.title||'Evidence item'}</b><div className="mini" style={{whiteSpace:'normal'}}>{x.detail||x.source||x.url||'No detail recorded'}</div></span><span className="mini">{x.status||''}</span></div>)}
           </div>
         </div>
+
+        {detail?.working_notes&&<div className="drawer-section">
+          <div className="sec-h"><span className="t">Working notes</span><button className="doc-btn" style={{padding:'3px 9px'}} onClick={()=>setShowNotes(v=>!v)}>{showNotes?'Hide':'Show'}</button></div>
+          {showNotes?<DocPreview markdown={detail.working_notes}/>:<div className="mini">Brief, reviews and agent output. Kept in the note, never rendered into the document.</div>}
+        </div>}
 
         <div className="drawer-section">
           <div className="sec-h"><span className="t">Connected surfaces</span><span className="x">Command Centre</span></div>
           <div className="drawer-linkgrid">
-            {(item.related||[]).map(x=><div key={x.label} className="drawer-link"><b>{x.label}</b><span>{x.value}</span></div>)}
+            {(it.related||[]).map(x=><div key={x.label} className="drawer-link"><b>{x.label}</b><span>{x.value}</span></div>)}
           </div>
         </div>
 
         <div className="drawer-section">
-          <div className="sec-h"><span className="t">History</span><span className="x">{(item.history||[]).length}</span></div>
+          <div className="sec-h"><span className="t">History</span><span className="x">{history.length}</span></div>
           <div className="drawer-list">
-            {(item.history||[]).map((x,i)=><div key={i} className="drawer-row"><span>{x.label||x.to_state||'Event'}<div className="mini">{x.detail||x.actor||''}</div></span><span className="mini">{x.at||x.created_at||''}</span></div>)}
+            {history.map((x,i)=><div key={i} className="drawer-row"><span>{x.label||'Event'}<div className="mini" style={{whiteSpace:'normal'}}>{x.detail||''}</div></span><span className="mini">{x.at||''}</span></div>)}
           </div>
         </div>
       </aside>
@@ -1241,47 +1494,62 @@ function DeliverableDrawer({item,onClose}){
 }
 function DeliverablesLibrary(){
   const [items,setItems]=useState(null);
-  const [selected,setSelected]=useState(null);
+  const [types,setTypes]=useState(DOC_TYPE_FALLBACK);
+  const [selectedId,setSelectedId]=useState(null);
   const [query,setQuery]=useState('');
   const [status,setStatus]=useState('All');
   const [cap,setCap]=useState('All');
   const [readiness,setReadiness]=useState('All');
   const [loadState,setLoadState]=useState('loading');
-  useEffect(()=>{
-    setLoadState('loading');
+  const [loadError,setLoadError]=useState('');
+  const [composeOpen,setComposeOpen]=useState(false);
+  const [toast,setToast]=useState('');
+  const load=useCallback(()=>{
+    if(DELIVERABLES_DEMO){ setItems(SEED_DELIVERABLES); setLoadState('demo'); return; }
     fetch(`${API}/deliverables`)
-      .then(r=>r.ok?r.json():Promise.reject())
-      .then(d=>{setItems(d.items||d||[]);setLoadState('ready');})
-      .catch(()=>{setItems(SEED_DELIVERABLES);setLoadState('fallback');});
+      .then(r=>r.ok?r.json():Promise.reject(new Error(`The deliverables service returned ${r.status}.`)))
+      .then(d=>{ setItems(d.items||[]); if(d.error){setLoadError(d.error);setLoadState('error');} else {setLoadError('');setLoadState('ready');} })
+      .catch(e=>{ setLoadError(e?.message && !/fetch/i.test(e.message) ? e.message : 'The deliverables service did not respond.'); setLoadState(s=>(s==='ready'||s==='stale')?'stale':'error'); });
+  },[]);
+  useEffect(()=>{
+    load();
+    if(!DELIVERABLES_DEMO) fetch(`${API}/deliverables/types`).then(r=>r.ok?r.json():Promise.reject()).then(d=>{ if((d.items||[]).length) setTypes(d.items); }).catch(()=>{});
   },[]);
   const enriched=(items||[]).map(inferDeliverable);
+  const active=enriched.some(d=>d.readiness==='Drafting'||d.readiness==='Finalising'||d.running);
+  useEffect(()=>{ if(!active) return; const t=setInterval(load,8000); return ()=>clearInterval(t); },[active]);
   const statuses=uniq(enriched.map(d=>d.status));
   const caps=uniq(enriched.map(d=>d.cap));
   const readinesses=uniq(enriched.map(d=>d.readiness));
   const filtered=enriched.filter(d=>{
-    const hay=[d.title,d.cap,d.type,d.status,d.meta,d.readiness,d.evidence,d.source,d.next_action].map(normText).join(' ');
+    const hay=[d.title,d.cap,d.type,d.status,d.meta,d.readiness,d.evidence,d.source,d.next_action,d.client].map(normText).join(' ');
     return (!query.trim() || hay.includes(normText(query))) &&
       (status==='All' || d.status===status) &&
       (cap==='All' || d.cap===cap) &&
       (readiness==='All' || d.readiness===readiness);
-  }).sort((a,b)=>(b.reuse_score||0)-(a.reuse_score||0));
+  });
   const summary=[
-    {k:"Ready",v:enriched.filter(d=>d.readiness==='Client-ready').length,s:"client-ready deliverables"},
-    {k:"Review",v:enriched.filter(d=>d.readiness!=='Client-ready' && /review|draft|internal/i.test(d.readiness+' '+d.status)).length,s:"need a quality pass"},
-    {k:"Reuse",v:enriched.filter(d=>(d.reuse_score||0)>=70).length,s:"high-value source assets"},
-    {k:"Evidence",v:enriched.filter(d=>/check|partial|missing/i.test(d.evidence)).length,s:"need evidence attention"},
+    {k:"Client-ready",v:enriched.filter(d=>d.readiness==='Client-ready').length,s:"approved by you"},
+    {k:"Awaiting approval",v:enriched.filter(d=>d.readiness==='Awaiting approval'||d.readiness==='Changes requested').length,s:"need your decision"},
+    {k:"Drafting",v:enriched.filter(d=>d.readiness==='Drafting'||d.readiness==='Finalising').length,s:"agents at work"},
+    {k:"Evidence",v:enriched.filter(d=>/check|partial|missing|not checked/i.test(d.evidence)).length,s:"need evidence attention"},
   ];
   const systemRecs=enriched.flatMap(d=>(d.recommendations||[]).map(r=>({...r,item:d})))
     .sort((a,b)=>a.priority-b.priority || (a.item.intelligence_score||0)-(b.item.intelligence_score||0))
     .slice(0,3);
+  const selected=selectedId?enriched.find(d=>d.id===selectedId)||null:null;
+  const created=item=>{ setComposeOpen(false); setToast(`Drafting "${item?.title||'deliverable'}". It moves to Awaiting approval once the quality review is done.`); load(); if(item?.id) setSelectedId(item.id); };
   return (
     <div className="view-wrap"><div className="view-inner" style={{maxWidth:1120}}>
-      <ViewHead eyebrow="Deliverables and evidence" title="Delivery intelligence." lede="Finished work, review candidates, and reusable source assets. Use this surface to see what is ready, what needs attention, and what the system should do next."/>
+      <ViewHead eyebrow="Deliverables and evidence" title="Delivery intelligence." lede="Briefings, decision papers, proposals and decks. Agents draft them into the vault and render branded Word or PowerPoint files. Nothing is client-ready until you approve it."/>
+      {!DELIVERABLES_DEMO&&!composeOpen&&<div style={{marginTop:14}}><button className="content-save" onClick={()=>setComposeOpen(true)}>New deliverable</button></div>}
+      {composeOpen&&<DeliverableComposer types={types} items={enriched} onCreated={created} onClose={()=>setComposeOpen(false)}/>}
+      {toast&&<div className="card" style={{marginTop:14,background:'var(--pine-tint)',color:'var(--pine)',fontSize:13}}>{toast}</div>}
       <div className="delivery-strip">
         {summary.map(x=><div key={x.k} className="delivery-stat"><div className="k">{x.k}</div><div className="v">{x.v}</div><div className="s">{x.s}</div></div>)}
       </div>
       <div className="delivery-tools">
-        <input className="delivery-input" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search deliverables, evidence, action" />
+        <input className="delivery-input" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search deliverables, clients, evidence" />
         <select className="delivery-select" value={status} onChange={e=>setStatus(e.target.value)}>
           <option>All</option>{statuses.map(x=><option key={x}>{x}</option>)}
         </select>
@@ -1296,7 +1564,7 @@ function DeliverablesLibrary(){
         <div className="sec-h"><span className="t">System recommendations</span><span className="x">{systemRecs.length} priority signals</span></div>
         <div className="intel-list">
           {systemRecs.map((r,i)=>(
-            <div key={`${r.item.id}-${i}`} className="intel-card" role="button" tabIndex="0" onClick={()=>setSelected(r.item)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelected(r.item);}}} style={{cursor:'pointer'}}>
+            <div key={`${r.item.id}-${i}`} className="intel-card" role="button" tabIndex="0" onClick={()=>setSelectedId(r.item.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelectedId(r.item.id);}}} style={{cursor:'pointer'}}>
               <div className="h"><b>{r.title}</b><span className={"stag "+(r.type==='risk'?'st-fail':r.type==='reuse'?'st-good':'st-warn')}>{r.type}</span></div>
               <p>{r.item.title}</p>
               <p style={{marginTop:6}}>{r.detail}</p>
@@ -1304,37 +1572,43 @@ function DeliverablesLibrary(){
           ))}
         </div>
       </div>}
-      {loadState==='loading'&&<div className="delivery-empty">Loading delivery intelligence...</div>}
-      {loadState==='fallback'&&<div className="mini" style={{marginTop:12}}>Using local sample data until the deliverables service responds.</div>}
-      {loadState!=='loading'&&filtered.length===0&&<div className="delivery-empty">No deliverables match this view.</div>}
+      {loadState==='loading'&&<div className="delivery-empty">Loading deliverables...</div>}
+      {loadState==='demo'&&<div className="mini" style={{marginTop:12}}>Demo mode: sample items shown because the page was opened with ?demo=1.</div>}
+      {loadState==='error'&&<div className="delivery-empty" style={{borderColor:'var(--gold-soft)'}}>
+        <b>Deliverables are unavailable.</b><div style={{marginTop:6}}>{loadError}</div>
+        <button className="doc-btn" style={{marginTop:10}} onClick={load}>Try again</button>
+      </div>}
+      {loadState==='stale'&&<div className="mini" style={{marginTop:12}}>Could not refresh just now: {loadError} Showing the last list loaded.</div>}
+      {(loadState==='ready'||loadState==='stale')&&enriched.length===0&&<div className="delivery-empty">No deliverables yet. Use New deliverable to draft a briefing, decision paper, proposal or deck.</div>}
+      {enriched.length>0&&filtered.length===0&&<div className="delivery-empty">No deliverables match this view.</div>}
       <div className="delivery-grid">
         {filtered.map((d,i)=>(
-          <div key={d.id||i} className="card card-i delivery-card" role="button" tabIndex="0" onClick={()=>setSelected(d)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelected(d);}}} style={{cursor:'pointer'}}>
-            <div className="doc-ico">Doc</div>
+          <div key={d.id||i} className="card card-i delivery-card" role="button" tabIndex="0" onClick={()=>setSelectedId(d.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelectedId(d.id);}}} style={{cursor:'pointer'}}>
+            <div className="doc-ico">{d.doc_format==='pptx'?'Deck':'Doc'}</div>
             <div className="delivery-card-main">
               <div className="cap-tag">{d.cap}</div>
               <div className="serif delivery-title">{d.title}</div>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
-                <span className="mini">{d.type || 'Artifact'} · {d.updated}</span>
+                <span className="mini">{d.type || 'Artifact'}{d.client?` · ${d.client}`:''} · {d.updated}</span>
                 <span className={"stag "+d.st}>{d.status}</span>
               </div>
               <div className="delivery-meta">
                 <span className="score-ring">{d.intelligence_score}</span>
-                <span className={"stag "+(d.readiness==='Client-ready'?'st-good':d.readiness==='Blocked'?'st-fail':d.readiness.includes('review')?'st-warn':'st-mute')}>{d.readiness}</span>
-                <span className={"tagx"}>{d.evidence}</span>
-                <span className="tagx">{d.confidence} confidence</span>
-                <span className={"tagx"}>{d.risk} risk</span>
+                {d.status!==d.readiness&&<span className={"stag "+readinessTag(d.readiness)}>{d.readiness}</span>}
+                {d.docBadge&&<span className="tagx">{d.docBadge}</span>}
+                {d.doc_type&&DOC_DRAFTING.has(d.stage)&&<span className="tagx">{d.stage_label||d.stage}</span>}
+                <span className="tagx">{d.evidence}</span>
                 <span className="tagx">{d.source}</span>
               </div>
               <div className="delivery-action">
                 <strong>{d.next_action}</strong>
-                <span className="mini">Reuse {d.reuse_score}/100</span>
+                <span className="mini">{d.cost_usd!=null?`US$${Number(d.cost_usd).toFixed(3)}`:`Reuse ${d.reuse_score}/100`}</span>
               </div>
             </div>
           </div>
         ))}
       </div>
-      <DeliverableDrawer item={selected} onClose={()=>setSelected(null)}/>
+      <DeliverableDrawer item={selected} onClose={()=>setSelectedId(null)} onChanged={load}/>
     </div></div>
   );
 }

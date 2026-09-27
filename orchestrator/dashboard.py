@@ -160,6 +160,32 @@ def create_deliverable_from_production(production: dict[str, Any], *, actor: str
         raise RuntimeError("OBSIDIAN_VAULT_PATH is not configured")
     folder = base / "Deliverables"
     folder.mkdir(parents=True, exist_ok=True)
+    pid = production.get("production_id")
+    if pid:
+        # A document production already has its note: hand off by updating it
+        # rather than creating a second record of the same deliverable.
+        for existing in sorted(folder.glob("*.md")):
+            try:
+                text = existing.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            current = _parse_frontmatter(text)
+            if current.get("production_id") != pid:
+                continue
+            current.update({
+                "handoff_at": datetime.now().isoformat(timespec="seconds"),
+                "handoff_by": actor,
+                "updated_at": datetime.now().isoformat(timespec="seconds"),
+            })
+            if note:
+                current["handoff_note"] = re.sub(r"\s+", " ", note).strip()[:300]
+            _write_note(existing, current, _strip_frontmatter(text))
+            audit_log("production.deliverable.update", {
+                "production_id": pid,
+                "path": existing.relative_to(vault).as_posix(),
+                "actor": actor,
+            })
+            return {"ok": True, "path": existing.relative_to(vault).as_posix(), "item": current, "updated": True}
     title = production.get("title") or "Untitled production"
     path = folder / f"{_slugify_title(title)}.md"
     i = 2
@@ -609,8 +635,14 @@ class ContentAssistRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/deliverables")
-async def deliverables() -> dict[str, Any]:
-    return {"items": _load_items("Deliverables") or SEED_DELIVERABLES}
+async def deliverables(demo: bool = False) -> dict[str, Any]:
+    """Real notes only. An empty folder is an empty list and a missing vault is
+    an error the page shows; seed items appear only with ?demo=1."""
+    if demo:
+        return {"items": SEED_DELIVERABLES, "demo": True}
+    from .deliverables import list_items
+
+    return list_items()
 
 
 @router.get("/content/pipeline")
