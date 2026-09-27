@@ -76,3 +76,5 @@ deploy/set-*-api-key.ps1
 deploy/set-*-api-key.bat
 webhook_test2.log
 deploy/webhook_audit.log
+# Deliverables setup transcript written on wijerco
+deploy/deliverables-setup-log.txt

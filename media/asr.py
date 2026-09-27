@@ -232,6 +232,9 @@ def engine_status() -> dict:
         whisper_ok = find_spec("faster_whisper") is not None
     except (ImportError, ValueError):
         whisper_ok = False
+    whisper_error = ""
+    if whisper_ok:
+        whisper_ok, whisper_error = whisper_loadable()
 
     vosk_state = vosk_engine.status()
     return {
@@ -240,6 +243,7 @@ def engine_status() -> dict:
             "model":     WHISPER_MODEL,
             "device":    WHISPER_DEVICE,
             "compute":   WHISPER_COMPUTE,
+            **({"error": whisper_error} if whisper_error else {}),
         },
         "vosk":   vosk_state,
         "hybrid": {"available": whisper_ok and vosk_state["available"]},
@@ -263,7 +267,41 @@ def resolve_engine(engine: str | None) -> str:
     if engine in ("vosk", "hybrid") and not vosk_engine.is_available():
         print(f"[asr] {engine!r} requested but VOSK is unavailable — using whisper")
         return "whisper"
+    # The reverse: Whisper installed but unable to load (a missing native DLL)
+    # would otherwise fail every live session at the handshake. VOSK finals
+    # are less accurate, but hearing something beats hearing nothing.
+    if engine in ("whisper", "hybrid"):
+        ok, why = whisper_loadable()
+        if not ok and vosk_engine.is_available():
+            print(f"[asr] {engine!r} requested but Whisper cannot load ({why}); using vosk")
+            return "vosk"
     return engine
+
+
+_whisper_probe: tuple | None = None
+
+
+def whisper_loadable() -> tuple:
+    """
+    (ok, error): can faster-whisper's native engine actually load here?
+
+    find_spec only proves the package is on disk. On wijerco (27 Sep 2026)
+    ctranslate2 was installed but its DLL would not load, so /voice/engines
+    said Whisper was available while every session failed. Importing
+    ctranslate2 is quick (no torch), and the answer is cached per process.
+    """
+    global _whisper_probe
+    if _whisper_probe is None:
+        try:
+            import ctranslate2  # noqa: F401
+            _whisper_probe = (True, "")
+        except ModuleNotFoundError as exc:
+            _whisper_probe = (False, f"not installed: {exc}")
+        except Exception as exc:  # noqa: BLE001 - installed but its native library will not load
+            from .tts import native_load_hint
+
+            _whisper_probe = (False, native_load_hint("ctranslate2", exc))
+    return _whisper_probe
 
 
 # ---------------------------------------------------------------------------
@@ -707,6 +745,23 @@ class LiveSession:
         self._preroll_bytes = 0
         self._was_speaking = False
         self.asleep = True
+
+    def wake(self) -> bool:
+        """
+        Wake without the phrase: the client says the user is holding the talk
+        key, which is addressing the assistant as clearly as saying its name.
+        Returns True if the session was asleep. The idle timer restarts, so the
+        normal wake timeout still sends it back to sleep afterwards.
+        """
+        self._last_voice_at = time.monotonic()
+        if not self.asleep:
+            return False
+        self.asleep = False
+        if self._wake is not None:
+            self._wake.reset()
+        self._preroll.clear()
+        self._preroll_bytes = 0
+        return True
 
     def _feed_awake(self, pcm_chunk: bytes) -> list:
         """The normal transcription path, once the session is awake."""

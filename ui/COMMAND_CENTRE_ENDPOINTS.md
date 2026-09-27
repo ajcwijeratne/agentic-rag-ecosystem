@@ -430,7 +430,30 @@ Events come back as JSON:
 | `final` | One finished utterance. In `hybrid`, this is the Whisper text |
 | `transcript` | Sent after `{"type":"stop"}`; the whole session text |
 | `thinking` / `answer` | Only when `auto_query` is true — the routed answer |
+| `speak` | One finished sentence of a streaming answer, sent while the rest generates |
+| `turn_cancelled` | The answer in flight was stopped (`reason`: superseded, interrupted, barge_in, closed) |
 | `error` | Something failed; the socket stays usable |
+
+Answer events (`thinking`, `speak`, `answer`, `error`) carry a `turn` number.
+One turn runs at a time and the newest wins: a new utterance, a client
+`{"type":"interrupt"}` (the talk key, Esc) or a spoken "stop" cancels the turn in
+flight, closes its model stream, and sends `turn_cancelled` for it before the next
+turn's `thinking`. Other client frames: `{"type":"flush"}` closes the current
+utterance now (talk key released), `{"type":"wake"}` skips the wake phrase for
+one utterance (talk key held).
+
+### Spoken-reply audio — `POST /voice/tts`, `GET /voice/tts/status`
+
+`ui/apex_voice.js` sends each `speak` fragment to `POST /voice/tts` and plays
+the returned `audio/wav` (24 kHz mono) through Web Audio, fetching the next
+fragment while the current one plays. Body: `{"text", "engine"?, "voice"?,
+"speed"?}`; `engine` is `kokoro` (local, free), `elevenlabs` (needs the
+operator role, uses `APEX_ELEVENLABS_VOICE_ID`, never the clone voice) or empty
+for the server default. Response headers `X-TTS-Engine`, `X-TTS-Voice`,
+`X-TTS-Synth-Ms`, `X-TTS-RTF`, `X-TTS-Fallback-From` describe what spoke.
+A `503` with `{"fallback":"browser"}` means no engine can speak; the page uses
+the browser voice. `GET /voice/tts/status` lists engines, the measured Kokoro
+real-time factor, and suggested voices.
 
 The Command Centre sets `auto_query: false` and drops each `final` into the
 composer, so a misheard question is corrected before it costs a model call. Set

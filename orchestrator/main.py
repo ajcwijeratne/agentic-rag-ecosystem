@@ -76,6 +76,10 @@ app.add_middleware(CORSMiddleware, **cors_kwargs())
 # memory overview, sector intel, routing inspector, scheduled runs)
 app.include_router(dashboard_router)
 
+# Deliverables: documents drafted, rendered, reviewed and approved
+from .deliverables import router as deliverables_router
+app.include_router(deliverables_router)
+
 # Inbox front door (all channels) + operating daemon controls
 from .inbox import router as inbox_router
 app.include_router(inbox_router)
@@ -83,6 +87,8 @@ app.include_router(inbox_router)
 # Voice: VAD-gated speech recognition (Whisper + VOSK), file and live socket
 from .voice import router as voice_router
 app.include_router(voice_router)
+from .voice_tts import router as voice_tts_router
+app.include_router(voice_tts_router)   # POST /voice/tts: spoken-reply audio
 
 # Screen awareness: look at the display and describe it. Read-only.
 from .screen import router as screen_router

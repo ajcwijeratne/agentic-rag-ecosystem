@@ -19,6 +19,9 @@ Three kinds of command:
   action    run something. Anything that spends money or changes state needs
             confirmation first — the assistant says what it is about to do and
             waits for "yes".
+  voice     the voice console: exact phrases, said on their own, that change how
+            Apex listens and speaks ("go hands free", "push to talk mode", "use
+            the natural voice"). Applied by the browser, never sent to a model.
 """
 
 from __future__ import annotations
@@ -219,12 +222,93 @@ ACTIONS: list = [
 
 
 # ---------------------------------------------------------------------------
+# Voice console
+# ---------------------------------------------------------------------------
+
+# Exact phrases only, matched against the WHOLE utterance after normalising, so
+# "should I go hands free in lectures" is a question for the agent while "go
+# hands free" on its own flips the microphone. Each entry: the settings the
+# browser applies, and what Apex says back. Nothing here reaches a model.
+VOICE_CONSOLE: dict = {
+    "mic_open": (
+        ["go hands free", "hands free", "hands free mode", "hands free listening",
+         "open mic", "open the mic", "always listen"],
+        {"mic_mode": "open"},
+        "Hands-free listening is on. I will hear anything said in the room, so say "
+        "push to talk mode when you want the key back.",
+    ),
+    "mic_ptt": (
+        ["push to talk", "push to talk mode", "back to push to talk", "use the talk key"],
+        {"mic_mode": "ptt"},
+        "Push to talk. Hold your talk key while you speak; the mic stays closed otherwise.",
+    ),
+    "voice_natural": (
+        ["use the natural voice", "natural voice", "use eleven labs", "use elevenlabs",
+         "switch to the natural voice"],
+        {"tts_engine": "elevenlabs"},
+        "Switching to the natural voice.",
+    ),
+    "voice_local": (
+        ["use the local voice", "local voice", "use kokoro", "switch to the local voice"],
+        {"tts_engine": "kokoro"},
+        "Local voice. Free, and nothing leaves this machine.",
+    ),
+    "voice_browser": (
+        ["use the browser voice", "browser voice", "use the windows voice", "use the basic voice"],
+        {"tts_engine": "browser"},
+        "Browser voice.",
+    ),
+    "speed_up": (
+        ["speak faster", "talk faster", "speed up", "a bit faster"],
+        {"tts_speed": "faster"},
+        "A little faster.",
+    ),
+    "slow_down": (
+        ["speak slower", "talk slower", "slow down", "a bit slower"],
+        {"tts_speed": "slower"},
+        "A little slower.",
+    ),
+    "stage_open": (
+        ["show your face", "show yourself", "open the stage", "full screen mode"],
+        {"stage": "open"},
+        "Here I am.",
+    ),
+    "stage_close": (
+        ["hide your face", "close the stage", "hide yourself"],
+        {"stage": "close"},
+        "Stepping back.",
+    ),
+}
+
+_CONSOLE_FILLER = re.compile(r"^(?:(?:hey|ok|okay)\s+)?(?:apex\s+)?|\s+(?:please|now|apex)$")
+
+
+def _console_norm(text: str) -> str:
+    t = re.sub(r"[^a-z ]+", " ", (text or "").lower().replace("-", " "))
+    t = " ".join(t.split())
+    for _ in range(2):
+        t = _CONSOLE_FILLER.sub("", t).strip()
+    return t
+
+
+def match_voice_console(text: str) -> str | None:
+    """The console verb this whole utterance is, or None."""
+    norm = _console_norm(text)
+    if not norm:
+        return None
+    for key, (phrases, _settings, _say) in VOICE_CONSOLE.items():
+        if norm in phrases:
+            return key
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Interpretation
 # ---------------------------------------------------------------------------
 
 @dataclass
 class Command:
-    kind:    str            # navigate | readout | action
+    kind:    str            # navigate | readout | action | voice
     target:  str
     spoken:  str = ""
     events:  list = field(default_factory=list)
@@ -252,6 +336,10 @@ def interpret(text: str) -> Command | None:
     if not text or not text.strip():
         return None
     clean = text.strip()
+
+    verb = match_voice_console(clean)
+    if verb:
+        return Command(kind="voice", target=verb)
 
     for action in ACTIONS:
         if any(p in clean.lower() for p in action.phrases):
@@ -327,6 +415,14 @@ def _page_label(page: str) -> str:
 
 async def execute(cmd: Command) -> dict:
     """Run a command and return an answer payload shaped like the others."""
+    if cmd.kind == "voice":
+        _phrases, settings, say = VOICE_CONSOLE[cmd.target]
+        return {
+            "answer": say, "route": "ui", "model": "", "cost_usd": 0.0,
+            # The browser owns the mic and the speaker, so it applies these.
+            "ui": {"voice": dict(settings), "console": cmd.target},
+        }
+
     if cmd.kind == "navigate":
         return {
             "answer": f"Opening {_page_label(cmd.target)}.",

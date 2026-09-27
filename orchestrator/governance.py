@@ -13,6 +13,8 @@ from typing import Any, Generator
 
 from media import registry
 
+from orchestrator.doc_types import DOC_GATES, is_document
+
 try:
     from common.security import audit_log
 except Exception:
@@ -65,7 +67,7 @@ def _approval(gate: str, target_id: str) -> dict | None:
     with _db() as conn:
         row = conn.execute(
             "SELECT * FROM gate_approvals WHERE gate=? AND target_id=? "
-            "ORDER BY at DESC LIMIT 1",
+            "ORDER BY at DESC, rowid DESC LIMIT 1",
             (gate, target_id),
         ).fetchone()
     return dict(row) if row else None
@@ -110,6 +112,15 @@ def approve(gate: str, target_id: str, actor: str = "operator", note: str = "", 
     if gate == "generated_image" and status == "approved":
         _mark_generated_assets_reviewed(target_id, actor, note)
     audit_log("governance.approve", row)
+    if gate == "client_sensitive":
+        # A document's approval finalises it (final render, PDF, Client-ready).
+        # Whichever path approved it, drawer, Operating or Telegram, lands here.
+        try:
+            from orchestrator import deliverables
+
+            deliverables.on_gate_decision(row)
+        except Exception as exc:  # noqa: BLE001 - approval is recorded regardless
+            audit_log("deliverables.hook_error", {"target_id": target_id, "error": str(exc)[:300]})
     return row
 
 
@@ -189,6 +200,12 @@ def _mark_generated_assets_reviewed(production_id: str, actor: str, note: str) -
 
 def required_for_transition(production: dict[str, Any], to_state: str) -> list[str]:
     required: list[str] = []
+    if is_document(production.get("format")):
+        # Documents are never sent or published by the system, so the only
+        # gate is Aaron's client_sensitive approval before Client-ready.
+        if production.get("state") == "review" and to_state == "publish":
+            required.extend(DOC_GATES)
+        return required
     if production.get("state") == "review" and to_state == "publish":
         required.extend(["public_claim", "external_publish"])
         if _has_client_confidential_asset(production):
@@ -243,7 +260,7 @@ def list_approvals(target_id: str | None = None, limit: int = 200) -> list[dict]
     params.append(limit)
     with _db() as conn:
         rows = conn.execute(
-            f"SELECT * FROM gate_approvals {where} ORDER BY at DESC LIMIT ?",
+            f"SELECT * FROM gate_approvals {where} ORDER BY at DESC, rowid DESC LIMIT ?",
             params,
         ).fetchall()
     return [dict(r) for r in rows]

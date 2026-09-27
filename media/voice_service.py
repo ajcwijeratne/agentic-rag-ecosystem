@@ -9,6 +9,8 @@ The speech front door for the ecosystem, on port 8009.
   POST /transcribe             transcribe a file already on disk
   POST /transcribe/upload      transcribe an uploaded file (multipart)
   WS   /ws/transcribe          live microphone streaming
+  GET  /tts/status             speech output engines and measured speed
+  POST /tts                    one reply fragment -> audio/wav (Kokoro / ElevenLabs)
 
 Security follows the same rules as every other service here: loopback is
 trusted, remote callers need X-API-Key, CORS is restricted to ALLOWED_ORIGINS,
@@ -96,6 +98,20 @@ app = FastAPI(
     dependencies=[Depends(require_api_key)],
 )
 app.add_middleware(CORSMiddleware, **cors_kwargs())
+
+# Speech out (Kokoro locally, ElevenLabs optionally) lives beside speech in, so
+# the models load in this process and never in the orchestrator's.
+from .tts_routes import router as tts_router  # noqa: E402
+
+app.include_router(tts_router)
+
+
+@app.on_event("startup")
+def _warm_tts() -> None:
+    """Load Kokoro and time it in the background, so the first reply is not slow."""
+    from . import tts
+
+    tts.warm_in_background()
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +345,11 @@ async def ws_transcribe(ws: WebSocket):
             elif action == "sleep":
                 await asyncio.to_thread(session.sleep)
                 await ws.send_json({"type": "sleep", "requested": True})
+            elif action == "wake":
+                # The talk key is held: that is addressing the assistant, so the
+                # wake phrase is not needed for this utterance.
+                if await asyncio.to_thread(session.wake):
+                    await ws.send_json({"type": "wake", "phrase": "(talk key)"})
             elif action == "ping":
                 await ws.send_json({"type": "pong", "speaking": session.speaking})
 

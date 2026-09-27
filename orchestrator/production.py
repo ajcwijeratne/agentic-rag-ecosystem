@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Generator
 
+from .doc_types import DOC_FORMATS, DOC_TYPES
+
 STATES = (
     "idea",
     "brief",
@@ -25,7 +27,7 @@ STATES = (
     "cancelled",
 )
 STATE_ORDER = {state: i for i, state in enumerate(STATES)}
-FORMATS = (
+VIDEO_FORMATS = (
     "linkedin_short",
     "explainer_carousel",
     "talking_head_clip",
@@ -33,6 +35,9 @@ FORMATS = (
     "course_teaser",
     "proposal_walkthrough",
 )
+# Documents (client briefings, decision papers, proposals, decks) share the
+# state machine. orchestrator/deliverables.py drives them; see doc_types.py.
+FORMATS = VIDEO_FORMATS + tuple(DOC_TYPES)
 JSON_FIELDS = {
     "brief", "research", "script", "asset_plan", "edit_plan", "review",
     "linked_assets", "publish_targets", "gates",
@@ -52,6 +57,19 @@ _NEXT_ACTIONS = {
     "publish": ("Record measures", "operator", "Capture outcome and performance signals."),
     "measure": ("Complete", "operator", "Production is through the measured workflow."),
     "cancelled": ("None", "n/a", "This production was cancelled and will not advance further."),
+}
+
+_DOC_NEXT_ACTIONS = {
+    "idea": ("Build brief", "deliverables", "Turn Aaron's brief into a structured writing brief."),
+    "brief": ("Gather evidence", "deliverables", "Pull sources and facts the document can cite."),
+    "research": ("Create outline", "deliverables", "Shape the evidence into the document's sections."),
+    "outline": ("Write draft", "deliverables", "Write the document into its Deliverables note."),
+    "draft": ("Render document", "deliverables", "Render the note to a versioned file."),
+    "asset_plan": ("Render document", "deliverables", "Render the note to a versioned file."),
+    "render": ("Run quality review", "quality-reviewer", "Check evidence, structure, voice and fees."),
+    "review": ("Approve for client", "Aaron", "Approve the client_sensitive gate. Nothing is sent automatically."),
+    "publish": ("Send to client", "Aaron", "The approved file is ready. Aaron sends it himself."),
+    "measure": ("Complete", "operator", "The document is approved and closed."),
 }
 
 ACTION_DEFINITIONS = {
@@ -212,8 +230,12 @@ def _intelligence(prod: dict[str, Any]) -> dict[str, Any]:
             "confidence": "n/a",
             "priority": 0,
         }
-    label, actor, reason = _NEXT_ACTIONS.get(state, ("Review production", "operator", "Check the production state."))
+    is_doc = prod.get("format") in DOC_FORMATS
+    actions = _DOC_NEXT_ACTIONS if is_doc else _NEXT_ACTIONS
+    label, actor, reason = actions.get(state, ("Review production", "operator", "Check the production state."))
     next_state = STATES[min(STATE_ORDER.get(state, 0) + 1, len(STATES) - 1)] if state in STATE_ORDER else state
+    if is_doc and state in ("draft", "asset_plan"):
+        next_state = "render"
     pending_gates: list[dict[str, Any]] = []
     try:
         from . import governance
@@ -221,10 +243,9 @@ def _intelligence(prod: dict[str, Any]) -> dict[str, Any]:
         pending_gates = governance.pending_gates(prod, next_state)
     except Exception:
         pending_gates = []
-    missing = [
-        key for key in ("brief", "research", "script", "asset_plan", "edit_plan", "review")
-        if not _slice_ready(prod.get(key))
-    ]
+    slices = ("brief", "research", "script", "edit_plan", "review") if is_doc else (
+        "brief", "research", "script", "asset_plan", "edit_plan", "review")
+    missing = [key for key in slices if not _slice_ready(prod.get(key))]
     readiness = "blocked" if pending_gates else "ready" if state in {"publish", "measure"} else "in_progress"
     confidence = "High" if len(missing) <= 2 else "Medium" if len(missing) <= 4 else "Low"
     return {
@@ -418,6 +439,10 @@ async def advance(production_id: str, actor: str = "operator") -> dict:
     prod = get_production(production_id)
     if not prod:
         raise KeyError("production not found")
+    if prod.get("format") in DOC_FORMATS:
+        from .deliverables import advance_document
+
+        return await advance_document(production_id, actor=actor)
     state = prod["state"]
     idx = STATE_ORDER[state]
     if idx >= len(STATES) - 1:
@@ -561,6 +586,8 @@ def intelligence() -> dict[str, Any]:
         state_index = STATE_ORDER.get(str(prod.get("state")), 0)
         if state_index >= STATE_ORDER["research"] and not _slice_ready(prod.get("research")):
             weak_evidence.append({**item, "reason": "Research slice is empty for a production beyond the research stage."})
+        if prod.get("format") in DOC_FORMATS:
+            continue  # documents have no media assets to plan or generate
         if prod.get("state") in {"draft", "asset_plan", "render", "review"} and intel.get("asset_status") == "none":
             asset_gaps.append({**item, "reason": "Production is approaching render/review without linked or planned assets."})
         if prod.get("state") in {"asset_plan", "render", "review"} and intel.get("asset_status") == "planned":
