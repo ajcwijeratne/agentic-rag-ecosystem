@@ -10,10 +10,12 @@ the structured fields the UI needs; the note body is free text for detail.
       Content Pipeline/  -> GET /content/pipeline   (grouped by frontmatter `col`)
       Engagements/       -> GET /engagements
       Sector Intel/      -> GET /intel/feed
-      Scheduled Runs/    -> GET /schedule/list
       Knowledge Base/    -> GET /kb/overview         (sources + derived stats)
       Memory/            -> GET /memory/overview     (grouped by frontmatter `g`)
       Routing/           -> GET /trace/recent
+
+GET /schedule/list is not vault-backed: orchestrator/schedule_registry.py reads
+the daemon, n8n and the OS scheduler directly.
 
 The vault location comes from OBSIDIAN_VAULT_PATH (the same variable the RAG
 indexer uses), falling back to the value in the repo .env. If the vault or a
@@ -572,9 +574,6 @@ SEED_INTEL = [
      "head": "Consultation opens on teaching-qualification expectations for academic staff",
      "so": "The forcing function you have been writing about."},
 ]
-SEED_SCHED = [
-    {"name": "Morning email triage", "when": "Daily · 7:00am", "next": "Tomorrow 7:00am", "st": "st-good", "stl": "OK"},
-]
 SEED_KB_SOURCES = [
     {"name": "WijerCo capability briefs", "chunks": 210, "fresh": "Current", "st": "st-good"},
     {"name": "TEQSA & AQF reference set", "chunks": 340, "fresh": "Current", "st": "st-good"},
@@ -1010,8 +1009,11 @@ def _save_sector_briefing(inst: dict[str, Any], year: Any, markdown: str, source
 
 
 @router.get("/schedule/list")
-async def schedule_list() -> dict[str, Any]:
-    return {"items": _load_items("Scheduled Runs") or SEED_SCHED}
+def schedule_list() -> dict[str, Any]:
+    # Live state from the daemon, n8n and the OS scheduler; see schedule_registry.
+    # The old `Scheduled Runs/` vault notes were hand-typed and are no longer read.
+    from .schedule_registry import list_schedules
+    return {"items": list_schedules()}
 
 
 # ---------------------------------------------------------------------------

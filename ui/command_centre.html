@@ -3801,28 +3801,28 @@ function TraceBars({title,rows}){
   </div>;
 }
 
-// Scheduled runs
-const SEED_SCHED = [
-  {name:"Morning email triage", when:"Daily · 7:00am", next:"Tomorrow 7:00am", st:"st-good", stl:"OK"},
-  {name:"Teams catch-up summary", when:"Weekdays · 8:30am", next:"Tomorrow 8:30am", st:"st-good", stl:"OK"},
-  {name:"Sector intel sweep", when:"Mon · 6:00am", next:"Mon 6:00am", st:"st-good", stl:"OK"},
-  {name:"Self-improve loop", when:"Fri · 5:00pm", next:"Fri 5:00pm", st:"st-warn", stl:"1 proposal queued"},
-  {name:"KB freshness check", when:"Daily · 11:00pm", next:"Tonight 11:00pm", st:"st-fail", stl:"Failed"},
-];
+// Scheduled runs — live from the daemon, n8n and the OS scheduler (orchestrator/schedule_registry.py).
+// No seed rows: a made-up "OK" is worse than admitting the API is unreachable.
+const SCHED_SRC = {daemon:'daemon', n8n:'n8n', 'task-scheduler':'Task Scheduler', systemd:'systemd', registry:'registry'};
 function ScheduledRunsView(){
   const [rows,setRows]=useState(null);
-  useEffect(()=>{fetch(`${API}/schedule/list`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setRows(d.items||d)).catch(()=>setRows(SEED_SCHED));},[]);
+  const [err,setErr]=useState(false);
+  useEffect(()=>{fetch(`${API}/schedule/list`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setRows(d.items||d)).catch(()=>{setErr(true);setRows([]);});},[]);
   return (
     <div className="view-wrap"><div className="view-inner">
-      <ViewHead eyebrow="Automation" title="Scheduled runs." lede="Everything that runs on its own. Last result, next run, and anything that needs a look."/>
+      <ViewHead eyebrow="Automation" title="Scheduled runs." lede="Everything that runs on its own, read live from the daemon, n8n and the OS scheduler. Last result, next run, and anything that needs a look."/>
       <div className="card" style={{marginTop:24,padding:'4px 20px'}}>
+        {rows===null && <p className="mini" style={{padding:'14px 0'}}>Reading schedulers…</p>}
+        {err && <p className="mini" style={{padding:'14px 0'}}>Couldn't reach the orchestrator, so no schedule state is shown.</p>}
         {(rows||[]).map((r,i)=>(
-          <div key={i} className="kv" style={{alignItems:'center'}}>
+          <div key={i} className="kv" style={{alignItems:'center'}} title={r.detail||''}>
             <span style={{minWidth:0}}>
               <span style={{color:'var(--ink)',fontWeight:500}}>{r.name}</span>
               <span className="mini" style={{marginLeft:10}}>{r.when}</span>
+              {r.source && <span className="mini" style={{marginLeft:10,opacity:.7}}>· {SCHED_SRC[r.source]||r.source}</span>}
             </span>
             <span style={{display:'flex',gap:14,alignItems:'center'}}>
+              {r.last && <span className="mini">last {new Date(r.last).toLocaleString([], {day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})}</span>}
               <span className="mini">next {r.next}</span>
               <span className={"stag "+r.st}>{r.stl}</span>
             </span>

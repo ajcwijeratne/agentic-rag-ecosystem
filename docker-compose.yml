@@ -102,6 +102,10 @@ services:
       - N8N_PORT=5678
       - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
       - NODE_ENV=production
+      # Schedule Trigger cron runs in GENERIC_TIMEZONE; n8n's own default is
+      # America/New_York, which fired "06:30" workflows at 20:30 Melbourne.
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Australia/Melbourne}
+      - TZ=${GENERIC_TIMEZONE:-Australia/Melbourne}
       - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
       - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
       - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}

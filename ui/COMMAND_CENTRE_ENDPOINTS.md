@@ -2,7 +2,7 @@
 
 Eight new pages each call one GET endpoint on mount. Until the endpoint exists the page renders built-in seed data, so you can add these one at a time and the UI keeps working.
 
-**Now implemented** in `orchestrator/dashboard.py`, mounted on the existing app. All eight sources are authored in the Obsidian vault, one note per item.
+**Now implemented** in `orchestrator/dashboard.py`, mounted on the existing app. The note-backed sources are authored in the Obsidian vault, one note per item. Knowledge base and Scheduled runs are measured live instead.
 
 Vault layout, under `OBSIDIAN_VAULT_PATH/13_Command Centre/`:
 
@@ -12,7 +12,7 @@ Vault layout, under `OBSIDIAN_VAULT_PATH/13_Command Centre/`:
 | `Content Pipeline/` | `/content/pipeline` | legacy fallback only |
 | `Engagements/` | `/engagements` | flat list |
 | `Sector Intel/` | `/intel/feed` | flat list |
-| `Scheduled Runs/` | `/schedule/list` | flat list |
+| — (retired: reads the live schedulers, not notes) | `/schedule/list` | live registry |
 | — (retired: KB reads Qdrant, not notes) | `/kb/overview` | live corpus stats |
 | `Memory/` | `/memory/overview` | by frontmatter `g` |
 | `Routing/` | `/trace/recent` | flat list |
@@ -364,26 +364,31 @@ Envelope: `{"items": [...]}` or bare array.
 
 ## 8. Scheduled runs — `GET /schedule/list`
 
-Backs the Scheduled runs page. Source: your scheduled-tasks registry plus last-run results.
+Backs the Scheduled runs page and the schedule node on the Overview. As of September 2026 nothing here is typed in. `orchestrator/schedule_registry.py` reads each scheduler that owns a loop. The `13_Command Centre/Scheduled Runs/` notes are no longer read.
 
-Envelope: `{"items": [...]}` or bare array.
+| source | what is listed | where state comes from |
+|--------|----------------|------------------------|
+| `daemon` | The operating daemon's cycle, plus consolidation, measure sweep, weekly initiative, learning reflection and monthly review | Schedule from `orchestrator/daemon.py` settings (`CONSOLIDATION_HOUR` etc.), last run from `data/daemon_state.json`, failures from `logs/daemon.jsonl`, liveness from `logs/daemon_heartbeat`. If the heartbeat is older than 3 intervals, every daemon job shows `Daemon stopped`. |
+| `n8n` | Workflows with a Schedule Trigger | With `N8N_API_KEY` set, the live instance (`N8N_API_URL`, default `http://localhost:5678/api/v1`) supplies the active flag and last execution. Without a key, the repo definitions in `n8n-workflows/` and `n8n/workflows/` are listed as `Unverified`. Cron is evaluated in `GENERIC_TIMEZONE`, n8n's default `America/New_York` if unset. |
+| `task-scheduler` / `systemd` | Windows scheduled tasks, or systemd timers on Linux, whose names start with `SCHEDULE_TASK_PREFIXES` (default `RAG,WijerCo,rag-`) | `Get-ScheduledTask` / `systemctl list-timers` |
+
+Results are cached for `SCHEDULE_CACHE_TTL` seconds (default 30). A source that throws becomes a single `Unreadable` row rather than blanking the page. Rows are sorted with failures first.
+
+Envelope: `{"items": [...]}`.
 
 | field | type | example | notes |
 |-------|------|---------|-------|
-| `name` | string | `"Morning email triage"` | Task name |
-| `when` | string | `"Daily · 7:00am"` | Schedule, free text |
-| `next` | string | `"Tomorrow 7:00am"` | Next run, free text |
+| `name` | string | `"WijerCo · Morning Briefing"` | Loop name |
+| `when` | string | `"Weekdays · 6:30am"` | Schedule, derived from cron or trigger |
+| `next` | string | `"Tomorrow 6:30am"` | Next run, local time, or a state such as `"when daemon restarts"` |
 | `st` | string | `"st-good"` | Status colour class |
-| `stl` | string | `"OK"` | Last result label |
+| `stl` | string | `"OK"` | `OK`, `Failed`, `Overdue`, `Stopped`, `Daemon stopped`, `Paused`, `Inactive`, `Unverified`, `Not run yet`, `Running` |
+| `source` | string | `"n8n"` | `daemon`, `n8n`, `task-scheduler`, `systemd`, `registry` |
+| `last` | string or null | `"2026-09-27T19:47:19+00:00"` | Last run, ISO 8601 |
+| `next_at` | string or null | `"2026-09-29T06:30+10:00"` | Next run, ISO 8601 |
+| `detail` | string | `"Last execution success."` | Why the status is what it is |
 
-```json
-{ "items": [
-  { "name": "Morning email triage", "when": "Daily · 7:00am",
-    "next": "Tomorrow 7:00am", "st": "st-good", "stl": "OK" },
-  { "name": "KB freshness check", "when": "Daily · 11:00pm",
-    "next": "Tonight 11:00pm", "st": "st-fail", "stl": "Failed" }
-] }
-```
+The page shows an error, not seed rows, when the endpoint is unreachable.
 
 ---
 
