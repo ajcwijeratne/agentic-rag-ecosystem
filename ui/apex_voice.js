@@ -60,8 +60,13 @@
     set(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) { /* private mode */ } },
   };
 
+  /** A phone-sized screen: touch first, no talk key, battery and mic light matter. */
+  const isPhone = () => !!(window.matchMedia && window.matchMedia("(max-width: 760px)").matches);
+
   const settings = {
-    micMode: store.get("cc_mic_mode", "open") === "ptt" ? "ptt" : "open",
+    // Phones default to push to talk: an always-listening mic in a pocket
+    // hears everything and keeps Android's recording light on.
+    micMode: store.get("cc_mic_mode", isPhone() ? "ptt" : "open") === "ptt" ? "ptt" : "open",
     pttKey: store.get("cc_ptt_key", "Space"),
     ttsEngine: store.get("cc_tts_engine", "auto"),          // auto | kokoro | elevenlabs | browser
     ttsVoice: store.get("cc_apex_voice", ""),                // "" = the server default
@@ -636,7 +641,7 @@
   }
 
   /* ------------------------------------------------------------- talk key */
-  const ptt = { held: false, source: "", downAt: 0, tailUntil: 0, flushTimer: 0 };
+  const ptt = { held: false, source: "", downAt: 0, tailUntil: 0, flushTimer: 0, lastUse: 0 };
   const isTyping = (el) => !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 
   function pttDown(source) {
@@ -653,6 +658,7 @@
   function pttUp() {
     if (!ptt.held) return;
     ptt.held = false;
+    ptt.lastUse = now();
     ptt.tailUntil = now() + 320;               // keep the last syllable
     clearTimeout(ptt.flushTimer);
     ptt.flushTimer = setTimeout(() => {
@@ -1222,6 +1228,15 @@
   .apxv-hint{position:absolute;left:14px;bottom:16px;font:400 10px 'IBM Plex Mono',monospace;color:#46587a;letter-spacing:.08em;pointer-events:none}
   @container (max-width:880px){.apxv-meta,.apxv-hint{display:none}.apxv-top{max-width:calc(50% - 56px)}.apxv-say{font-size:15px}}
   @media (max-width:760px){.apxv-meta,.apxv-hint{display:none}.apxv-say{font-size:15px}}
+  .cc-phone .apxv-chip,.cc-phone .apxv-hint,.cc-phone .apxv-meta,.cc-phone .keyrow{display:none}
+  .cc-phone .apxv-top{top:60px;left:12px;right:12px;max-width:none;justify-content:center}
+  .cc-phone .apxv-btn{padding:8px 12px;font-size:10.5px}
+  .cc-phone .apxv-panel{left:12px;right:12px;width:auto;top:100px;max-height:calc(100% - 190px);overflow:auto}
+  .cc-phone .apxv-panel select,.cc-phone .apxv-panel input[type=range]{font-size:16px;max-width:190px}
+  .cc-phone .apxv-cap{bottom:96px;width:calc(100% - 24px)}
+  .cc-phone .apxv-say{font-size:15.5px}
+  .cc-phone .apxv-hold{opacity:1;visibility:visible;bottom:18px;min-width:230px;padding:17px 26px;font-size:12px;border-width:1.5px;
+    -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
   `;
 
   const stage = {
@@ -1246,7 +1261,7 @@
         <div class="apxv-panel" aria-label="Voice settings">
           <div class="apxv-row"><label>Microphone</label>
             <select data-set="micMode"><option value="open">Hands-free</option><option value="ptt">Push to talk</option></select></div>
-          <div class="apxv-row"><label>Talk key</label><button class="apxv-btn" data-act="key">Space</button></div>
+          <div class="apxv-row keyrow"><label>Talk key</label><button class="apxv-btn" data-act="key">Space</button></div>
           <div class="apxv-row"><label>Voice engine</label>
             <select data-set="ttsEngine"><option value="auto">Auto</option><option value="kokoro">Local (Kokoro)</option>
             <option value="elevenlabs">Natural (ElevenLabs)</option><option value="browser">Browser</option></select></div>
@@ -1292,6 +1307,7 @@
         });
       });
       const hold = this.dom.hold;
+      hold.addEventListener("contextmenu", (e) => e.preventDefault());   // long-press menu on Android
       hold.addEventListener("pointerdown", (e) => { e.preventDefault(); try { hold.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ } pttDown("button"); hold.classList.add("on"); });
       const up = () => { if (ptt.source === "button") pttUp(); hold.classList.remove("on"); };
       hold.addEventListener("pointerup", up);
@@ -1497,6 +1513,22 @@
   }
   document.addEventListener("visibilitychange", kick);
 
+  // Phones: let go of the microphone when the screen locks or the tab goes to
+  // the background (after any reply finishes), and after two idle minutes in
+  // push to talk. The next hold of the talk button opens it again.
+  function releaseMic(reason) {
+    if (!isPhone() || !recording()) return;
+    if (mouth.speaking) { mouth.done().then(() => releaseMic(reason)); return; }
+    try { page.stopVoice && page.stopVoice(true); } catch (e) { /* ignore */ }
+    bus.set({ state: "off", partial: "", note: reason === "idle" ? "Mic closed after two quiet minutes. Hold to talk opens it." : "" });
+  }
+  document.addEventListener("visibilitychange", () => { if (document.hidden) releaseMic("hidden"); });
+  setInterval(() => {
+    if (!isPhone() || settings.micMode !== "ptt" || !recording() || ptt.held || mouth.speaking) return;
+    if (bus.writing || ["hearing", "thinking", "speaking"].includes(bus.state)) return;
+    if (ptt.lastUse && now() - ptt.lastUse > 120000) releaseMic("idle");
+  }, 15000);
+
   // Reflect the page's mic being switched off elsewhere.
   setInterval(() => {
     if (!page.isRecording) return;
@@ -1514,7 +1546,9 @@
     listening: "listening", hearing: "hearing you", thinking: "thinking",
     speaking: "speaking", error: "voice error",
   };
-  const GROW = 0.75;
+  // How far the centre grows while engaged. Less on a phone, where the
+  // starburst would otherwise run off the sides of the screen.
+  const growBy = () => (isPhone() ? 0.3 : 0.75);
   const core = {
     radial: null, last: 0, g: 0,
     /** Draw the centre into `g` (CSS pixels). False means "draw your own". */
@@ -1525,13 +1559,13 @@
       this.g = lerp(this.g, stage.visible ? 1 : 0, 1 - Math.pow(0.04, dt));
       if (!this.radial) this.radial = new Radial({ grains: 1300 });
       tickAudio(dt);
-      this.radial.drawEmbedded(g, cx, cy, R * (1 + GROW * this.g), dt);
+      this.radial.drawEmbedded(g, cx, cy, R * (1 + growBy() * this.g), dt);
       return true;
     },
     /** 0 at rest, 1 fully grown. The map uses it to make room. */
     grow() { return this.g; },
     /** Is (dx, dy) from the centre on the core? */
-    hit(dx, dy, R) { return Math.hypot(dx, dy) < R * (1 + GROW * this.g) * 1.45; },
+    hit(dx, dy, R) { return Math.hypot(dx, dy) < R * (1 + growBy() * this.g) * 1.45; },
     open() { audio.resume(); stage.toggle(); },
     /** A few words for the overview's caption, or "" when there is nothing to say. */
     words() {
@@ -1568,7 +1602,7 @@
 
   /* ---------------------------------------------------------------- API */
   window.ApexVoice = {
-    version: "1.2.0",
+    version: "1.3.0",
     settings, bus, stage, tts, core, mini,
     dock: { mount: (el) => stage.mount(el), unmount: (el) => stage.unmount(el) },
     get engaged() { return stage.visible; },

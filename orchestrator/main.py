@@ -84,6 +84,10 @@ app.include_router(deliverables_router)
 from .outputs import router as outputs_router
 app.include_router(outputs_router)
 
+# One-call status for the phone: services, daemon, voice, spend, queue
+from .status_summary import router as status_summary_router
+app.include_router(status_summary_router)
+
 # Inbox front door (all channels) + operating daemon controls
 from .inbox import router as inbox_router
 app.include_router(inbox_router)

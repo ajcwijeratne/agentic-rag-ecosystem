@@ -471,6 +471,15 @@ drafting the brief now; it's opening beside me.") and one when done (the
 `OUTPUTS_MODEL_KEY` (pin a model), `OUTPUTS_RETRIEVAL_TIMEOUT_S`,
 `OUTPUTS_CONTEXT_CHUNKS`, `OUTPUTS_MAX_RUNNING`.
 
+### Phone status — `GET /status/summary`
+
+One call for the phone's Approvals tab: services (from `/health/deep`), daemon
+state (running, paused, offline from heartbeat age), voice (what can hear and
+speak), model spend since local midnight, queue counts (governance gates and
+self-improve proposals), and documents drafting. Each check has a 4 s deadline
+and fails on its own row. The phone shell (screens up to 760 px wide) shows
+bottom tabs: Apex, Chat, Outputs, Approvals, More.
+
 ### Spoken-reply audio — `POST /voice/tts`, `GET /voice/tts/status`
 
 `ui/apex_voice.js` sends each `speak` fragment to `POST /voice/tts` and plays

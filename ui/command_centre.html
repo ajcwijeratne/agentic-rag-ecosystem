@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>WijerCo Command Centre</title>
   <!-- Installable PWA (served same-origin by the orchestrator at /app) -->
   <link rel="manifest" href="/app/manifest.webmanifest" />
-  <meta name="theme-color" content="#1f4d3f" />
+  <meta name="theme-color" content="#030711" />
   <meta name="application-name" content="Command Centre" />
   <link rel="icon" type="image/png" sizes="192x192" href="/app/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="/app/icons/icon-192.png" />
@@ -400,6 +400,82 @@
     .docpane-list button:hover{background:var(--raised)}
     .docpane-list .m{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)}
     .docpane-empty{font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--muted);line-height:1.6}
+    /* ---- Phone shell (max-width 760px): bottom tabs, full-screen panes ---- */
+    .phone-tabs,.phone-head{display:none}
+    .cc-phone .rail,.cc-phone .topbar,.cc-phone #ccDaemonPanel,.cc-phone .apx-kpis,.cc-phone .apx-crumb,
+    .cc-phone .apx-brand .w,.cc-phone .apx-brand .slash,.cc-phone .chat-desktop-only{display:none!important}
+    .cc-phone .apx-bar{padding:env(safe-area-inset-top) 12px 0;height:calc(50px + env(safe-area-inset-top));gap:10px}
+    .cc-phone .apx-meter:not(.apx-voice-meter){display:none}
+    .cc-phone .apx-meters{gap:10px;min-width:0}
+    .cc-phone .apx-mini{max-width:62vw}
+    .cc-phone .cc-main{padding-bottom:calc(62px + env(safe-area-inset-bottom))}
+    .cc-phone .phone-tabs{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;height:calc(62px + env(safe-area-inset-bottom));
+      padding-bottom:env(safe-area-inset-bottom);background:rgba(7,14,28,.97);border-top:1px solid var(--line);backdrop-filter:blur(12px)}
+    .phone-tab{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:none;border:0;
+      color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;position:relative;cursor:pointer;
+      -webkit-tap-highlight-color:transparent}
+    .phone-tab svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.6}
+    .phone-tab.on{color:var(--gold)}
+    .phone-tab .badge{position:absolute;top:7px;left:calc(50% + 5px);min-width:17px;height:17px;border-radius:9px;background:var(--coral);color:#fff;
+      font-size:10px;line-height:17px;padding:0 4px;letter-spacing:0;text-align:center}
+    .cc-phone .phone-head{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);flex-shrink:0;
+      font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+    .phone-head button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:7px 11px;font:inherit;letter-spacing:.06em;cursor:pointer}
+    .phone-more,.phone-page{flex:1 1 auto;min-height:0;overflow-y:auto;padding:16px 14px 28px;-webkit-overflow-scrolling:touch}
+    .phone-more h3{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin:14px 2px 8px;font-weight:500}
+    .phone-more .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+    .phone-more button{display:flex;flex-direction:column;align-items:center;gap:7px;padding:14px 6px;border:1px solid var(--line);border-radius:12px;
+      background:var(--surface);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;font-size:12px;cursor:pointer;min-height:76px}
+    .phone-more svg{width:22px;height:22px;stroke:var(--gold-soft);fill:none;stroke-width:1.5}
+    /* Approvals and status */
+    .pa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+    .pa-head .k,.pa-tag{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+    .pa-head .t{font-family:'IBM Plex Sans',sans-serif;font-size:17px;font-weight:600;color:var(--ink);margin-top:3px}
+    .pa-note{width:100%;box-sizing:border-box;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;
+      color:var(--ink);font-size:16px;margin-bottom:10px}
+    .pa-card{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:13px 13px 11px;margin-bottom:10px;font-family:'IBM Plex Sans',sans-serif}
+    .pa-title{font-size:15px;font-weight:600;color:var(--ink);margin-top:5px;line-height:1.35;word-break:break-word}
+    .pa-why{font-size:12.5px;color:var(--muted);margin-top:5px;line-height:1.45}
+    .pa-rule{font-size:13px;color:var(--ink);margin-top:7px;line-height:1.5;background:var(--raised);border-radius:8px;padding:8px 10px;
+      display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+    .pa-rule.open{display:block}
+    .pa-acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:10px}
+    .pa-acts .dp-btn{padding:10px 14px;font-size:11px;min-height:40px}
+    .dp-btn.go{border-color:rgba(52,224,200,.55);color:var(--accent)}
+    .dp-btn.armed{background:rgba(244,178,63,.18);border-color:var(--gold);color:var(--gold)}
+    .pa-sec{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin:18px 2px 8px}
+    .pa-row{display:flex;align-items:baseline;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft);font-size:13px}
+    .pa-row:last-of-type{border-bottom:0}
+    .pa-row .n{color:var(--ink);flex:none}
+    .pa-row .v{color:var(--muted);margin-left:auto;text-align:right;min-width:0;overflow-wrap:anywhere;font-size:12px}
+    .pa-dot{width:8px;height:8px;border-radius:50%;flex:none;align-self:center;background:var(--faint)}
+    .pa-dot.ok{background:var(--accent)}.pa-dot.bad{background:var(--coral)}.pa-dot.warn{background:var(--amber)}
+    .pa-at{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--faint);margin-top:8px}
+    .pa-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));z-index:45;background:var(--raised);
+      border:1px solid var(--line);color:var(--ink);padding:10px 16px;border-radius:10px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+    /* Apex tab */
+    .cc-phone .apx-stage{grid-template-columns:minmax(0,1fr)}
+    .cc-phone .apx-console{padding:8px 12px 10px}
+    .cc-phone .apx-chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-bottom:6px}
+    .cc-phone .apx-chips::-webkit-scrollbar{display:none}
+    .cc-phone .apx-chip{flex:none;font-size:11px;padding:6px 10px}
+    .cc-phone .apx-console input{font-size:16px}
+    /* Documents: full screen between the bars */
+    .cc-phone .docpane{position:fixed;left:0;right:0;top:calc(50px + env(safe-area-inset-top));bottom:calc(62px + env(safe-area-inset-bottom));
+      width:auto;min-width:0;z-index:35;border-left:0;box-shadow:none}
+    .cc-phone .docpane-head{flex-wrap:wrap}
+    .cc-phone .docpane-acts{justify-content:flex-start}
+    .cc-phone .docpane-acts .dp-btn{padding:8px 10px}
+    .cc-phone .docpane-body{padding:16px 16px 32px}
+    /* Chat */
+    .sess-overlay{display:contents}
+    .cc-phone .sess-overlay{display:flex;position:fixed;left:0;right:0;top:calc(50px + env(safe-area-inset-top));bottom:calc(62px + env(safe-area-inset-bottom));z-index:36}
+    .cc-phone .sess-overlay > div:first-child{width:82vw!important;min-width:0!important;max-width:320px}
+    .sess-scrim{display:none}
+    .cc-phone .sess-scrim{display:block;flex:1;background:rgba(0,0,0,.55)}
+    .cc-phone .chat-toolbar{padding:6px 10px!important;gap:6px!important}
+    .cc-phone .chat-composer{padding:8px 10px!important}
+    .cc-phone .chat-composer textarea{font-size:16px!important}
   </style>
 </head>
 <body>
@@ -408,7 +484,7 @@
      Apex outputs: documents drafted on request into the vault, shown live.
      Optional: every hook below checks window.ApexVoice and falls back to the
      browser voice when the file is missing. -->
-<script src="apex_voice.js?v=1.2.0"></script>
+<script src="apex_voice.js?v=1.3.0"></script>
 <script src="apex_outputs.js?v=1.0.0"></script>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback} = React;
@@ -622,7 +698,7 @@ function ServiceDot({port, label, url}) {
 function SessionSidebar({currentId, onSelect, onNew, tick}) {
   const [sessions,setSessions]=useState([]);
   const load = useCallback(()=>{
-    fetch(`${API}/sessions`).then(r=>r.json()).then(setSessions).catch(()=>{});
+    fetch(`${API}/sessions`).then(r=>r.json()).then(d=>setSessions(Array.isArray(d)?d:(d&&Array.isArray(d.items)?d.items:[]))).catch(()=>{});
   },[]);
   useEffect(()=>{load();},[tick]);
 
@@ -4375,7 +4451,7 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
     const statusOf=id=>(stRef.current&&stRef.current[id])||'idle';
     // While a conversation is on, the Radial grows in place and the nodes
     // step back: pushed outward and dimmed, so the centre has the room.
-    let grow=0;
+    let grow=0, phone=false, coreR=0;
     const geom=n=>{
       const push=1+0.3*grow;
       const rx = (n.ring===1 ? R*0.26 : R*0.415)*push;
@@ -4387,7 +4463,7 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
       // The Radial (apex_voice.js) draws the centre when it is loaded; the
       // classic core below is the fallback.
       if(window.ApexVoice && ApexVoice.core){
-        try{ if(ApexVoice.core.draw(ctx,cx,cy,R*0.075)) return; }catch(e){ /* fall back */ }
+        try{ if(ApexVoice.core.draw(ctx,cx,cy,coreR)) return; }catch(e){ /* fall back */ }
       }
       const beat=0.5+0.5*Math.sin(t*1.5);
       const active = Object.values(stRef.current||{}).some(v=>v==='running'||v==='queued') || APX_VOICE.active;
@@ -4489,14 +4565,19 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
             ctx.strokeStyle=grd; ctx.lineWidth=1; ctx.stroke(); ctx.restore();
           }
           grow=(window.ApexVoice && ApexVoice.core && ApexVoice.core.grow) ? ApexVoice.core.grow() : 0;
+          // On a phone the tabs do the navigating, so the map is just the
+          // Radial: no department nodes, a bigger core, and the centre raised
+          // to leave room for the captions and the talk button.
+          phone=document.body.classList.contains('cc-phone');
+          if(phone){ cy=H*0.42; coreR=Math.min(W,H)*0.15; } else { cy=H/2+6; coreR=R*0.075; }
           // depth-sorted nodes with the core between the two layers
           const placed=nodes.map(n=>({n,g:geom(n)})).sort((a,b)=>a.g.depth-b.g.depth);
-          placed.filter(p=>p.g.depth<0.5).forEach(p=>drawNode(p.g,p.n));
+          if(!phone) placed.filter(p=>p.g.depth<0.5).forEach(p=>drawNode(p.g,p.n));
           drawCore();
-          placed.filter(p=>p.g.depth>=0.5).forEach(p=>drawNode(p.g,p.n));
+          if(!phone) placed.filter(p=>p.g.depth>=0.5).forEach(p=>drawNode(p.g,p.n));
           // hover
           let hv=null;
-          if(window.ApexVoice && ApexVoice.core && ApexVoice.core.hit(mouse.x-cx,mouse.y-cy,R*0.075)) hv='__apex';
+          if(window.ApexVoice && ApexVoice.core && ApexVoice.core.hit(mouse.x-cx,mouse.y-cy,coreR)) hv='__apex';
           else for(const h of hits){ if(Math.hypot(mouse.x-h.x,mouse.y-h.y)<h.r){ hv=h.id; break; } }
           if(hv!==hovered){ hovered=hv; cv.style.cursor=hv?'pointer':'default';
             if(setHoverName) setHoverName(hv==='__apex'?'Apex voice':hv?(APX_NODES.find(n=>n.id===hv)||{}).label:null); }
@@ -4519,7 +4600,7 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
     const onMove=e=>{ const r=cv.getBoundingClientRect(); mouse={x:e.clientX-r.left,y:e.clientY-r.top}; };
     const onLeave=()=>{ mouse={x:-999,y:-999}; };
     const onClick=e=>{ const r=cv.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
-      if(window.ApexVoice && ApexVoice.core && ApexVoice.core.hit(mx-cx,my-cy,R*0.075)){ ApexVoice.core.open(); return; }
+      if(window.ApexVoice && ApexVoice.core && ApexVoice.core.hit(mx-cx,my-cy,coreR)){ ApexVoice.core.open(); return; }
       for(const h of hits){ if(Math.hypot(mx-h.x,my-h.y)<h.r){ setView(h.id); return; } } };
     cv.addEventListener('mousemove',onMove);
     cv.addEventListener('mouseleave',onLeave);
@@ -4786,7 +4867,7 @@ function ApxBar({ view, setView, VIEW_LABELS, sessionCost, voice }){
                  : voice.speaking ? `${assistantName} is speaking — click to stop it`
                  : voice.asleep ? `Listening for "hey ${assistantName}"`
                  : 'Awake and listening'}
-            className="apx-meter"
+            className="apx-meter apx-voice-meter"
             style={{border:'none',cursor:'pointer',font:'inherit',
                     background: voice.speaking ? 'rgba(226,143,49,.18)'
                               : voice.recording && !voice.asleep ? 'rgba(46,164,110,.18)' : 'transparent'}}>
@@ -5062,6 +5143,215 @@ function DepartmentsView(){
   );
 }
 
+/* ==========================================================================
+   Phone shell (max-width 760px): bottom tabs instead of the side rail.
+     Apex       the Radial, hold to talk, the dispatch console
+     Chat       conversations, with the list as an overlay
+     Outputs    documents Apex drafted, full screen
+     Approvals  what is waiting for Aaron, and how the brain is doing
+     More       every other page
+   ========================================================================== */
+const PHONE_MQ = '(max-width: 760px)';
+function useIsPhone(){
+  const get=()=>!!(window.matchMedia && window.matchMedia(PHONE_MQ).matches);
+  const [phone,setPhone]=useState(get);
+  useEffect(()=>{
+    if(!window.matchMedia) return;
+    const mq=window.matchMedia(PHONE_MQ), f=()=>setPhone(mq.matches);
+    mq.addEventListener ? mq.addEventListener('change',f) : mq.addListener(f);
+    return ()=>{ mq.removeEventListener ? mq.removeEventListener('change',f) : mq.removeListener(f); };
+  },[]);
+  useEffect(()=>{ document.body.classList.toggle('cc-phone', phone); },[phone]);
+  return phone;
+}
+
+const PHONE_ICONS = {
+  apex: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/></svg>,
+  chat: <svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-4 4V5z" strokeLinejoin="round"/></svg>,
+  outputs: <svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z" strokeLinejoin="round"/><path d="M15 3v4h4M9 12h7M9 16h5" strokeLinecap="round"/></svg>,
+  approvals: <svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10" strokeLinecap="round" strokeLinejoin="round"/><path d="M4 20h16" strokeLinecap="round"/></svg>,
+  more: <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>,
+};
+
+function PhoneTabs({ view, setView, docOpen, setDocOpen, badge }){
+  const main=['overview','chat','approvals'];
+  const active = docOpen ? 'outputs' : main.includes(view) ? view : 'more';
+  const go=v=>{ setDocOpen(false); setView(v); };
+  const tab=(key,label,icon,onClick,extra)=>(
+    <button key={key} className={"phone-tab"+(active===key?' on':'')} onClick={onClick} aria-current={active===key?'page':undefined}>
+      {icon}<span>{label}</span>{extra}
+    </button>
+  );
+  return (
+    <nav className="phone-tabs" aria-label="Main">
+      {tab('overview','Apex',PHONE_ICONS.apex,()=>go('overview'))}
+      {tab('chat','Chat',PHONE_ICONS.chat,()=>go('chat'))}
+      {tab('outputs','Outputs',PHONE_ICONS.outputs,()=>setDocOpen(o=>!o))}
+      {tab('approvals','Approvals',PHONE_ICONS.approvals,()=>go('approvals'), badge>0 ? <span className="badge">{badge>99?'99+':badge}</span> : null)}
+      {tab('more','More',PHONE_ICONS.more,()=>go('more'))}
+    </nav>
+  );
+}
+
+function PhoneMore({ NAV, setView }){
+  return (
+    <div className="phone-more">
+      {NAV.map(sec=>{
+        const items=sec.items.filter(([v])=>v!=='overview' && v!=='chat');
+        if(!items.length) return null;
+        return (
+          <div key={sec.label}>
+            <h3>{sec.label}</h3>
+            <div className="grid">
+              {items.map(([v,l,ic])=><button key={v} onClick={()=>setView(v)}>{ic}<span>{l}</span></button>)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const GATE_LABELS = {client_sensitive:'Client document', clone_output:'Cloned voice or video', generated_image:'Generated image',
+  publish:'Publish', spend:'Spend', external_send:'Send outside'};
+const gateLabel=g=>GATE_LABELS[g] || String(g||'gate').replace(/_/g,' ');
+
+/* ---- Approvals and status: one screen for "what needs me, and is it all running?" ---- */
+function PhoneApprovals({ setView, onCount }){
+  const [sum,setSum]=useState(null);
+  const [gates,setGates]=useState(null);
+  const [props,setProps]=useState(null);
+  const [note,setNote]=useState('');
+  const [armed,setArmed]=useState('');        // key of the button waiting for its confirming tap
+  const [busy,setBusy]=useState('');
+  const [toast,setToast]=useState('');
+  const [openRule,setOpenRule]=useState('');
+  const armTimer=useRef(0);
+  const load=useCallback(async()=>{
+    const get=async(u)=>{ try{ const r=await fetch(`${API}${u}`); return r.ok ? await r.json() : null; }catch(e){ return null; } };
+    const [s,g,p]=await Promise.all([get('/status/summary'),get('/governance/pending'),get('/harness/proposals?status=pending')]);
+    setSum(s);
+    const gi=g ? (Array.isArray(g)?g:(g.items||[])) : [];
+    const pi=p ? (Array.isArray(p)?p:(p.items||[])) : [];
+    setGates(gi); setProps(pi);
+    if(onCount) onCount(gi.length+pi.length);
+  },[onCount]);
+  useEffect(()=>{
+    load();
+    const t=setInterval(()=>{ if(!document.hidden) load(); },30000);
+    return ()=>clearInterval(t);
+  },[load]);
+  useEffect(()=>{ if(!toast) return; const t=setTimeout(()=>setToast(''),3500); return ()=>clearTimeout(t); },[toast]);
+
+  // A tap arms the button; a second tap within four seconds does it. A pocket
+  // or a stray thumb should never approve anything.
+  const confirmThen=(key,fn)=>{
+    if(armed!==key){ setArmed(key); clearTimeout(armTimer.current); armTimer.current=setTimeout(()=>setArmed(''),4000); return; }
+    setArmed(''); clearTimeout(armTimer.current); fn();
+  };
+  const post=async(url,body)=>{
+    const r=await fetch(`${API}${url}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+    if(!r.ok){ let d=''; try{ d=(await r.json()).detail||''; }catch(e){} throw new Error(d||('HTTP '+r.status)); }
+  };
+  const decideGate=(g,status)=>async()=>{
+    const key=`${g.gate}:${g.target_id}`;
+    setBusy(key);
+    try{
+      await post('/governance/approve',{gate:g.gate,target_id:g.target_id||g.production_id,actor:'Aaron (phone)',note,status});
+      setToast(status==='approved'?'Approved.':'Rejected.'); setNote('');
+    }catch(e){ setToast('Could not update: '+e.message); }
+    setBusy(''); load();
+  };
+  const decideRule=(p,action)=>async()=>{
+    setBusy('rule:'+p.id);
+    try{ await post(`/harness/proposals/${encodeURIComponent(p.id)}/${action}`); setToast(action==='accept'?'Rule accepted.':'Rule rejected.'); }
+    catch(e){ setToast('Could not update: '+e.message); }
+    setBusy(''); load();
+  };
+  const daemon=async(action)=>{
+    try{ await post(`/operating/daemon/${action}`,{actor:'Aaron (phone)'}); setToast(action==='pause'?'Daemon paused.':'Daemon resumed.'); }
+    catch(e){ setToast('Could not '+action+': '+e.message); }
+    load();
+  };
+
+  const n=(gates?gates.length:0)+(props?props.length:0);
+  const dot=ok=>ok===true?'ok':ok===false?'bad':'mute';
+  const d=sum&&sum.daemon;
+  return (
+    <div className="phone-page">
+      <div className="pa-head">
+        <div><div className="k">Approvals</div><div className="t">{gates===null?'Checking…':n===0?'Nothing is waiting for you':`${n} waiting for you`}</div></div>
+        <button className="dp-btn" onClick={load}>Refresh</button>
+      </div>
+
+      {n>0 && <input className="pa-note" value={note} onChange={e=>setNote(e.target.value)} placeholder="Optional note with your decision"/>}
+
+      {(gates||[]).map(g=>{
+        const key=`${g.gate}:${g.target_id}`;
+        return (
+          <div key={key} className="pa-card">
+            <div className="pa-tag">{gateLabel(g.gate)}{g.state?` · ${g.state}`:''}</div>
+            <div className="pa-title">{g.title||g.target_id}</div>
+            {g.reason && <div className="pa-why">{g.reason}</div>}
+            <div className="pa-acts">
+              {g.gate==='client_sensitive' && <button className="dp-btn" onClick={()=>setView('library')}>Read first</button>}
+              <button className={"dp-btn warn"+(armed===key+':r'?' armed':'')} disabled={busy===key}
+                onClick={()=>confirmThen(key+':r',decideGate(g,'rejected'))}>{armed===key+':r'?'Tap to reject':'Reject'}</button>
+              <button className={"dp-btn go"+(armed===key+':a'?' armed':'')} disabled={busy===key}
+                onClick={()=>confirmThen(key+':a',decideGate(g,'approved'))}>{busy===key?'Saving…':armed===key+':a'?'Tap to approve':'Approve'}</button>
+            </div>
+          </div>
+        );
+      })}
+
+      {(props||[]).map(p=>{
+        const key='rule:'+p.id;
+        const delta=typeof p.heldout_delta==='number' ? (p.heldout_delta>=0?'+':'')+(p.heldout_delta*100).toFixed(1)+' pts on held-out tasks' : '';
+        return (
+          <div key={key} className="pa-card">
+            <div className="pa-tag">Self-improve rule · {String(p.department||'').replace(/_/g,' ')}</div>
+            <div className="pa-title">{p.failure_pattern||'Proposed rule'}</div>
+            <div className={"pa-rule"+(openRule===p.id?' open':'')} onClick={()=>setOpenRule(openRule===p.id?'':p.id)}>{p.rule}</div>
+            {delta && <div className="pa-why">{delta}</div>}
+            <div className="pa-acts">
+              <button className={"dp-btn warn"+(armed===key+':r'?' armed':'')} disabled={busy===key}
+                onClick={()=>confirmThen(key+':r',decideRule(p,'reject'))}>{armed===key+':r'?'Tap to reject':'Reject'}</button>
+              <button className={"dp-btn go"+(armed===key+':a'?' armed':'')} disabled={busy===key}
+                onClick={()=>confirmThen(key+':a',decideRule(p,'accept'))}>{armed===key+':a'?'Tap to accept':'Accept'}</button>
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="pa-sec">Status{sum?` · ${sum.overall==='ok'?'all good':sum.overall}`:''}</div>
+      {!sum && <div className="pa-card"><div className="pa-why">Could not reach the status check. The brain may be restarting.</div></div>}
+      {sum && (
+        <div className="pa-card pa-status">
+          {(sum.services||[]).map(s=>(
+            <div key={s.name} className="pa-row"><span className={"pa-dot "+dot(s.ok)}/><span className="n">{s.name}</span><span className="v">{s.ok?'ok':(s.detail||'down')}</span></div>
+          ))}
+          <div className="pa-row"><span className={"pa-dot "+dot(sum.voice?sum.voice.ok:null)}/><span className="n">Voice</span><span className="v">{sum.voice?sum.voice.detail:'unknown'}</span></div>
+          <div className="pa-row">
+            <span className={"pa-dot "+(d&&d.state==='running'?'ok':d&&d.state==='paused'?'warn':'bad')}/>
+            <span className="n">Daemon</span>
+            <span className="v">{d?`${d.state}${d.cycles?` · ${d.cycles} cycles`:''}${d.budget&&d.budget.enabled?` · $${d.budget.spent_usd} of $${d.budget.budget_usd}`:''}`:'unknown'}</span>
+          </div>
+          {d && (d.state==='running'||d.state==='paused') && (
+            <div className="pa-acts" style={{marginTop:4}}>
+              <button className={"dp-btn"+(armed==='daemon'?' armed':'')} onClick={()=>confirmThen('daemon',()=>daemon(d.state==='paused'?'resume':'pause'))}>
+                {armed==='daemon'?'Tap to confirm':(d.state==='paused'?'Resume daemon':'Pause daemon')}</button>
+            </div>
+          )}
+          <div className="pa-row"><span className="pa-dot mute"/><span className="n">Spend today</span><span className="v">{sum.spend?`US$${Number(sum.spend.today_usd||0).toFixed(4)} · ${sum.spend.calls_today} calls`:'unknown'}</span></div>
+          {sum.outputs && sum.outputs.drafting>0 && <div className="pa-row"><span className="pa-dot warn"/><span className="n">Drafting</span><span className="v">{sum.outputs.drafting} document{sum.outputs.drafting>1?'s':''}</span></div>}
+          <div className="pa-at">Checked at {new Date(sum.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+        </div>
+      )}
+      {toast && <div className="pa-toast" role="status">{toast}</div>}
+    </div>
+  );
+}
+
 /* ---- Document pane: outputs Apex drafts on request, written live beside the
    dashboard. Each is a markdown note in the vault (13_Command Centre/Outputs),
    saved as it is written and again on every edit here. ---- */
@@ -5213,6 +5503,21 @@ function App() {
   const [speakReplies,setSpeakReplies] = useState(true);
   const [speaking,setSpeaking]     = useState(false);  // TTS is talking
   const [thinking,setThinking]     = useState(false);  // agent is working
+
+  // ---- Phone: bottom tabs instead of the rail (see PhoneTabs) ----
+  const isPhone = useIsPhone();
+  const [phoneQueue,setPhoneQueue] = useState(0);
+  useEffect(()=>{ if(isPhone) setShowSidebar(false); },[isPhone]);
+  useEffect(()=>{
+    if(!isPhone) return;
+    let live=true;
+    const poll=async()=>{
+      if(document.hidden) return;
+      try{ const r=await fetch(`${API}/status/summary`); if(r.ok){ const d=await r.json(); if(live && d.queue) setPhoneQueue(d.queue.total||0); } }catch(e){}
+    };
+    poll(); const t=setInterval(poll,60000);
+    return ()=>{ live=false; clearInterval(t); };
+  },[isPhone]);
 
   // ---- Outputs: documents Apex drafts on request ("draft a brief on...") ----
   // Spoken or typed, a document request opens the pane beside the dashboard and
@@ -5701,6 +6006,9 @@ function App() {
   const autoStarted = useRef(false);
   useEffect(() => {
     if (autoStarted.current || recording || !pref('cc_voice_autostart', true)) return;
+    // Phones start the mic on the first hold of the talk button instead: an
+    // always-open mic drains the battery and keeps Android's recording light on.
+    if (window.matchMedia && window.matchMedia(PHONE_MQ).matches) return;
     autoStarted.current = true;
     (async () => {
       try {
@@ -5764,7 +6072,7 @@ function App() {
 
   const avail = Object.entries(models).filter(([,v])=>v.available);
 
-  const VIEW_LABELS = {overview:'Overview',chat:'Chat',departments:'Departments',admin:'Usage',quality:'Quality',productivity:'Productivity',harness:'Self-Improve',n8n:'Automations',operating:'Operating',library:'Deliverables',content:'Content pipeline',production:'Production',media:'Media library',engagements:'Engagements',kb:'Knowledge base',intel:'Sector intel',trace:'Routing',schedule:'Scheduled runs'};
+  const VIEW_LABELS = {overview:'Overview',chat:'Chat',approvals:'Approvals',more:'More',departments:'Departments',admin:'Usage',quality:'Quality',productivity:'Productivity',harness:'Self-Improve',n8n:'Automations',operating:'Operating',library:'Deliverables',content:'Content pipeline',production:'Production',media:'Media library',engagements:'Engagements',kb:'Knowledge base',intel:'Sector intel',trace:'Routing',schedule:'Scheduled runs'};
   const NAV = [
     {label:'Workspace', items:[
       ['overview','Overview',<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/></svg>],
@@ -5829,9 +6137,18 @@ function App() {
       </div>
 
       {/* ── Collapsible conversations ── */}
-      {showSidebar&&view==='chat'&&<SessionSidebar currentId={sessionId} onSelect={loadSession} onNew={newSession} tick={sidebarTick}/>}
+      {showSidebar&&view==='chat'&&(isPhone
+        ? <div className="sess-overlay">
+            <SessionSidebar currentId={sessionId} onSelect={id=>{loadSession(id); setShowSidebar(false);}} onNew={()=>{newSession(); setShowSidebar(false);}} tick={sidebarTick}/>
+            <div className="sess-scrim" onClick={()=>setShowSidebar(false)}/>
+          </div>
+        : <SessionSidebar currentId={sessionId} onSelect={loadSession} onNew={newSession} tick={sidebarTick}/>)}
 
-      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
+      <div className="cc-main" style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
+        {/* Phone: a slim header with the way back on pages reached from More */}
+        {isPhone && !['overview','chat','approvals','more'].includes(view) && (
+          <div className="phone-head"><button onClick={()=>setView('more')}>‹ More</button><span>{VIEW_LABELS[view]||view}</span></div>
+        )}
         {/* Topbar */}
         <div className="topbar">
           {view==='chat'&&<button className="icon-btn" onClick={()=>setShowSidebar(v=>!v)} title="Toggle conversations">☰</button>}
@@ -5850,7 +6167,8 @@ function App() {
         </div>
 
         {/* Toolbar */}
-        {view==='chat' && <div style={{background:'var(--bg2)',borderBottom:'1px solid var(--border)',padding:'8px 16px',display:'flex',gap:10,alignItems:'center',flexShrink:0,flexWrap:'wrap'}}>
+        {view==='chat' && <div className="chat-toolbar" style={{background:'var(--bg2)',borderBottom:'1px solid var(--border)',padding:'8px 16px',display:'flex',gap:10,alignItems:'center',flexShrink:0,flexWrap:'wrap'}}>
+          {isPhone && <button className="dp-btn" onClick={()=>setShowSidebar(v=>!v)} title="Conversations">☰</button>}
           <div style={{display:'flex',gap:2,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:9,padding:3}}>
             {[['auto','🔀 Auto'],['rag','🔍 RAG only'],['wijerco','🏢 WijerCo']].map(([v,l])=>(
               <button key={v} onClick={()=>{setRouteMode(v); if(v!=='wijerco'){setWjAgent(null);setWjDept(null);}}} style={{padding:'4px 11px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,background:routeMode===v?'var(--pine)':'transparent',color:routeMode===v?'#fff':'var(--muted)',boxShadow:routeMode===v?'0 1px 3px rgba(31,77,63,.4)':'none',transition:'all .15s'}}>
@@ -5858,11 +6176,11 @@ function App() {
               </button>
             ))}
           </div>
-          <select value={pinnedModel} onChange={e=>setPinnedModel(e.target.value)} style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:8,padding:'4px 10px',fontSize:12,cursor:'pointer'}}>
+          <select className="chat-desktop-only" value={pinnedModel} onChange={e=>setPinnedModel(e.target.value)} style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:8,padding:'4px 10px',fontSize:12,cursor:'pointer'}}>
             <option value="">🤖 Auto model</option>
             {avail.map(([key,spec])=><option key={key} value={key}>{spec.label}</option>)}
           </select>
-          <button onClick={()=>setUseTools(v=>!v)} title="Let agents run Command Centre actions and n8n workflows"
+          <button className="chat-desktop-only" onClick={()=>setUseTools(v=>!v)} title="Let agents run Command Centre actions and n8n workflows"
             style={{background:useTools?'var(--gold-tint)':'var(--bg3)',border:'1px solid '+(useTools?'#e2cf8f':'var(--border)'),color:useTools?'#8a630f':'var(--muted)',borderRadius:8,padding:'4px 11px',fontSize:12,fontWeight:600,cursor:'pointer'}}>
             🔧 Actions {useTools?'on':'off'}
           </button>
@@ -5872,6 +6190,8 @@ function App() {
 
         {view==='overview' && <OverviewApex setView={setView} voice={voiceApi}
           onDispatch={async t=>{ if(await runDocument(t,'overview')) return; setInput(t); setView('chat'); }}/>}
+        {view==='approvals' && <PhoneApprovals setView={setView} onCount={setPhoneQueue}/>}
+        {view==='more' && <PhoneMore NAV={NAV} setView={setView}/>}
         {view==='departments' && <DepartmentsView/>}
         {view==='admin' && <AdminView/>}
         {view==='quality' && <QualityCockpit/>}
@@ -5946,7 +6266,7 @@ function App() {
         </div>
 
         {/* Input */}
-        <div style={{background:'var(--bg2)',borderTop:'1px solid var(--border)',padding:'12px 16px',flexShrink:0,boxShadow:'0 -2px 14px rgba(16,24,40,.05)'}}>
+        <div className="chat-composer" style={{background:'var(--bg2)',borderTop:'1px solid var(--border)',padding:'12px 16px',flexShrink:0,boxShadow:'0 -2px 14px rgba(16,24,40,.05)'}}>
           {/* Attached files chips */}
           {attached.length>0&&(
             <div style={{maxWidth:900,margin:'0 auto 8px',display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
@@ -5989,15 +6309,16 @@ function App() {
                 style={{padding:'10px 12px',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:10,color:'var(--text)',cursor:'pointer',fontSize:16,lineHeight:1}}>
                 {uploading?'…':'📎'}
               </button>
-              <select value={uploadMode} onChange={e=>setUploadMode(e.target.value)} title="Where uploads go"
+              <select className="chat-desktop-only" value={uploadMode} onChange={e=>setUploadMode(e.target.value)} title="Where uploads go"
                 style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)',borderRadius:6,fontSize:10,padding:'1px 2px',cursor:'pointer'}}>
                 <option value="chat">this chat</option>
                 <option value="kb">to KB</option>
               </select>
             </div>
 
-            {/* Voice: hold a live mic stream open; transcript lands in the box */}
-            <div style={{display:'flex',flexDirection:'column',gap:4,alignItems:'center'}}>
+            {/* Voice: hold a live mic stream open; transcript lands in the box.
+                Phones use the keyboard's own dictation, and Apex has its own tab. */}
+            <div className="chat-desktop-only" style={{display:'flex',flexDirection:'column',gap:4,alignItems:'center'}}>
               <button onClick={startVoice}
                 title={recording?'Stop dictation':'Dictate — speech is transcribed into the box'}
                 style={{padding:'10px 12px',
@@ -6007,13 +6328,13 @@ function App() {
                   cursor:'pointer',fontSize:16,lineHeight:1,transition:'all .15s'}}>
                 {voiceState==='connecting' ? '…' : recording ? '■' : '🎙'}
               </button>
-              <span style={{fontSize:9,color:'var(--muted)',letterSpacing:'.04em'}}>
+              <span className="chat-desktop-only" style={{fontSize:9,color:'var(--muted)',letterSpacing:'.04em'}}>
                 {thinking ? 'thinking'
                   : speaking ? 'replying'
                   : voiceState==='speaking' ? 'speech'
                   : voiceState==='listening' ? 'listening' : 'voice'}
               </span>
-              <button onClick={toggleHandsFree}
+              <button className="chat-desktop-only" onClick={toggleHandsFree}
                 title={handsFree
                   ? 'Hands-free on — each utterance is answered automatically'
                   : 'Hands-free off — dictation only, you press Send'}
@@ -6023,7 +6344,7 @@ function App() {
                   color:handsFree?'#8a630f':'var(--muted)',letterSpacing:'.04em'}}>
                 {handsFree?'hands-free':'dictate'}
               </button>
-              <button onClick={()=>{ const n=!wakeWord; setWakeWord(n); wakeWordRef.current=n;
+              <button className="chat-desktop-only" onClick={()=>{ const n=!wakeWord; setWakeWord(n); wakeWordRef.current=n;
                        if(recording){ stopVoice(true); setTimeout(()=>startVoiceRef.current?.(),400); } }}
                 title={wakeWord
                   ? `Wake word on — say "hey ${assistantName}" to address it; everything else is ignored`
@@ -6034,7 +6355,7 @@ function App() {
                   color:wakeWord?'var(--pine)':'var(--muted)',letterSpacing:'.04em'}}>
                 {wakeWord?(asleep?'💤 waiting':'👂 awake'):'wake off'}
               </button>
-              <button onClick={()=>{ if(speaking) shutUp(); setSpeakReplies(v=>!v); }}
+              <button className="chat-desktop-only" onClick={()=>{ if(speaking) shutUp(); setSpeakReplies(v=>!v); }}
                 title={speakReplies?'Spoken replies on (Esc interrupts)':'Spoken replies off'}
                 style={{fontSize:9,padding:'2px 5px',borderRadius:5,cursor:'pointer',
                   background:'var(--bg3)',border:'1px solid var(--border)',
@@ -6051,7 +6372,7 @@ function App() {
               style={{flex:1,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:12,padding:'10px 14px',color:'var(--text)',resize:'none',fontSize:14,lineHeight:1.5,transition:'border-color .15s'}}
             />
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              <button onClick={handleImprove} disabled={!input.trim()||improving} title="Improve this prompt"
+              <button className="chat-desktop-only" onClick={handleImprove} disabled={!input.trim()||improving} title="Improve this prompt"
                 style={{padding:'8px 12px',background:input.trim()?'var(--gold-tint)':'var(--bg3)',border:'1px solid '+(input.trim()?'#e2cf8f':'var(--border)'),borderRadius:10,color:input.trim()?'#8a630f':'var(--muted)',cursor:input.trim()?'pointer':'default',fontWeight:600,fontSize:13}}>
                 {improving?'…':'✨ Improve'}
               </button>
@@ -6061,7 +6382,7 @@ function App() {
               }
             </div>
           </div>
-          <div style={{textAlign:'center',marginTop:6,fontSize:10,color:'var(--muted)'}}>
+          <div className="chat-desktop-only" style={{textAlign:'center',marginTop:6,fontSize:10,color:'var(--muted)'}}>
             {routeMode==='auto'?'🔀 Auto-routing · ':routeMode==='rag'?'🔍 RAG-only · ':'🏢 WijerCo · '}
             {pinnedModel?`📌 ${models[pinnedModel]?.label||pinnedModel}`:'🤖 Optimal model auto-selected'}
             {' · Conversations saved automatically'}
@@ -6074,6 +6395,7 @@ function App() {
       {/* ── Document pane: outputs written live beside the dashboard ── */}
       {docOpen && <DocPane doc={doc} setDoc={setDoc} onClose={()=>setDocOpen(false)} openOutput={openOutput}/>}
       </div>
+      {isPhone && <PhoneTabs view={view} setView={setView} docOpen={docOpen} setDocOpen={setDocOpen} badge={phoneQueue}/>}
       {showCost&&<CostModal onClose={()=>setShowCost(false)}/>}
     </div>
   );
