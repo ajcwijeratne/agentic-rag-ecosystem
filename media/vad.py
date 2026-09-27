@@ -372,6 +372,21 @@ class SpeechSegmenter:
         self._residue = b""
         self.state = SegmenterState()
 
+    def set_silence_ms(self, silence_ms: int) -> None:
+        """
+        Change how much trailing silence closes an utterance, mid-stream.
+
+        Adaptive endpointing uses this: how a partial transcript trails off says
+        whether the speaker has finished, so a sentence that sounds complete can
+        be closed sooner and one ending on "and" can be given longer. Takes
+        effect on the next frame, so it can be adjusted as the utterance grows.
+        """
+        silence_ms = max(self.frame_ms, int(silence_ms))
+        if silence_ms == self.config.silence_ms:
+            return
+        self.config.silence_ms = silence_ms
+        self._silence_frames_needed = max(1, silence_ms // self.frame_ms)
+
     # -- introspection ------------------------------------------------------
 
     @property
