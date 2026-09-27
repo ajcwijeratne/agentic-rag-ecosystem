@@ -289,3 +289,53 @@ def test_talk_key_wakes_a_sleeping_session_without_the_phrase():
     assert s.asleep is False and not s._preroll and s._preroll_bytes == 0 and _Det.resets == 1
     assert s._last_voice_at > 0
     assert s.wake() is False            # already awake: nothing to announce
+
+
+# ---------------------------------------------------------------------------
+# Installed but will not load (wijerco, 27 Sep 2026): say so, and keep hearing
+# ---------------------------------------------------------------------------
+
+def test_native_load_failure_names_the_windows_runtime(monkeypatch):
+    monkeypatch.setattr(tts.os, "name", "nt")
+    exc = FileNotFoundError("Could not find module 'C:\\x\\ctranslate2.dll' (or one of its dependencies).")
+    msg = tts.native_load_hint("ctranslate2", exc)
+    assert "will not load" in msg and "Visual C++ Redistributable" in msg
+
+
+def test_kokoro_reports_a_native_failure_not_a_missing_package(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *a, **k):
+        if name == "kokoro_onnx":
+            raise ImportError("DLL load failed while importing onnxruntime_pybind11_state")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    engine = tts._KokoroEngine()
+    assert engine.installed() is False
+    assert "will not load" in engine.error and "not installed" not in engine.error
+
+
+def test_hearing_falls_back_to_vosk_when_whisper_cannot_load(monkeypatch):
+    from media import asr, vosk_engine
+
+    monkeypatch.setattr(asr, "_whisper_probe", (False, "ctranslate2 is installed but will not load"))
+    monkeypatch.setattr(vosk_engine, "is_available", lambda: True)
+    assert asr.resolve_engine("hybrid") == "vosk"
+    assert asr.resolve_engine("whisper") == "vosk"
+
+
+def test_whisper_that_cannot_load_is_not_advertised(monkeypatch):
+    from importlib import util
+
+    from media import asr
+
+    monkeypatch.setattr(asr, "_whisper_probe", (False, "ctranslate2 is installed but will not load"))
+    real_find_spec = util.find_spec
+    monkeypatch.setattr(util, "find_spec", lambda n, *a: object() if n == "faster_whisper" else real_find_spec(n, *a))
+    st = asr.engine_status()
+    assert st["whisper"]["available"] is False
+    assert "will not load" in st["whisper"]["error"]
+    assert st["hybrid"]["available"] is False

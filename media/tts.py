@@ -86,6 +86,25 @@ class TTSUnavailable(RuntimeError):
     """No engine could speak this text. The browser voice is the fallback."""
 
 
+def native_load_hint(package: str, exc: BaseException) -> str:
+    """
+    Explain a package that is installed but will not import.
+
+    On wijerco (27 Sep 2026) both onnxruntime and ctranslate2 failed with
+    "Could not find module ... (or one of its dependencies)" while pip showed
+    them installed, and the old message said "not installed", which sent the
+    reader the wrong way. The usual cause on Windows is a missing Microsoft
+    Visual C++ Redistributable (x64); python.org Python ships vcruntime140 but
+    not msvcp140.
+    """
+    msg = f"{package} is installed but will not load: {type(exc).__name__}: {str(exc)[:200]}"
+    text = str(exc).lower()
+    if os.name == "nt" and ("dll" in text or "could not find module" in text or "specified module" in text):
+        msg += (". On Windows this usually means the Microsoft Visual C++ Redistributable (x64) "
+                "is missing: https://aka.ms/vs/17/release/vc_redist.x64.exe")
+    return msg
+
+
 @dataclass
 class Speech:
     pcm: bytes                     # int16 little-endian mono
@@ -184,8 +203,14 @@ class _KokoroEngine:
     def installed(self) -> bool:
         try:
             import kokoro_onnx  # noqa: F401
-        except Exception:
+        except ModuleNotFoundError:
+            self.error = "kokoro-onnx is not installed (pip install kokoro-onnx)"
             return False
+        except Exception as exc:  # noqa: BLE001 — installed, but its native libraries will not load
+            self.error = native_load_hint("kokoro-onnx", exc)
+            return False
+        if self.error.startswith("kokoro-onnx"):
+            self.error = ""                  # fixed since the last check
         return True
 
     def files_present(self) -> bool:
@@ -198,7 +223,6 @@ class _KokoroEngine:
             if self._k is not None:
                 return self._k
             if not self.installed():
-                self.error = "kokoro-onnx is not installed (pip install kokoro-onnx)"
                 raise TTSUnavailable(self.error)
             model = _model_path()
             voices = model_dir() / VOICES_FILE
@@ -419,6 +443,28 @@ def warm_in_background() -> threading.Thread | None:
 # CLI
 # ---------------------------------------------------------------------------
 
+def doctor() -> int:
+    """
+    Can the native pieces of the voice stack load on this machine? Prints one
+    line per library and returns 1 if any fails, so a deploy script can act on
+    it (wijerco needed the Visual C++ runtime; pip alone could not tell).
+    """
+    import importlib
+
+    bad = 0
+    for mod in ("numpy", "onnxruntime", "ctranslate2", "faster_whisper", "vosk", "kokoro_onnx"):
+        try:
+            m = importlib.import_module(mod)
+            print(f"  ok    {mod:<15} {getattr(m, '__version__', '')}")
+        except ModuleNotFoundError:
+            bad += 1
+            print(f"  FAIL  {mod:<15} not installed")
+        except Exception as exc:  # noqa: BLE001
+            bad += 1
+            print(f"  FAIL  {mod:<15} {native_load_hint(mod, exc)}")
+    return 1 if bad else 0
+
+
 def fetch_models(which: str = "kokoro-v1.0.onnx") -> Path:
     """Download the model and voices into model_dir(). Skips files already there."""
     import httpx
@@ -454,8 +500,12 @@ if __name__ == "__main__":
     ap.add_argument("--out", default="apex_tts.wav")
     ap.add_argument("--engine", default="")
     ap.add_argument("--voice", default="")
+    ap.add_argument("--doctor", action="store_true",
+                    help="check that the voice stack's native libraries load; exit 1 if not")
     args = ap.parse_args()
 
+    if args.doctor:
+        raise SystemExit(doctor())
     if args.fetch:
         fetch_models(args.fetch)
     if args.say:
