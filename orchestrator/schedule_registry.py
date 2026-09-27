@@ -393,7 +393,6 @@ def _n8n_live(api_key: str) -> list[dict[str, Any]]:
 
 def n8n_rows(now_utc: datetime | None = None) -> list[dict[str, Any]]:
     now_utc = now_utc or datetime.now(timezone.utc)
-    local_tz = datetime.now().astimezone().tzinfo
     api_key = os.getenv("N8N_API_KEY", "")
     rows: list[dict[str, Any]] = []
 
@@ -401,9 +400,9 @@ def n8n_rows(now_utc: datetime | None = None) -> list[dict[str, Any]]:
         now_tz = now_utc.astimezone(tz)
         nexts = [n for n in (cron_next(c, now_tz) for c in crons) if n]
         when = " + ".join(describe_cron(c) for c in crons)
-        if getattr(tz, "key", None) and now_tz.utcoffset() != now_utc.astimezone(local_tz).utcoffset():
+        if getattr(tz, "key", None) and now_tz.utcoffset() != now_utc.astimezone().utcoffset():
             when += f" ({tz.key})"
-        return when, (min(nexts).astimezone(local_tz) if nexts else None)
+        return when, (min(nexts).astimezone() if nexts else None)
 
     if api_key:
         try:
@@ -435,7 +434,7 @@ def n8n_rows(now_utc: datetime | None = None) -> list[dict[str, Any]]:
                 else:
                     st, stl = "st-mute", "Not run yet"
                 rows.append(_row(wf["name"], when, nxt, st, stl, source="n8n", last=last_at,
-                                 next_label=None if wf["active"] else "off", now=now_utc.astimezone(local_tz),
+                                 next_label=None if wf["active"] else "off", now=now_utc.astimezone(),
                                  detail=f"Last execution {status or 'none'}."))
             return rows
         note = f"n8n API unreachable ({err}); showing repo definitions."
@@ -445,7 +444,7 @@ def n8n_rows(now_utc: datetime | None = None) -> list[dict[str, Any]]:
     for wf in _repo_n8n_definitions():
         when, nxt = timing(wf["crons"], _n8n_tz())
         rows.append(_row(wf["name"], when, nxt, "st-mute", "Unverified", source="n8n",
-                         now=now_utc.astimezone(local_tz), detail=f"{note} ({wf['file']})"))
+                         now=now_utc.astimezone(), detail=f"{note} ({wf['file']})"))
     return rows
 
 
@@ -514,7 +513,6 @@ def _win_trigger_label(trigs: list[dict]) -> str:
 
 def windows_task_rows(raw: list[dict], now_utc: datetime) -> list[dict[str, Any]]:
     rows = []
-    local_tz = datetime.now().astimezone().tzinfo
     for t in raw:
         last = _parse_ts(t.get("last"))
         if last and last.year < 2000:
@@ -533,9 +531,9 @@ def windows_task_rows(raw: list[dict], now_utc: datetime) -> list[dict[str, Any]
         else:
             st, stl = "st-fail", f"Failed (0x{int(code) & 0xFFFFFFFF:X})"
         rows.append(_row(t.get("name") or "?", _win_trigger_label(t.get("triggers") or []),
-                         nxt.astimezone(local_tz) if nxt else None, st, stl, source="task-scheduler",
+                         nxt.astimezone() if nxt else None, st, stl, source="task-scheduler",
                          last=last, detail=str(t.get("desc") or "")[:300],
-                         now=now_utc.astimezone(local_tz)))
+                         now=now_utc.astimezone()))
     return rows
 
 
@@ -547,7 +545,6 @@ def _systemd_rows(now_utc: datetime) -> list[dict[str, Any]]:
     except (OSError, ValueError, subprocess.SubprocessError):
         return []
     rows = []
-    local_tz = datetime.now().astimezone().tzinfo
     for t in timers:
         unit = str(t.get("unit") or "")
         if not unit.startswith(TASK_PREFIXES):
@@ -569,8 +566,8 @@ def _systemd_rows(now_utc: datetime) -> list[dict[str, Any]]:
         else:
             st, stl = "st-fail", f"Failed ({result})"
         rows.append(_row(unit.removesuffix(".timer"), "systemd timer",
-                         nxt.astimezone(local_tz) if nxt else None, st, stl, source="systemd",
-                         last=last, detail=f"Activates {svc}.", now=now_utc.astimezone(local_tz)))
+                         nxt.astimezone() if nxt else None, st, stl, source="systemd",
+                         last=last, detail=f"Activates {svc}.", now=now_utc.astimezone()))
     return rows
 
 

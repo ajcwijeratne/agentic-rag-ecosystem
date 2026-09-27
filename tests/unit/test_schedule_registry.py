@@ -143,6 +143,22 @@ def test_n8n_repo_definitions_are_unverified_without_api_key(tmp_path, monkeypat
     assert "N8N_API_KEY" in rows[0]["detail"]
 
 
+def test_n8n_next_run_respects_daylight_saving(tmp_path, monkeypatch):
+    # Melbourne moves to AEDT on 4 Oct 2026; a Monday 05:00 cron must stay 05:00.
+    from zoneinfo import ZoneInfo
+    monkeypatch.delenv("N8N_API_KEY", raising=False)
+    monkeypatch.setattr(reg, "N8N_TIMEZONE", "Australia/Melbourne")
+    (tmp_path / "a.json").write_text(json.dumps(_wf("Weekly", "0 5 * * 1")), encoding="utf-8")
+    monkeypatch.setattr(reg, "N8N_DEF_DIRS", [tmp_path])
+    monkeypatch.setattr(reg, "_ROOT", tmp_path)
+    rows = reg.n8n_rows(datetime(2026, 9, 28, 1, 0, tzinfo=timezone.utc))  # Mon 11:00 AEST
+    raw = datetime.fromisoformat(rows[0]["next_at"])
+    nxt = raw.astimezone(ZoneInfo("Australia/Melbourne"))
+    assert (nxt.month, nxt.day, nxt.hour) == (10, 5, 5)
+    # Shown in local time using the offset in force on that date, not today's.
+    assert raw.utcoffset() == raw.astimezone().utcoffset()
+
+
 def test_n8n_live_status(monkeypatch):
     monkeypatch.setenv("N8N_API_KEY", "k")
     live = [
