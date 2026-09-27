@@ -25,6 +25,7 @@ def _client():
 
 
 def _stub(monkeypatch, **overrides):
+    ss._cache.clear()
     now = datetime.now(timezone.utc)
     defaults = {
         "_deep_health": {"status": "degraded", "checks": {
@@ -111,3 +112,32 @@ def test_spend_today_reads_only_today_from_the_ledger(tmp_path, monkeypatch):
     log.write_text("\n".join(json.dumps(r) for r in rows) + "\nnot json\n", encoding="utf-8")
     monkeypatch.setattr(cost_tracker, "LOG_PATH", log)
     assert ss._spend_today() == {"today_usd": 0.75, "calls_today": 2}
+
+
+def test_slow_voice_check_is_unknown_not_missing(monkeypatch):
+    async def slow():
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(ss, "CHECK_TIMEOUT_S", 0.2)
+    _stub(monkeypatch, _voice_engines=slow)
+    v = _client().get("/status/summary").json()["voice"]
+    assert v["ok"] is None and "did not answer in time" in v["detail"]
+
+
+def test_voice_answers_are_remembered_but_failures_are_not(monkeypatch):
+    calls = {"n": 0}
+
+    async def engines():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("voice service restarting")
+        return {"mode": "proxy", "whisper": {"available": True}}
+
+    ss._cache.clear()
+    monkeypatch.setattr("orchestrator.voice.voice_engines", engines)
+    with pytest.raises(RuntimeError):
+        asyncio.run(ss._voice_engines())
+    assert asyncio.run(ss._voice_engines())["whisper"]["available"] is True
+    assert asyncio.run(ss._voice_engines())["whisper"]["available"] is True
+    assert calls["n"] == 2
+    ss._cache.clear()

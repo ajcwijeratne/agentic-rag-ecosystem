@@ -27,7 +27,23 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["status"])
 
-CHECK_TIMEOUT_S = 4.0
+CHECK_TIMEOUT_S = 8.0
+# What the voice stack can hear and speak with changes only when packages or
+# models change, and asking takes 1.5 to 4 s on wijerco. Remember a good answer
+# for a few minutes; a failed check is never remembered.
+VOICE_CACHE_S = 300.0
+_cache: dict[str, tuple[float, Any]] = {}
+
+
+async def _cached(key: str, fn: Callable[[], Awaitable[Any]]) -> Any:
+    import time
+
+    hit = _cache.get(key)
+    if hit and time.monotonic() - hit[0] < VOICE_CACHE_S:
+        return hit[1]
+    value = await fn()
+    _cache[key] = (time.monotonic(), value)
+    return value
 
 SERVICE_LABELS = {
     "qdrant": "Vector store (Qdrant)",
@@ -59,13 +75,13 @@ async def _daemon() -> dict:
 async def _voice_engines() -> dict:
     from .voice import voice_engines
 
-    return await voice_engines()
+    return await _cached("engines", voice_engines)
 
 
 async def _tts() -> dict:
     from .voice_tts import voice_tts_status
 
-    return await voice_tts_status()
+    return await _cached("tts", voice_tts_status)
 
 
 async def _gates() -> list:
@@ -169,7 +185,12 @@ def _daemon_state(ok: bool, st: Any, now: datetime) -> dict:
 
 def _voice(ok_e: bool, eng: Any, ok_t: bool, tts: Any) -> dict:
     hearing = []
-    if ok_e and isinstance(eng, dict) and eng.get("mode") != "unavailable":
+    if not ok_e:
+        # Slow to answer is not the same as missing: say so instead of
+        # claiming the machine cannot hear.
+        return {"ok": None, "hears": [], "speaks": [],
+                "detail": "speech recognition did not answer in time; try Refresh"}
+    if isinstance(eng, dict) and eng.get("mode") != "unavailable":
         if (eng.get("whisper") or {}).get("available"):
             hearing.append("Whisper")
         if (eng.get("vosk") or {}).get("available"):
