@@ -337,14 +337,79 @@
     @media(max-width:900px){.apx-stage{grid-template-columns:1fr}.apx-rail-r{display:none}.apx-kpis{grid-template-columns:repeat(2,1fr)}}
     .apx-mic.live{border-color:var(--teal);color:var(--teal);background:rgba(52,224,200,.14);animation:apxring 1.6s infinite}
     @keyframes apxring{0%{box-shadow:0 0 0 0 rgba(52,224,200,.45)}100%{box-shadow:0 0 0 13px rgba(52,224,200,0)}}
+    /* Apex voice: the Radial grows in place on the Overview (no overlay) */
+    .apx-stage{transition:grid-template-columns .45s ease}
+    .apx-kpis{max-height:240px;transition:max-height .45s ease,opacity .3s ease}
+    .apx-stage.engaged{grid-template-columns:minmax(0,1fr) 0px}
+    .apx-stage.engaged .apx-rail-r{opacity:0;pointer-events:none;padding:0;border:0}
+    .apx-stage.engaged .apx-kpis{max-height:0;opacity:0;border-top-width:0;overflow:hidden}
+    .apxo-dock-host{position:absolute;inset:0;pointer-events:none;z-index:6}
+    .cc-doc-open .apx-stage{grid-template-columns:minmax(0,1fr) 0px}
+    .cc-doc-open .apx-rail-r{display:none}
+    /* Top bar: a small live Radial on every page but the Overview */
+    .apx-mini{display:flex;align-items:center;gap:8px;min-width:0;max-width:44vw;background:none;border:0;padding:0;cursor:pointer;color:var(--muted)}
+    .apx-mini canvas{width:40px;height:40px;display:block;flex:none;border-radius:50%}
+    .apx-mini .cap{font-family:'IBM Plex Sans',sans-serif;font-size:12px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+    .apx-mini:hover canvas{box-shadow:0 0 0 1px rgba(244,178,63,.35)}
+    /* Document pane: outputs written live beside the dashboard */
+    .docpane{flex:0 0 auto;width:min(46vw,760px);min-width:380px;display:flex;flex-direction:column;min-height:0;
+      border-left:1px solid var(--line);background:var(--surface);animation:docin .35s ease}
+    @keyframes docin{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+    @media(max-width:1100px){.docpane{position:fixed;right:0;top:50px;bottom:0;z-index:30;width:min(100vw,640px);min-width:0;box-shadow:-20px 0 60px rgba(0,0,0,.5)}}
+    .docpane-head{display:flex;align-items:flex-start;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+    .docpane-head .tt{flex:1 1 auto;min-width:0}
+    .docpane-head .k{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}
+    .docpane-head .t{font-family:'IBM Plex Sans',sans-serif;font-size:15px;font-weight:600;color:var(--ink);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .docpane-head .s{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap}
+    .docpane-head .s .live{color:var(--gold)}
+    .docpane-head .s .ok{color:var(--accent)}
+    .docpane-head .s .bad{color:var(--coral)}
+    .docpane-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+    .dp-btn{background:var(--raised);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:5px 9px;cursor:pointer;
+      font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;text-decoration:none}
+    .dp-btn:hover{border-color:rgba(244,178,63,.5)}
+    .dp-btn.on{border-color:rgba(52,224,200,.6);color:var(--accent)}
+    .dp-btn.warn{border-color:rgba(255,107,114,.5);color:var(--coral)}
+    .dp-btn[disabled]{opacity:.45;cursor:default}
+    .docpane-path{padding:6px 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--faint);border-bottom:1px solid var(--line-soft);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .docpane-body{flex:1 1 auto;min-height:0;overflow:auto;padding:20px 28px 40px}
+    .docpane textarea{width:100%;height:100%;min-height:60vh;resize:none;background:transparent;border:0;outline:none;color:var(--ink);
+      font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.65}
+    .doc-md{font-family:'IBM Plex Sans',sans-serif;color:var(--ink);font-size:14px;line-height:1.68;max-width:72ch}
+    .doc-md h1{font-size:22px;line-height:1.3;margin:0 0 14px;color:#f3f6fb}
+    .doc-md h2{font-size:16.5px;margin:24px 0 8px;color:var(--gold-soft)}
+    .doc-md h3{font-size:14.5px;margin:18px 0 6px;color:var(--ink)}
+    .doc-md p{margin:0 0 11px}
+    .doc-md ul,.doc-md ol{margin:0 0 12px;padding-left:22px}
+    .doc-md li{margin:3px 0}
+    .doc-md table{border-collapse:collapse;margin:6px 0 14px;font-size:13px}
+    .doc-md th,.doc-md td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+    .doc-md th{background:var(--raised);color:var(--gold-soft);font-weight:600}
+    .doc-md blockquote{margin:0 0 12px;padding:4px 14px;border-left:3px solid var(--gold);color:var(--muted)}
+    .doc-md code{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--raised);padding:1px 5px;border-radius:4px}
+    .doc-md pre{background:var(--raised);padding:12px;border-radius:8px;overflow:auto}
+    .doc-md a{color:var(--accent)}
+    .doc-md hr{border:0;border-top:1px solid var(--line);margin:18px 0}
+    .doc-md mark.doc-tbc{background:rgba(245,160,94,.16);color:var(--amber);padding:0 3px;border-radius:3px}
+    .doc-caret{display:inline-block;width:8px;height:15px;margin-left:2px;background:var(--gold);vertical-align:-2px;animation:blink 1s steps(2) infinite}
+    @keyframes blink{50%{opacity:0}}
+    .docpane-list{display:flex;flex-direction:column;gap:2px}
+    .docpane-list button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-soft);
+      padding:10px 4px;color:var(--ink);cursor:pointer;font-family:'IBM Plex Sans',sans-serif}
+    .docpane-list button:hover{background:var(--raised)}
+    .docpane-list .m{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)}
+    .docpane-empty{font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--muted);line-height:1.6}
   </style>
 </head>
 <body>
 <div id="root"></div>
-<!-- Apex voice: neural speech, talk key, thinking cue and the Radial stage.
+<!-- Apex voice: neural speech, talk key, thinking cue and the Radial, plus
+     Apex outputs: documents drafted on request into the vault, shown live.
      Optional: every hook below checks window.ApexVoice and falls back to the
      browser voice when the file is missing. -->
-<script src="apex_voice.js?v=1.1.0"></script>
+<script src="apex_voice.js?v=1.2.0"></script>
+<script src="apex_outputs.js?v=1.0.0"></script>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback} = React;
 const STATIC_PREVIEW_PORTS = new Set(["5179","5500","5501"]);
@@ -4262,7 +4327,15 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
   const rafRef = useRef(0);
   const stRef  = useRef(statuses);
   stRef.current = statuses;
-  // Apex's voice state for the caption: listening, thinking, speaking.
+  // Apex's voice controls and captions live on this surface, not an overlay.
+  const dockRef = useRef(null);
+  useEffect(()=>{
+    const host=dockRef.current;
+    if(!(host && window.ApexVoice && ApexVoice.dock)) return;
+    ApexVoice.dock.mount(host);
+    return ()=>ApexVoice.dock.unmount(host);
+  },[]);
+  // Apex's voice state for the caption: listening, thinking, speaking, writing.
   const [voiceWords,setVoiceWords] = useState('');
   useEffect(()=>{
     if(!(window.ApexVoice && ApexVoice.bus && ApexVoice.core)) return;
@@ -4300,9 +4373,13 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
     const ro=new ResizeObserver(resize); ro.observe(cv); resize();
 
     const statusOf=id=>(stRef.current&&stRef.current[id])||'idle';
+    // While a conversation is on, the Radial grows in place and the nodes
+    // step back: pushed outward and dimmed, so the centre has the room.
+    let grow=0;
     const geom=n=>{
-      const rx = n.ring===1 ? R*0.26 : R*0.415;
-      const ry = n.ring===1 ? R*0.12 : R*0.20;
+      const push=1+0.3*grow;
+      const rx = (n.ring===1 ? R*0.26 : R*0.415)*push;
+      const ry = (n.ring===1 ? R*0.12 : R*0.20)*push;
       return { x:cx+Math.cos(n.angle)*rx, y:cy+Math.sin(n.angle)*ry, depth:(Math.sin(n.angle)+1)/2 };
     };
 
@@ -4362,7 +4439,7 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
     function drawNode(d,n){
       const c=APX_CC[statusOf(n.id)], isHot=hovered===n.id;
       if(statusOf(n.id)==='running') n.pulse=Math.min(1,n.pulse+0.05); else n.pulse=Math.max(0,n.pulse-0.03);
-      const scale=0.7+d.depth*0.55, alpha=0.45+d.depth*0.55;
+      const scale=0.7+d.depth*0.55, alpha=(0.45+d.depth*0.55)*(1-0.55*grow);
       const r=(n.ring===1?5.6:4.2)*scale+n.pulse*3;
       ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(d.x,d.y);
       ctx.strokeStyle='rgba('+c.rgb+','+(0.05+n.pulse*0.2+(isHot?0.16:0))+')'; ctx.lineWidth=1; ctx.stroke();
@@ -4411,6 +4488,7 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
             grd.addColorStop(1,'rgba(91,157,249,0)');
             ctx.strokeStyle=grd; ctx.lineWidth=1; ctx.stroke(); ctx.restore();
           }
+          grow=(window.ApexVoice && ApexVoice.core && ApexVoice.core.grow) ? ApexVoice.core.grow() : 0;
           // depth-sorted nodes with the core between the two layers
           const placed=nodes.map(n=>({n,g:geom(n)})).sort((a,b)=>a.g.depth-b.g.depth);
           placed.filter(p=>p.g.depth<0.5).forEach(p=>drawNode(p.g,p.n));
@@ -4453,6 +4531,7 @@ function ApxOrbital({ setView, statuses, hoverName, setHoverName }){
   return (
     <div className="apxo-wrap">
       <canvas ref={cvRef} aria-hidden="true"/>
+      <div className="apxo-dock-host" ref={dockRef}/>
       <div className="apxo-hud">
         <div className="n">Apex</div>
         <div className={"s"+(hoverName||voiceWords?' live':'')}>{hoverName?('open '+hoverName):(voiceWords||'orchestrator standing by')}</div>
@@ -4652,6 +4731,24 @@ function ApxActivity(){
   );
 }
 
+/* ---- The small live Radial for the top bar (every page but the Overview) ---- */
+function ApexMini(){
+  const cvRef=useRef(null), capRef=useRef(null);
+  useEffect(()=>{
+    const cv=cvRef.current;
+    if(!(cv && window.ApexVoice && ApexVoice.mini)) return;
+    ApexVoice.mini.mount(cv, capRef.current);
+    return ()=>ApexVoice.mini.unmount(cv);
+  },[]);
+  if(!(window.ApexVoice && ApexVoice.mini)) return null;
+  return (
+    <button className="apx-mini" onClick={()=>ApexVoice.mini.open()} title="Apex: open the voice view on the Overview">
+      <canvas ref={cvRef} aria-hidden="true"/>
+      <span className="cap" ref={capRef} style={{display:'none'}}/>
+    </button>
+  );
+}
+
 /* ---- Command bar meters (live, best-effort) ---- */
 function ApxBar({ view, setView, VIEW_LABELS, sessionCost, voice }){
   const [queue,setQueue]=useState(null);
@@ -4677,6 +4774,7 @@ function ApxBar({ view, setView, VIEW_LABELS, sessionCost, voice }){
       </div>
       <span className="apx-crumb">{view!=='overview'?('/ '+(VIEW_LABELS[view]||view)):''}</span>
       <div className="apx-meters">
+        {view!=='overview' && <ApexMini/>}
         {/* Voice is global, so its state belongs in the chrome rather than on
             one page. Click to start or stop from anywhere. */}
         {voice && (
@@ -4716,6 +4814,14 @@ function ApxBar({ view, setView, VIEW_LABELS, sessionCost, voice }){
 function OverviewApex({ setView, onDispatch, voice }){
   const [statuses,setStatuses]=useState({});
   const [hoverName,setHoverName]=useState(null);
+  // A conversation grows the Radial in place: the KPI strip and the activity
+  // rail fold away until it settles.
+  const [engaged,setEngaged]=useState(!!(window.ApexVoice && ApexVoice.engaged));
+  useEffect(()=>{
+    if(!(window.ApexVoice && ApexVoice.bus)) return;
+    const off=ApexVoice.bus.on(()=>setEngaged(!!ApexVoice.engaged));
+    return ()=>{ off(); };
+  },[]);
   useEffect(()=>{
     let live=true;
     (async()=>{
@@ -4730,7 +4836,7 @@ function OverviewApex({ setView, onDispatch, voice }){
     return ()=>{live=false;};
   },[]);
   return (
-    <div className="apx-stage">
+    <div className={"apx-stage"+(engaged?" engaged":"")}>
       <div className="apx-field">
         <ApxOrbital setView={setView} statuses={statuses} hoverName={hoverName} setHoverName={setHoverName}/>
         <ApxKpis/>
@@ -4956,6 +5062,121 @@ function DepartmentsView(){
   );
 }
 
+/* ---- Document pane: outputs Apex drafts on request, written live beside the
+   dashboard. Each is a markdown note in the vault (13_Command Centre/Outputs),
+   saved as it is written and again on every edit here. ---- */
+function docWords(t){ return (String(t||'').match(/[A-Za-z0-9][A-Za-z0-9'’.-]*/g)||[]).length; }
+function DocPane({ doc, setDoc, onClose, openOutput }){
+  const [mode,setMode]=useState('preview');     // preview | edit
+  const [list,setList]=useState(null);
+  const [saveState,setSaveState]=useState('');  // '' | saving | saved | failed
+  const bodyRef=useRef(null);
+  const stick=useRef(true);
+  const timer=useRef(0);
+  const pending=useRef(null);                  // {id, content} waiting to be saved
+  const writing = !!doc && doc.status==='drafting';
+
+  const flush=useCallback(async()=>{
+    clearTimeout(timer.current);
+    const p=pending.current; pending.current=null;
+    if(!p || !window.ApexOutputs) return;
+    try{
+      const r=await ApexOutputs.save(p.id, p.content);
+      setDoc(d=>d&&d.id===p.id?{...d,status:r.status,words:r.words}:d);
+      setSaveState('saved');
+    }catch(e){ setSaveState('failed'); }
+  },[setDoc]);
+
+  // Follow the text while it is being written, unless the reader scrolled up.
+  useEffect(()=>{
+    const el=bodyRef.current;
+    if(el && writing && stick.current) el.scrollTop=el.scrollHeight;
+  },[doc && doc.content, writing]);
+  useEffect(()=>{ setMode('preview'); setSaveState(''); stick.current=true; return ()=>{ flush(); }; },[doc && doc.id]);
+  useEffect(()=>{
+    if(doc || !window.ApexOutputs) return;
+    let live=true;
+    ApexOutputs.list(40).then(r=>{ if(live) setList(r.items||[]); }).catch(()=>{ if(live) setList([]); });
+    return ()=>{ live=false; };
+  },[doc]);
+
+  const onScroll=e=>{ const el=e.currentTarget; stick.current = el.scrollHeight-el.scrollTop-el.clientHeight < 80; };
+  const edit=v=>{
+    setDoc(d=>({...d,content:v}));
+    pending.current={id:doc.id,content:v};
+    setSaveState('saving');
+    clearTimeout(timer.current);
+    timer.current=setTimeout(flush,1100);
+  };
+  const stop=()=>{ if(doc && window.ApexOutputs) ApexOutputs.stop(doc.id).catch(()=>{}); };
+  const download=()=>{ if(doc && window.ApexOutputs) ApexOutputs.download(doc.id,(doc.path||'').split('/').pop()||undefined).catch(()=>{}); };
+
+  if(!doc){
+    return (
+      <aside className="docpane" aria-label="Outputs">
+        <div className="docpane-head">
+          <div className="tt"><div className="k">Outputs</div><div className="t">Documents Apex has drafted</div>
+            <div className="s"><span>13_Command Centre/Outputs</span></div></div>
+          <div className="docpane-acts"><button className="dp-btn" onClick={onClose} title="Close">Close</button></div>
+        </div>
+        <div className="docpane-body">
+          {list===null && <p className="docpane-empty">Loading…</p>}
+          {list && list.length===0 && <p className="docpane-empty">Nothing yet. Ask Apex to draft something, for example "Draft a content brief on this week's TEQSA signals". The document opens here and saves to the vault as it writes.</p>}
+          {list && list.length>0 && (
+            <div className="docpane-list">
+              {list.map(it=>(
+                <button key={it.id} onClick={()=>openOutput(it.id)}>
+                  <span>{it.title}</span>
+                  <span className="m">{(it.kind||'document')} · {it.status} · {it.words||0} words · {String(it.updated||it.created||'').replace('T',' ').slice(0,16)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
+    );
+  }
+
+  const words = writing ? docWords(doc.content) : (doc.words || docWords(doc.content));
+  const status = writing ? <span className="live">Writing… {words} words</span>
+    : doc.status==='error' ? <span className="bad">{doc.error || 'The draft failed.'}{doc.content ? ' What was written is saved.' : ''}</span>
+    : doc.status==='partial' ? <span className="bad">Stopped · {words} words saved</span>
+    : saveState==='saving' ? <span className="live">Saving…</span>
+    : saveState==='failed' ? <span className="bad">Could not save your edit. It will retry on the next change.</span>
+    : <span className="ok">Saved · {words} words</span>;
+  return (
+    <aside className="docpane" aria-label={doc.title}>
+      <div className="docpane-head">
+        <div className="tt">
+          <div className="k">{doc.kind || 'document'}{doc.source==='voice' ? ' · asked by voice' : ''}</div>
+          <div className="t" title={doc.title}>{doc.title}</div>
+          <div className="s">{status}</div>
+        </div>
+        <div className="docpane-acts">
+          {writing && <button className="dp-btn warn" onClick={stop} title="Stop writing and keep what exists">Stop</button>}
+          <button className={"dp-btn"+(mode==='preview'?' on':'')} onClick={()=>setMode('preview')}>Preview</button>
+          <button className={"dp-btn"+(mode==='edit'?' on':'')} onClick={()=>setMode('edit')} disabled={writing}
+            title={writing?'Editing opens when the draft is finished':'Edit the markdown'}>Edit</button>
+          {doc.obsidian_uri && <a className="dp-btn" href={doc.obsidian_uri} title="Open this note in Obsidian">Obsidian</a>}
+          <button className="dp-btn" onClick={download} disabled={!doc.id} title="Download the .md file">.md</button>
+          <button className="dp-btn" onClick={()=>{ flush(); setDoc(null); }} title="All outputs">All</button>
+          <button className="dp-btn" onClick={()=>{ flush(); onClose(); }} title="Close">Close</button>
+        </div>
+      </div>
+      {doc.path && <div className="docpane-path" title={doc.path}>{doc.path}</div>}
+      <div className="docpane-body" ref={bodyRef} onScroll={onScroll}>
+        {mode==='edit'
+          ? <textarea value={doc.content} onChange={e=>edit(e.target.value)} spellCheck={true} readOnly={writing} aria-label="Markdown"/>
+          : <article className="doc-md">
+              <div dangerouslySetInnerHTML={{__html: window.ApexOutputs ? ApexOutputs.md(doc.content) : ''}}/>
+              {writing && <span className="doc-caret"/>}
+              {!writing && !doc.content && <p className="docpane-empty">Nothing was written.</p>}
+            </article>}
+      </div>
+    </aside>
+  );
+}
+
 function App() {
   const [sessionId,setSessionId]   = useState(()=>crypto.randomUUID());
   const [messages,setMessages]     = useState([]);
@@ -4992,6 +5213,65 @@ function App() {
   const [speakReplies,setSpeakReplies] = useState(true);
   const [speaking,setSpeaking]     = useState(false);  // TTS is talking
   const [thinking,setThinking]     = useState(false);  // agent is working
+
+  // ---- Outputs: documents Apex drafts on request ("draft a brief on...") ----
+  // Spoken or typed, a document request opens the pane beside the dashboard and
+  // writes into a vault note live. Every event arrives through onDoc, which
+  // ApexVoice calls for the voice socket and for typed drafts alike.
+  const [doc,setDoc]         = useState(null);   // the open output, or null for the list
+  const [docOpen,setDocOpen] = useState(false);
+  useEffect(()=>{ document.body.classList.toggle('cc-doc-open', docOpen); },[docOpen]);
+  const onDoc = useCallback((m)=>{
+    if(!m || !m.type) return;
+    if(m.type==='doc_start'){
+      setDoc({id:m.id, title:m.title, kind:m.kind, content:'', status:m.status||'drafting',
+              path:m.path, obsidian_uri:m.obsidian_uri, words:0, source:m.source||'', error:''});
+      setDocOpen(true);
+      return;
+    }
+    setDoc(d=>{
+      if(!d || d.id!==m.id) return d;
+      if(m.type==='doc_delta') return {...d, content: m.replay ? m.text : d.content + m.text};
+      if(m.type==='doc_done') return {...d, status:'draft', words:m.words};
+      if(m.type==='doc_stopped') return {...d, status:'partial', words:m.words};
+      if(m.type==='doc_error') return {...d, status:'error', error:m.message||'The draft failed.'};
+      return d;
+    });
+    if(m.type==='doc_done' && m.cost_usd) setSessionCost(c=>c+m.cost_usd);
+    // The saved note is tidied on the server (stray preamble, fences); show that copy.
+    if((m.type==='doc_done' || m.type==='doc_stopped') && window.ApexOutputs){
+      ApexOutputs.get(m.id).then(r=>setDoc(d=>d && d.id===m.id
+        ? {...d, content:r.content, words:r.words, path:r.path, obsidian_uri:r.obsidian_uri, status:r.status} : d)).catch(()=>{});
+    }
+  },[]);
+  const docEvent = useCallback((m)=>{ if(window.ApexVoice && ApexVoice.docEvent) ApexVoice.docEvent(m); else onDoc(m); },[onDoc]);
+  // A typed request: true when it was a document request and is now drafting.
+  const runDocument = useCallback(async (text, source)=>{
+    if(!window.ApexOutputs) return false;
+    const d = await ApexOutputs.detect(text);
+    if(!d || !d.document) return false;
+    try{
+      const start = await ApexOutputs.draft(text, {session_id: sessionId, source});
+      docEvent(start);
+      ApexOutputs.follow(start.id, ev=>{ if(ev.type!=='doc_start') docEvent(ev); })
+        .catch(e=>docEvent({type:'doc_error', id:start.id, message:String((e && e.message) || e)}));
+    }catch(e){
+      setDoc({id:'', title:d.title, kind:d.kind, content:'', status:'error', path:'', source,
+              error: (e && e.message) || 'Could not start the draft.'});
+      setDocOpen(true);
+    }
+    return true;
+  },[sessionId, docEvent]);
+  // Reopen an output from the list; a draft still running is followed live.
+  const openOutput = useCallback(async (id)=>{
+    if(!window.ApexOutputs) return;
+    try{
+      const r = await ApexOutputs.get(id);
+      setDoc({...r, content:r.content||'', error:''});
+      setDocOpen(true);
+      if(r.status==='drafting') ApexOutputs.follow(id, ev=>{ if(ev.type!=='doc_start') docEvent(ev); }).catch(()=>{});
+    }catch(e){}
+  },[docEvent]);
   const bottomRef = useRef(null);
   const abortRef  = useRef(null);
   const fileRef   = useRef(null);
@@ -5048,6 +5328,12 @@ function App() {
     setInput('');
     const uid = Date.now();
     const aid = uid+1;
+    // "Draft a brief on..." goes to the document pane, not the chat stream.
+    if(!wjAgent && await runDocument(q,'chat')){
+      setMessages(prev=>[...prev,{id:uid,role:'user',content:q},
+        {id:aid,role:'assistant',content:'Drafting it in the document pane. It saves to Outputs in the vault as it writes.'}]);
+      return;
+    }
     setMessages(prev=>[...prev,{id:uid,role:'user',content:q},{id:aid,role:'assistant',content:'',streaming:true}]);
     setStreaming(true);
 
@@ -5399,8 +5685,10 @@ function App() {
       shutUp: () => shutUp(),
       send: (obj) => { const ws = voiceRef.current.ws; if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); },
       isRecording: () => !!voiceRef.current.node,
+      onDoc: (m) => onDoc(m),
+      showOverview: () => setView('overview'),
     });
-  }, [stopVoice, shutUp]);
+  }, [stopVoice, shutUp, onDoc]);
 
   // Always-on by default: open the mic on load rather than waiting for a click.
   // With the wake word on this is cheap and private — only the local grammar
@@ -5555,6 +5843,7 @@ function App() {
             ))}
             <ServiceDot key="qdrant" label="Qdrant" url={`${API}/health/qdrant`}/>
           </div>
+          <button className={"dp-btn"+(docOpen?' on':'')} onClick={()=>setDocOpen(o=>!o)} title="Documents Apex has drafted">Outputs</button>
           <button onClick={()=>setShowCost(true)} style={{background:'var(--pine-tint)',border:'1px solid #cdddd2',color:'var(--pine)',borderRadius:999,padding:'5px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>
             {fmtCost(sessionCost)}
           </button>
@@ -5582,7 +5871,7 @@ function App() {
         </div>}
 
         {view==='overview' && <OverviewApex setView={setView} voice={voiceApi}
-          onDispatch={t=>{setInput(t);setView('chat');}}/>}
+          onDispatch={async t=>{ if(await runDocument(t,'overview')) return; setInput(t); setView('chat'); }}/>}
         {view==='departments' && <DepartmentsView/>}
         {view==='admin' && <AdminView/>}
         {view==='quality' && <QualityCockpit/>}
@@ -5782,6 +6071,8 @@ function App() {
         </>}
       </div>
 
+      {/* ── Document pane: outputs written live beside the dashboard ── */}
+      {docOpen && <DocPane doc={doc} setDoc={setDoc} onClose={()=>setDocOpen(false)} openOutput={openOutput}/>}
       </div>
       {showCost&&<CostModal onClose={()=>setShowCost(false)}/>}
     </div>

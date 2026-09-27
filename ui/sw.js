@@ -3,7 +3,7 @@
    cache only when offline. Shell requests bypass the browser HTTP cache so a
    new deploy can never be masked by a stale cached page. Bump CACHE to force
    every client to update on its next navigation. */
-const CACHE = "cc-shell-v9";
+const CACHE = "cc-shell-v10";
 const SHELL = ["/app/command_centre.html", "/app/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

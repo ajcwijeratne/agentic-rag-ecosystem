@@ -21,14 +21,21 @@
               unless the key is held) and "go hands free" (always listening).
    THINKING   A soft tone pad while the agent works, so a pause never reads as
               a dead line. Fades out the moment speech starts.
-   RADIAL     A full-screen stage that rises when a conversation starts: an
-              80-bar mirrored starburst and a particle orb that bursts on every
-              syllable of Apex's real voice, over a slowly turning galaxy. Sonar
-              at idle, a radar sweep while thinking, an intake ring while
-              listening. Live captions underneath.
+   RADIAL     Part of the dashboard, not an overlay: the Overview's orbital map
+              draws it at its centre, an 80-bar mirrored starburst and a particle
+              orb that bursts on every syllable of Apex's real voice. Sonar at
+              idle, an intake ring while listening, a radar sweep while thinking
+              or writing a document. When a conversation starts it grows in
+              place, with captions and controls on the same surface. A small
+              one sits in the top bar on every other page.
 
    Page contract (all optional; everything degrades if a hook is missing):
-     ApexVoice.attach({startVoice, stopVoice, shutUp, send, isRecording})
+     ApexVoice.attach({startVoice, stopVoice, shutUp, send, isRecording,
+                       onDoc, showOverview})
+     ApexVoice.dock.mount(el)      voice controls and captions on a surface
+     ApexVoice.core.draw(ctx,...)  the Radial at the orbital map's centre
+     ApexVoice.mini.mount(canvas)  the small Radial in the top bar
+     ApexVoice.docEvent(msg)       document draft events (apex_outputs.js)
      ApexVoice.onEvent(msg)        every /voice/ws message, before the page
      ApexVoice.speakText(text)     drop-in for speakText()
      ApexVoice.speechDone()        drop-in for speechDone()
@@ -61,11 +68,10 @@
     ttsSpeed: clamp(parseFloat(store.get("cc_tts_speed", "1.05")) || 1.05, 0.7, 1.5),
     thinkingCue: store.get("cc_thinking_cue", "true") !== "false",
     stageAuto: store.get("cc_stage_auto", "true") !== "false",
-    launcher: store.get("cc_apex_launcher", "true") !== "false",
   };
   const LS_KEYS = {
     micMode: "cc_mic_mode", pttKey: "cc_ptt_key", ttsEngine: "cc_tts_engine", ttsVoice: "cc_apex_voice",
-    ttsSpeed: "cc_tts_speed", thinkingCue: "cc_thinking_cue", stageAuto: "cc_stage_auto", launcher: "cc_apex_launcher",
+    ttsSpeed: "cc_tts_speed", thinkingCue: "cc_thinking_cue", stageAuto: "cc_stage_auto",
   };
   function setSetting(key, value) {
     settings[key] = value;
@@ -90,6 +96,7 @@
     heard: "", partial: "", saying: "", said: "", err: "",
     engine: "", voice: "", note: "",
     firstAudioMs: null, turns: 0,
+    writing: null,         // {id, title, kind, source} while a document is being drafted
     level: 0, spectrum: new Float32Array(64), source: "none",
     _subs: new Set(),
     set(patch) { Object.assign(this, patch); this.emit(); },
@@ -98,7 +105,8 @@
   };
 
   /* ------------------------------------------------------------ page hooks */
-  const page = { startVoice: null, stopVoice: null, shutUp: null, send: null, isRecording: null };
+  const page = { startVoice: null, stopVoice: null, shutUp: null, send: null, isRecording: null,
+    onDoc: null, showOverview: null };
   const recording = () => { try { return !!(page.isRecording && page.isRecording()); } catch (e) { return false; } };
   const send = (obj) => { try { page.send && page.send(obj); } catch (e) { /* socket gone */ } };
 
@@ -566,6 +574,7 @@
    */
   function onEvent(m) {
     if (!m || !m.type) return true;
+    if (m.type.startsWith("doc_")) { docEvent(m); return true; }
     if (typeof m.turn === "number") {
       if (m.type === "turn_cancelled") cancelledTurns.add(m.turn);
       else if (cancelledTurns.has(m.turn) || m.turn < latestTurn) return false;
@@ -789,33 +798,24 @@
   const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t].map((x) => x | 0);
 
   class Radial {
-    constructor(canvas, opts) {
-      // Embedded: drawn into another canvas (the overview hero) in CSS pixels,
-      // with no galaxy of its own and a lighter orb.
-      this.embedded = !!(opts && opts.embedded);
-      this.cv = canvas; this.g = canvas ? canvas.getContext("2d") : null;
-      this.w = 0; this.h = 0; this.dpr = 1;
+    constructor(opts) {
+      // Drawn into a host canvas in CSS pixels: the overview's orbital map, or
+      // the small one in the top bar. `grains` sets the orb's density.
+      this.embedded = true;
+      this.grains = (opts && opts.grains) || 1300;
+      this.dpr = 1;
       this.N = 80;
       this.bar = new Float32Array(this.N); this.peak = new Float32Array(this.N); this.prevBar = new Float32Array(this.N);
       this.sparks = []; this.rings = []; this.ringClock = 0.6; this.intake = 0;
       this.w8 = { idle: 1, listen: 0, think: 0, speak: 0, error: 0 };
-      this.spin = 0; this.sweep = -Math.PI / 2; this.t = 0; this.galaxyTurn = 0;
+      this.spin = 0; this.sweep = -Math.PI / 2; this.t = 0;
       this.onset = { fast: 0, slow: 0, last: -1 };
       this.reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       this.buildOrb();
     }
 
-    resize() {
-      const r = this.cv.getBoundingClientRect();
-      const dpr = Math.min(1.5, window.devicePixelRatio || 1);
-      const w = Math.max(2, Math.round(r.width * dpr)), h = Math.max(2, Math.round(r.height * dpr));
-      if (w === this.w && h === this.h) return;
-      this.w = this.cv.width = w; this.h = this.cv.height = h; this.dpr = dpr;
-      this.buildGalaxy();
-    }
-
     buildOrb() {
-      const n = this.embedded ? 1300 : this.reduced ? 1400 : 2600;
+      const n = this.reduced ? Math.min(this.grains, 900) : this.grains;
       this.n = n;
       this.px = new Float32Array(n); this.py = new Float32Array(n); this.pz = new Float32Array(n);
       this.r0 = new Float32Array(n); this.d = new Float32Array(n); this.v = new Float32Array(n);
@@ -834,55 +834,13 @@
       this.paths = [];
     }
 
-    buildGalaxy() {
-      const { w, h } = this;
-      const c = document.createElement("canvas");
-      c.width = w; c.height = h;
-      const g = c.getContext("2d");
-      const bg = g.createRadialGradient(w / 2, h * 0.46, 0, w / 2, h * 0.46, Math.hypot(w, h) * 0.6);
-      bg.addColorStop(0, rgba(PAL.deep, 1)); bg.addColorStop(0.55, "rgb(6,12,28)"); bg.addColorStop(1, rgba(PAL.void, 1));
-      g.fillStyle = bg; g.fillRect(0, 0, w, h);
-      // A tilted galactic band: nebula clouds and denser stars along one diagonal.
-      const ang = -0.42, ca = Math.cos(ang), sa = Math.sin(ang), cx = w / 2, cy = h / 2;
-      const along = () => (hash(this.seed = (this.seed || 1) + 1) - 0.5) * Math.hypot(w, h);
-      const across = (spread) => { let s = 0; for (let k = 0; k < 4; k++) s += hash((this.seed = this.seed + 1) * 1.37); return (s / 4 - 0.5) * spread; };
-      const cloudCols = [PAL.blue, PAL.teal, PAL.violet, PAL.blue, PAL.violet, PAL.gold];
-      for (let i = 0; i < 34; i++) {
-        const a = along(), b = across(h * 0.9);
-        const x = cx + a * ca - b * sa, y = cy + a * sa + b * ca;
-        const r = (60 + 190 * hash(i * 9.1)) * this.dpr;
-        const col = cloudCols[i % cloudCols.length];
-        const gr = g.createRadialGradient(x, y, 0, x, y, r);
-        gr.addColorStop(0, rgba(col, col === PAL.gold ? 0.035 : 0.075)); gr.addColorStop(1, rgba(col, 0));
-        g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
-      }
-      for (let i = 0; i < 900; i++) {
-        const a = along(), b = across(i % 3 ? h * 0.7 : h * 2.2);
-        const x = cx + a * ca - b * sa, y = cy + a * sa + b * ca;
-        if (x < 0 || y < 0 || x > w || y > h) continue;
-        const bright = 0.15 + 0.5 * hash(i * 2.9);
-        g.fillStyle = rgba(hash(i) > 0.85 ? PAL.goldSoft : PAL.ice, bright * 0.7);
-        const s = (hash(i * 5.3) > 0.93 ? 1.6 : 0.9) * this.dpr;
-        g.fillRect(x, y, s, s);
-      }
-      this.galaxy = c;
-      // Live stars: these twinkle and turn with the galaxy.
-      this.stars = [];
-      for (let i = 0; i < 170; i++) {
-        this.stars.push({
-          r: Math.sqrt(hash(i * 11.7)) * Math.hypot(w, h) * 0.55, a: hash(i * 4.1) * TAU,
-          s: (hash(i * 8.3) > 0.9 ? 2.2 : 1.2) * this.dpr, p: hash(i * 6.6) * TAU, f: 0.6 + 1.6 * hash(i * 1.9),
-          c: hash(i * 3.3) > 0.8 ? PAL.goldSoft : PAL.ice,
-        });
-      }
-    }
-
     step(dt) {
       const st = bus.state;
+      const writing = !!bus.writing && st !== "speaking" && st !== "hearing";
       const target = {
-        idle: st === "idle" || st === "off" ? 1 : 0,
-        listen: st === "listening" || st === "hearing" ? 1 : 0,
-        think: st === "thinking" ? 1 : 0,
+        idle: (st === "idle" || st === "off") && !writing ? 1 : 0,
+        listen: (st === "listening" || st === "hearing") && !writing ? 1 : 0,
+        think: st === "thinking" || writing ? 1 : 0,
         speak: st === "speaking" ? 1 : 0,
         error: st === "error" ? 1 : 0,
       };
@@ -892,7 +850,6 @@
       const calm = this.reduced ? 0.35 : 1;
       this.spin += dt * (0.18 + 0.9 * bus.level) * calm;
       this.sweep += dt * TAU / 2.4 * calm;
-      this.galaxyTurn += dt * 0.006 * calm;
 
       // Syllable onsets: a fast follower pulling ahead of a slow one.
       const L = bus.level;
@@ -950,33 +907,6 @@
       }
       this.sparks = this.sparks.filter((p) => p.life > 0);
       this.intake = (this.intake + dt * 0.55) % 1;
-    }
-
-    draw(dt) {
-      this.resize();
-      this.step(dt);
-      const g = this.g, w = this.w, h = this.h;
-      const cx = w / 2, cy = h * 0.45;
-      const S = Math.min(w * 1.3, h * 1.08);
-      const R = S * 0.125, base = R * 1.32, len = S * 0.2;
-
-      // Galaxy, turning on the centre.
-      g.globalCompositeOperation = "source-over";
-      g.globalAlpha = 1;
-      g.save();
-      g.translate(cx, cy); g.rotate(this.galaxyTurn); g.translate(-cx, -cy);
-      const pad = Math.hypot(w, h) * 0.08;
-      g.drawImage(this.galaxy, -pad, -pad, w + 2 * pad, h + 2 * pad);
-      g.restore();
-      for (const s of this.stars) {
-        const a = s.a + this.galaxyTurn * 1.6;
-        const x = cx + Math.cos(a) * s.r, y = cy + Math.sin(a) * s.r * 0.82;
-        if (x < 0 || y < 0 || x > w || y > h) continue;
-        const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(this.t * s.f + s.p));
-        g.fillStyle = rgba(s.c, 0.75 * tw);
-        g.fillRect(x - s.s / 2, y - s.s / 2, s.s, s.s);
-      }
-      this.scene(g, cx, cy, R, base, len);
     }
 
     /** The Radial inside another canvas: the overview's orbital map calls this
@@ -1238,56 +1168,64 @@
     return String(code).replace(/^Key/, "").replace(/^Digit/, "").replace(/Left$|Right$/, "").toUpperCase();
   }
 
-  /* =============================================================== STAGE */
+  /* ================================================================ DOCK
+     The Radial is part of the dashboard, not an overlay. The Overview's
+     orbital map draws it at its centre (see `core`), and this dock puts the
+     voice controls and captions on the same surface: state and engine at the
+     top right, what you said and what Apex is saying under the orb, and a
+     hold-to-talk button while a conversation is on.
+
+     "Engaged" is the old stage's open state: a conversation starting makes
+     the centre grow in place and the KPI strip fold away; seven quiet seconds
+     after the last reply it settles back. Clicking the orb pins it open until
+     Done or Esc. On other pages the small Radial in the top bar carries the
+     same state (see `mini`). */
   const CSS = `
-  .apxv-stage{position:fixed;inset:0;z-index:10050;background:#030711;opacity:0;visibility:hidden;
-    transition:opacity .35s ease,visibility 0s linear .35s;color:#e4ecf7;font-family:'IBM Plex Sans',system-ui,sans-serif}
-  .apxv-stage.open{opacity:1;visibility:visible;transition:opacity .35s ease}
-  .apxv-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-  .apxv-top{position:absolute;top:14px;left:16px;right:16px;display:flex;align-items:center;gap:10px;
-    font:500 10.5px 'IBM Plex Mono',ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:#8fa0bd;z-index:2}
-  .apxv-brand{color:#f2cf82}
+  .apxv-dock{position:absolute;inset:0;pointer-events:none;z-index:6;color:#e4ecf7;font-family:'IBM Plex Sans',system-ui,sans-serif;container-type:inline-size}
+  .apxv-dock > *{pointer-events:auto}
+  .apxv-top{position:absolute;top:14px;right:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;
+    max-width:calc(100% - 28px);font:500 10px 'IBM Plex Mono',ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:#8fa0bd}
   .apxv-chip{padding:4px 9px;border:1px solid rgba(91,157,249,.3);border-radius:999px;color:#e4ecf7;white-space:nowrap}
-  .apxv-chip[data-s=speaking],.apxv-chip[data-s=thinking]{border-color:rgba(244,178,63,.6);color:#f4b23f}
+  .apxv-chip[data-s=speaking],.apxv-chip[data-s=thinking],.apxv-chip[data-s=writing]{border-color:rgba(244,178,63,.6);color:#f4b23f}
   .apxv-chip[data-s=listening],.apxv-chip[data-s=hearing]{border-color:rgba(52,224,200,.55);color:#34e0c8}
   .apxv-chip[data-s=error]{border-color:rgba(255,107,114,.6);color:#ff6b72}
-  .apxv-meta{color:#5d6f92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .apxv-ctl{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .apxv-meta{color:#5d6f92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
   .apxv-btn{background:rgba(11,20,36,.72);border:1px solid rgba(91,157,249,.24);color:#e4ecf7;border-radius:8px;
-    padding:6px 10px;font:500 10.5px 'IBM Plex Mono',ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+    padding:5px 9px;font:500 10px 'IBM Plex Mono',ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
   .apxv-btn:hover{border-color:rgba(244,178,63,.55)}
   .apxv-btn[aria-pressed=true]{border-color:rgba(52,224,200,.6);color:#34e0c8}
-  .apxv-cap{position:absolute;left:50%;bottom:104px;transform:translateX(-50%);width:min(780px,calc(100% - 32px));
-    text-align:center;z-index:2;pointer-events:none}
-  .apxv-you{color:#8fa0bd;font-size:13.5px;line-height:1.45;margin-bottom:10px;min-height:1.45em}
+  .apxv-btn.done{display:none}
+  .apxv-dock.engaged .apxv-btn.done{display:inline-block}
+  .apxv-cap{position:absolute;left:50%;bottom:62px;transform:translateX(-50%);width:min(720px,calc(100% - 32px));
+    text-align:center;pointer-events:none;opacity:0;transition:opacity .3s ease}
+  .apxv-dock.engaged .apxv-cap,.apxv-dock.speaking .apxv-cap{opacity:1}
+  .apxv-you{color:#8fa0bd;font-size:13px;line-height:1.45;margin-bottom:8px;min-height:1.45em}
   .apxv-you.partial{font-style:italic;opacity:.8}
   .apxv-you b,.apxv-say b{font:500 9.5px 'IBM Plex Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin-right:8px}
   .apxv-you b{color:#34e0c8}.apxv-say b{color:#f4b23f}
-  .apxv-say{font-size:18px;line-height:1.5;min-height:1.5em;text-shadow:0 1px 16px rgba(3,7,17,.95)}
-  .apxv-note{margin-top:8px;font:400 12px 'IBM Plex Sans',sans-serif;color:#f5a05e;min-height:1.2em}
-  .apxv-hold{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);z-index:2;min-width:190px;padding:12px 22px;
-    border-radius:999px;border:1px solid rgba(52,224,200,.45);background:rgba(11,20,36,.78);color:#e4ecf7;cursor:pointer;
-    font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.16em;text-transform:uppercase;touch-action:none;user-select:none}
+  .apxv-say{font-size:16.5px;line-height:1.5;min-height:1.5em;text-shadow:0 1px 14px rgba(3,7,17,.95)}
+  .apxv-note{margin-top:6px;font:400 12px 'IBM Plex Sans',sans-serif;color:#f5a05e;min-height:1.2em}
+  .apxv-hold{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);min-width:170px;padding:9px 20px;
+    border-radius:999px;border:1px solid rgba(52,224,200,.45);background:rgba(11,20,36,.82);color:#e4ecf7;cursor:pointer;
+    font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.16em;text-transform:uppercase;touch-action:none;user-select:none;
+    opacity:0;visibility:hidden;transition:opacity .3s ease}
+  .apxv-dock.engaged .apxv-hold{opacity:1;visibility:visible}
   .apxv-hold.on{background:rgba(52,224,200,.2);border-color:#34e0c8;box-shadow:0 0 0 6px rgba(52,224,200,.12)}
-  .apxv-hint{position:absolute;right:16px;bottom:14px;font:400 10px 'IBM Plex Mono',monospace;color:#46587a;letter-spacing:.08em;z-index:2}
-  .apxv-panel{position:absolute;top:50px;right:16px;width:min(330px,calc(100% - 32px));z-index:3;display:none;
-    background:rgba(7,14,28,.96);border:1px solid rgba(91,157,249,.26);border-radius:12px;padding:14px 14px 10px;
+  .apxv-panel{position:absolute;top:48px;right:14px;width:min(320px,calc(100% - 28px));display:none;
+    background:rgba(7,14,28,.97);border:1px solid rgba(91,157,249,.26);border-radius:12px;padding:14px 14px 10px;
     font:400 12.5px 'IBM Plex Sans',sans-serif;color:#e4ecf7;box-shadow:0 18px 50px rgba(0,0,0,.5)}
   .apxv-panel.open{display:block}
   .apxv-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px}
   .apxv-row label{color:#8fa0bd}
   .apxv-panel select,.apxv-panel input[type=range]{background:#0b1424;color:#e4ecf7;border:1px solid rgba(91,157,249,.26);border-radius:6px;padding:4px 6px;max-width:170px}
   .apxv-status{color:#8fa0bd;font-size:11.5px;line-height:1.5;border-top:1px solid rgba(91,157,249,.14);padding-top:9px;margin-top:4px}
-  .apxv-launch{position:fixed;right:18px;bottom:64px;z-index:9990;width:40px;height:40px;border-radius:50%;cursor:pointer;
-    border:0;background:radial-gradient(circle at 38% 32%,#fff2cf 0,#f4b23f 38%,#7a5410 100%);
-    box-shadow:0 0 0 1px rgba(244,178,63,.45),0 0 22px rgba(244,178,63,.35);opacity:.82;transition:transform .15s,opacity .15s}
-  .apxv-launch:hover{opacity:1;transform:scale(1.06)}
-  .apxv-launch.live{box-shadow:0 0 0 1px rgba(52,224,200,.6),0 0 26px rgba(52,224,200,.5)}
-  @media (max-width:640px){.apxv-cap{bottom:92px}.apxv-say{font-size:16px}.apxv-hint,.apxv-meta,.apxv-brand{display:none}.apxv-ctl .apxv-btn.full{display:none}}
+  .apxv-hint{position:absolute;left:14px;bottom:16px;font:400 10px 'IBM Plex Mono',monospace;color:#46587a;letter-spacing:.08em;pointer-events:none}
+  @container (max-width:880px){.apxv-meta,.apxv-hint{display:none}.apxv-top{max-width:calc(50% - 56px)}.apxv-say{font-size:15px}}
+  @media (max-width:760px){.apxv-meta,.apxv-hint{display:none}.apxv-say{font-size:15px}}
   `;
 
   const stage = {
-    el: null, radial: null, visible: false, pinned: false, closeTimer: 0, capturingKey: false, dom: {},
+    el: null, host: null, visible: false, pinned: false, closeTimer: 0, capturingKey: false, dom: {},
 
     build() {
       if (this.el) return;
@@ -1295,21 +1233,15 @@
       style.textContent = CSS;
       document.head.appendChild(style);
       const el = document.createElement("div");
-      el.className = "apxv-stage";
-      el.setAttribute("role", "dialog");
+      el.className = "apxv-dock";
       el.setAttribute("aria-label", "Apex voice");
       el.innerHTML = `
-        <canvas></canvas>
         <div class="apxv-top">
-          <span class="apxv-brand">Apex</span>
-          <span class="apxv-chip" data-s="idle">standing by</span>
           <span class="apxv-meta"></span>
-          <div class="apxv-ctl">
-            <button class="apxv-btn" data-act="mode" title="Switch microphone mode">Hands-free</button>
-            <button class="apxv-btn" data-act="settings" title="Voice settings">Voice</button>
-            <button class="apxv-btn full" data-act="full" title="Full screen (F)">Full</button>
-            <button class="apxv-btn" data-act="close" title="Close (Esc)">Close</button>
-          </div>
+          <span class="apxv-chip" data-s="idle">standing by</span>
+          <button class="apxv-btn" data-act="mode" title="Switch microphone mode">Hands-free</button>
+          <button class="apxv-btn" data-act="settings" title="Voice settings">Voice</button>
+          <button class="apxv-btn done" data-act="close" title="Settle back (Esc)">Done</button>
         </div>
         <div class="apxv-panel" aria-label="Voice settings">
           <div class="apxv-row"><label>Microphone</label>
@@ -1321,8 +1253,7 @@
           <div class="apxv-row"><label>Local voice</label><select data-set="ttsVoice"><option value="">Default</option></select></div>
           <div class="apxv-row"><label>Speed</label><input data-set="ttsSpeed" type="range" min="0.8" max="1.4" step="0.05"></div>
           <div class="apxv-row"><label>Thinking sound</label><input data-set="thinkingCue" type="checkbox"></div>
-          <div class="apxv-row"><label>Open when talking</label><input data-set="stageAuto" type="checkbox"></div>
-          <div class="apxv-row"><label>Corner button</label><input data-set="launcher" type="checkbox"></div>
+          <div class="apxv-row"><label>Grow when talking</label><input data-set="stageAuto" type="checkbox"></div>
           <div class="apxv-row"><button class="apxv-btn" data-act="test">Test voice</button></div>
           <div class="apxv-status"></div>
         </div>
@@ -1333,7 +1264,6 @@
         </div>
         <button class="apxv-hold" type="button">Hold to talk</button>
         <div class="apxv-hint"></div>`;
-      document.body.appendChild(el);
       this.el = el;
       const q = (s) => el.querySelector(s);
       this.dom = {
@@ -1341,14 +1271,12 @@
         say: q(".apxv-say"), note: q(".apxv-note"), hold: q(".apxv-hold"), hint: q(".apxv-hint"),
         status: q(".apxv-status"), key: q('[data-act="key"]'), voiceSel: q('[data-set="ttsVoice"]'),
       };
-      this.radial = new Radial(q("canvas"));
 
       el.addEventListener("click", (e) => {
         const b = e.target.closest("[data-act]");
         if (!b) return;
         const act = b.getAttribute("data-act");
         if (act === "close") this.close();
-        else if (act === "full") this.fullscreen();
         else if (act === "settings") { this.dom.panel.classList.toggle("open"); tts.refresh(true).then(() => this.sync()); }
         else if (act === "mode") { setSetting("micMode", settings.micMode === "open" ? "ptt" : "open"); restartVoice(); }
         else if (act === "key") this.captureKey();
@@ -1361,7 +1289,6 @@
           setSetting(key, val);
           if (key === "micMode") restartVoice();
           if (key === "ttsEngine") { tts.downUntil = 0; tts.refresh(true); }
-          if (key === "launcher") launcher.sync();
         });
       });
       const hold = this.dom.hold;
@@ -1369,18 +1296,34 @@
       const up = () => { if (ptt.source === "button") pttUp(); hold.classList.remove("on"); };
       hold.addEventListener("pointerup", up);
       hold.addEventListener("pointercancel", up);
-      bus.on(() => this.sync());
-      window.addEventListener("resize", () => kick());
       this.sync();
     },
 
+    /** Put the dock on a page surface (the Overview's orbital map). */
+    mount(host) {
+      if (!host) return;
+      this.build();
+      if (this.el.parentNode !== host) host.appendChild(this.el);
+      this.host = host;
+      tts.refresh();
+      this.sync();
+    },
+    unmount(host) {
+      if (host && this.host !== host) return;
+      if (this.el && this.el.parentNode) this.el.parentNode.removeChild(this.el);
+      this.host = null;
+      if (this.dom.panel) this.dom.panel.classList.remove("open");
+    },
+
     sync() {
+      mini.sync();
       if (!this.el) return;
       const d = this.dom;
+      const st = shownState();
       const labels = { off: "voice off", idle: settings.micMode === "ptt" ? "hold " + keyName(settings.pttKey).toLowerCase() + " to talk" : "standing by",
-        listening: "listening", hearing: "hearing you", thinking: "thinking", speaking: "speaking", error: "fault" };
-      d.chip.textContent = labels[bus.state] || bus.state;
-      d.chip.setAttribute("data-s", bus.state);
+        listening: "listening", hearing: "hearing you", thinking: "thinking", speaking: "speaking", error: "fault", writing: "writing" };
+      d.chip.textContent = labels[st] || st;
+      d.chip.setAttribute("data-s", st);
       const eng = bus.engine || tts.pick();
       const meta = [eng === "kokoro" ? "local voice" + (bus.voice ? " · " + bus.voice.replace("_", " ") : "")
         : eng === "elevenlabs" ? "natural voice" : eng === "browser" ? "browser voice" : ""];
@@ -1395,10 +1338,13 @@
       const say = bus.saying || (bus.state === "thinking" ? "" : bus.said.split(/(?<=[.!?])\s+/).slice(-1)[0] || "");
       d.say.innerHTML = say ? "<b>Apex</b>" : "";
       if (say) d.say.appendChild(document.createTextNode(say));
-      d.note.textContent = bus.state === "error" ? bus.err : (bus.note || "");
-      d.hint.textContent = `Hold ${keyName(settings.pttKey)} to talk · Esc stops Apex · F full screen`;
+      d.note.textContent = bus.state === "error" ? bus.err
+        : bus.writing ? "Writing “" + bus.writing.title + "” beside me." : (bus.note || "");
+      d.hint.textContent = `Hold ${keyName(settings.pttKey)} to talk · Esc stops Apex`;
       d.key.textContent = this.capturingKey ? "Press a key…" : keyName(settings.pttKey);
       d.status.textContent = tts.describe();
+      this.el.classList.toggle("engaged", this.visible);
+      this.el.classList.toggle("speaking", mouth.speaking);
       this.el.querySelectorAll("[data-set]").forEach((inp) => {
         const key = inp.getAttribute("data-set");
         if (inp.type === "checkbox") inp.checked = !!settings[key];
@@ -1409,7 +1355,6 @@
         d.voiceSel.innerHTML = '<option value="">Default</option>' + voices.map((v) => `<option value="${v.id}">${v.id} · ${v.label}</option>`).join("");
         d.voiceSel.value = settings.ttsVoice;
       }
-      launcher.sync();
     },
 
     captureKey() {
@@ -1424,28 +1369,24 @@
       window.addEventListener("keydown", onKey, true);
     },
 
+    /** Engage: the centre grows in place. `pin` keeps it there until Done or Esc. */
     open(pin) {
-      this.build();
       clearTimeout(this.closeTimer);
       if (pin) this.pinned = true;
       if (!this.visible) {
         this.visible = true;
-        this.el.classList.add("open");
-        this.el.setAttribute("aria-hidden", "false");
         tts.refresh();
-        this.sync();
+        bus.emit();
       }
       kick();
     },
     close() {
       clearTimeout(this.closeTimer);
       this.pinned = false;
-      if (!this.el || !this.visible) return;
+      if (!this.visible) return;
       this.visible = false;
-      this.el.classList.remove("open");
-      this.el.setAttribute("aria-hidden", "true");
-      this.dom.panel.classList.remove("open");
-      if (document.fullscreenElement === this.el) { try { document.exitFullscreen(); } catch (e) { /* ignore */ } }
+      if (this.dom.panel) this.dom.panel.classList.remove("open");
+      bus.emit();
     },
     toggle() { this.visible ? this.close() : this.open(true); },
     autoOpen(force) { if (force || settings.stageAuto) this.open(false); },
@@ -1453,64 +1394,102 @@
       clearTimeout(this.closeTimer);
       if (this.pinned || !this.visible) return;
       this.closeTimer = setTimeout(() => {
-        const busy = mouth.speaking || ptt.held || ["hearing", "thinking", "speaking"].includes(bus.state);
+        const busy = mouth.speaking || ptt.held || !!bus.writing || ["hearing", "thinking", "speaking"].includes(bus.state);
         if (busy) this.armAutoClose(); else this.close();
       }, 7000);
     },
-    fullscreen() {
-      if (!this.el) return;
-      if (document.fullscreenElement) document.exitFullscreen && document.exitFullscreen();
-      else this.el.requestFullscreen && this.el.requestFullscreen().catch(() => {});
-    },
   };
 
+  bus.on(() => stage.sync());
+
+  /** The state to show: writing a document reads as its own state. */
+  function shownState() {
+    if (bus.writing && bus.state !== "speaking" && bus.state !== "hearing" && bus.state !== "error") return "writing";
+    return bus.state;
+  }
+
   window.addEventListener("keydown", (e) => {
-    if (!stage.visible || stage.capturingKey || isTyping(e.target)) return;
-    if (e.key === "Escape") {
-      if (mouth.speaking || bus.state === "thinking") interrupt("escape");
-      else stage.close();
-      e.preventDefault();
-    } else if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      stage.fullscreen();
-      e.preventDefault();
-    }
+    if (e.key !== "Escape" || stage.capturingKey || isTyping(e.target)) return;
+    if (mouth.speaking || bus.state === "thinking") { interrupt("escape"); e.preventDefault(); }
+    else if (stage.visible) { stage.close(); e.preventDefault(); }
   });
 
-  /* ------------------------------------------------------------ launcher */
-  const launcher = {
-    el: null,
+  /* ---------------------------------------------------------------- mini
+     A small live Radial for the top bar on every page but the Overview, with
+     a one-line caption beside it while a conversation is on. Clicking it goes
+     to the Overview with the centre engaged. */
+  const mini = {
+    canvas: null, cap: null, radial: null, lastDraw: 0,
+    mount(canvas, caption) {
+      if (!canvas) return;
+      this.canvas = canvas; this.cap = caption || null;
+      if (!this.radial) this.radial = new Radial({ grains: 320 });
+      this.draw(0.016);
+      this.sync();
+      kick();
+    },
+    unmount(canvas) {
+      if (canvas && canvas !== this.canvas) return;
+      this.canvas = null; this.cap = null;
+    },
+    live() {
+      return !!this.canvas && (recording() || stage.visible || !!bus.writing || mouth.speaking || bus.level > 0.01);
+    },
+    draw(dt) {
+      const cv = this.canvas;
+      if (!cv) return;
+      const r = cv.getBoundingClientRect();
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const w = Math.max(2, Math.round(r.width * dpr)), h = Math.max(2, Math.round(r.height * dpr));
+      if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+      const g = cv.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, r.width, r.height);
+      const R = Math.min(r.width, r.height) / 5.4;
+      this.radial.drawEmbedded(g, r.width / 2, r.height / 2, R, dt);
+      this.lastDraw = now();
+    },
+    open() {
+      audio.resume();
+      try { page.showOverview && page.showOverview(); } catch (e) { /* ignore */ }
+      stage.open(true);
+    },
     sync() {
-      if (!document.body) return;
-      if (!settings.launcher) { if (this.el) this.el.style.display = "none"; return; }
-      if (!this.el) {
-        stage.build();          // injects the stylesheet the button uses
-        const b = document.createElement("button");
-        b.className = "apxv-launch";
-        b.type = "button";
-        b.title = "Apex voice (hold " + keyName(settings.pttKey) + " to talk)";
-        b.setAttribute("aria-label", "Open Apex voice");
-        b.addEventListener("click", () => { audio.resume(); stage.toggle(); });
-        document.body.appendChild(b);
-        this.el = b;
+      if (!this.cap) return;
+      const st = shownState();
+      let line = "";
+      if (stage.visible || st === "writing") {
+        if (st === "hearing") line = bus.partial || bus.heard ? "You: " + (bus.partial || bus.heard) : "Listening…";
+        else if (st === "thinking") line = "Thinking…";
+        else if (st === "speaking") line = bus.saying ? "Apex: " + bus.saying : "Speaking…";
+        else if (st === "writing") line = "Writing: " + bus.writing.title;
+        else if (st === "error") line = bus.err || "Voice error";
       }
-      this.el.style.display = stage.visible ? "none" : "";
-      this.el.classList.toggle("live", ["hearing", "thinking", "speaking"].includes(bus.state));
+      this.cap.textContent = line;
+      this.cap.style.display = line ? "" : "none";
     },
   };
 
   /* ---------------------------------------------------------- frame loop */
-  let raf = 0, lastT = 0;
+  let raf = 0, lastT = 0, lastSample = 0;
+  /** Sample the live audio at most once per display frame, whoever asks first. */
+  function tickAudio(dt) {
+    const t = now();
+    if (t - lastSample < 8) return;
+    lastSample = t;
+    sampleAudio(dt);
+    feedOrbital();
+  }
   function frame(t) {
     raf = 0;
     const dt = clamp((t - lastT) / 1000, 0.001, 0.05);
     lastT = t;
-    sampleAudio(dt);
-    feedOrbital();
-    if (stage.visible && stage.radial) stage.radial.draw(dt);
+    tickAudio(dt);
+    if (mini.canvas && (mini.live() || now() - mini.lastDraw > 400)) mini.draw(dt);
     if (needsLoop()) raf = requestAnimationFrame(frame);
   }
   function needsLoop() {
-    return !document.hidden && (stage.visible || mouth.speaking || synth.active || synth.env > 0.02
+    return !document.hidden && (mini.live() || mouth.speaking || synth.active || synth.env > 0.02
       || fedOrbital || bus.level > 0.01 || ptt.held);
   }
   function kick() {
@@ -1527,44 +1506,79 @@
   }, 1000);
 
   /* ------------------------------------------------- overview hero core
-     The Command Centre's orbital map hands its centre to the Radial, so the
-     Radial lives on the overview as well as on the stage: sonar at rest, the
-     intake ring while you talk, the radar while Apex thinks, the starburst
-     while it answers. Clicking it opens the full stage. */
+     The Command Centre's orbital map hands its centre to the Radial: sonar at
+     rest, the intake ring while you talk, the radar while Apex thinks or
+     writes, the starburst while it answers. While engaged it grows in place
+     (`grow` eases 0 to 1) and the map pushes its nodes out and dims them. */
   const STATE_WORDS = {
     listening: "listening", hearing: "hearing you", thinking: "thinking",
     speaking: "speaking", error: "voice error",
   };
+  const GROW = 0.75;
   const core = {
-    radial: null, last: 0,
+    radial: null, last: 0, g: 0,
     /** Draw the centre into `g` (CSS pixels). False means "draw your own". */
     draw(g, cx, cy, R) {
-      if (stage.visible) return true;             // hidden behind the stage: skip the work
-      const t = performance.now();
+      const t = now();
       const dt = this.last ? clamp((t - this.last) / 1000, 0.001, 0.05) : 0.016;
       this.last = t;
-      if (!this.radial) this.radial = new Radial(null, { embedded: true });
-      if (!raf) sampleAudio(dt);                   // our own loop is idle: keep the bus fresh
-      this.radial.drawEmbedded(g, cx, cy, R, dt);
+      this.g = lerp(this.g, stage.visible ? 1 : 0, 1 - Math.pow(0.04, dt));
+      if (!this.radial) this.radial = new Radial({ grains: 1300 });
+      tickAudio(dt);
+      this.radial.drawEmbedded(g, cx, cy, R * (1 + GROW * this.g), dt);
       return true;
     },
+    /** 0 at rest, 1 fully grown. The map uses it to make room. */
+    grow() { return this.g; },
     /** Is (dx, dy) from the centre on the core? */
-    hit(dx, dy, R) { return Math.hypot(dx, dy) < R * 1.45; },
-    open() { audio.resume(); stage.open(true); },
+    hit(dx, dy, R) { return Math.hypot(dx, dy) < R * (1 + GROW * this.g) * 1.45; },
+    open() { audio.resume(); stage.toggle(); },
     /** A few words for the overview's caption, or "" when there is nothing to say. */
-    words() { return STATE_WORDS[bus.state] || ""; },
+    words() {
+      const st = shownState();
+      if (st === "writing") return "writing " + (bus.writing.kind || "a document");
+      return STATE_WORDS[st] || "";
+    },
   };
+
+  /* ----------------------------------------------------------- documents
+     Every document event, from the voice socket or from a typed request
+     (apex_outputs.js), passes through here: the Radial shows the radar while
+     a draft is written, the page's pane gets the text, and a draft asked for
+     by voice is announced when it is done. */
+  function docEvent(m) {
+    if (!m || !m.type) return;
+    switch (m.type) {
+      case "doc_start":
+        cue.stop();
+        bus.set({ writing: { id: m.id, title: m.title || "document", kind: m.kind || "", source: m.source || "" } });
+        stage.autoOpen();
+        break;
+      case "doc_done": case "doc_stopped": case "doc_error": {
+        const was = bus.writing;
+        if (!was || was.id === m.id) bus.set({ writing: null });
+        if (m.spoken && was && was.source === "voice" && recording() && !dropSpeech) mouth.say(m.spoken);
+        stage.armAutoClose();
+        break;
+      }
+      default: break;
+    }
+    try { page.onDoc && page.onDoc(m); } catch (e) { /* the pane must not break voice */ }
+  }
 
   /* ---------------------------------------------------------------- API */
   window.ApexVoice = {
-    version: "1.1.0",
-    settings, bus, stage, tts, core,
+    version: "1.2.0",
+    settings, bus, stage, tts, core, mini,
+    dock: { mount: (el) => stage.mount(el), unmount: (el) => stage.unmount(el) },
+    get engaged() { return stage.visible; },
     attach(hooks) {
       Object.assign(page, hooks || {});
       if (bus.state === "off" && recording()) bus.set({ state: settings.micMode === "open" ? "listening" : "idle" });
       tts.refresh();
     },
     onEvent,
+    docEvent,
     speakText,
     speechDone: () => mouth.done(),
     cancel: () => mouth.stop(),
@@ -1578,14 +1592,13 @@
       demo.state = state || "";
       bus.set({ state: state || "idle" });
       if (state === "thinking") { bus.set({ heard: "What changed in the sector this week?" }); }
-      if (state === "speaking") bus.set({ saying: "Two TEQSA updates landed overnight, and one affects the micro-credential proposal.", engine: "kokoro", voice: "bf_emma", firstAudioMs: 1240, turns: 3 });
+      if (state === "speaking") bus.set({ heard: "What changed in the sector this week?", saying: "Two TEQSA updates landed overnight, and one affects the micro-credential proposal.", engine: "kokoro", voice: "bf_emma", firstAudioMs: 1240, turns: 3 });
       stage.open(true);
       kick();
     },
   };
 
   function init() {
-    launcher.sync();
     const q = new URLSearchParams(location.search);
     const d = q.get("apexdemo");
     if (d) window.ApexVoice.demo(d);

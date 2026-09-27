@@ -80,6 +80,10 @@ app.include_router(dashboard_router)
 from .deliverables import router as deliverables_router
 app.include_router(deliverables_router)
 
+# Outputs: documents Apex drafts on request (briefs, plans...), as vault markdown
+from .outputs import router as outputs_router
+app.include_router(outputs_router)
+
 # Inbox front door (all channels) + operating daemon controls
 from .inbox import router as inbox_router
 app.include_router(inbox_router)

@@ -575,6 +575,39 @@ async def stream_spoken_answer(query: str, session_id: str, force_route: str | N
     }
 
 
+async def answer_document(text: str, session_id: str, send, send_untagged, followers: set) -> bool:
+    """
+    A document request ("draft a brief on...") is written, not read aloud.
+
+    The draft runs as a background job (orchestrator/outputs.py) that writes a
+    note into the vault; its progress goes to the browser's document pane over
+    `send_untagged`, outside the turn, so the next thing said does not cancel
+    it. The turn itself says one line and ends at once. Returns False when the
+    utterance is not a document request.
+    """
+    from . import outputs
+
+    doc = outputs.detect(text)
+    if doc is None:
+        return False
+    try:
+        job = outputs.start(doc, source="voice", session_id=session_id)
+    except HTTPException as exc:
+        busy = str(exc.detail)
+        await send({"type": "answer", "session_id": session_id, "answer": busy,
+                    "route": "outputs", "model": "", "cost_usd": 0.0})
+        return True
+    task = asyncio.create_task(outputs.follow(job, send_untagged))
+    followers.add(task)
+    task.add_done_callback(followers.discard)
+    intro = outputs.spoken_start(doc)
+    await send({"type": "speak", "text": intro, "index": 0})
+    await send({"type": "answer", "session_id": session_id, "answer": intro, "route": "outputs",
+                "model": "", "cost_usd": 0.0,
+                "doc": {"id": job.id, "title": doc.title, "kind": doc.kind}})
+    return True
+
+
 def add_voice_turn(session_id: str, query: str, answer: str, model_key: str, cost: float) -> None:
     """Record a spoken turn so follow-up questions have context."""
     try:
@@ -719,6 +752,15 @@ async def voice_ws(client: WebSocket):
                 if isinstance(parsed, dict) and parsed.get("type") == "interrupt":
                     asyncio.create_task(turns.cancel("interrupted"))
                     continue
+                # "Stop writing" from the document pane: end that draft only.
+                if isinstance(parsed, dict) and parsed.get("type") == "doc_stop":
+                    from .outputs import stop as stop_document
+
+                    try:
+                        stop_document(str(parsed.get("id") or ""))
+                    except HTTPException:
+                        pass
+                    continue
             if message.get("type") == "websocket.disconnect":
                 await upstream.close()
                 return
@@ -730,6 +772,9 @@ async def voice_ws(client: WebSocket):
     # Several coroutines write to this socket now (the relay below and the turn
     # task), so sends are serialised.
     send_lock = asyncio.Lock()
+    # Relays of document drafts to this socket. Closing the socket stops the
+    # relays, never the drafts: they finish and save regardless.
+    doc_followers: set = set()
 
     async def send_json(obj: dict) -> None:
         async with send_lock:
@@ -749,6 +794,9 @@ async def voice_ws(client: WebSocket):
             direct = await _direct_answer(text, session_id, force_route)
             if direct is not None:
                 await send({"type": "answer", "session_id": session_id, **direct})
+                return
+
+            if await answer_document(text, session_id, send, send_json, doc_followers):
                 return
 
             # Everything else streams: each finished sentence is sent the moment
@@ -838,6 +886,8 @@ async def voice_ws(client: WebSocket):
             await turns.cancel("closed")
         except Exception:
             pass
+        for task in list(doc_followers):
+            task.cancel()
         try:
             await upstream.close()
         except Exception:

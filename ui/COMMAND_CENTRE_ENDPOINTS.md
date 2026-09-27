@@ -432,6 +432,8 @@ Events come back as JSON:
 | `thinking` / `answer` | Only when `auto_query` is true — the routed answer |
 | `speak` | One finished sentence of a streaming answer, sent while the rest generates |
 | `turn_cancelled` | The answer in flight was stopped (`reason`: superseded, interrupted, barge_in, closed) |
+| `doc_start` / `doc_delta` / `doc_done` | A document request is drafting into a vault note (see Outputs below). Not tied to a turn |
+| `doc_stopped` / `doc_error` | The draft was stopped (what exists is saved as partial) or failed |
 | `error` | Something failed; the socket stays usable |
 
 Answer events (`thinking`, `speak`, `answer`, `error`) carry a `turn` number.
@@ -441,6 +443,33 @@ flight, closes its model stream, and sends `turn_cancelled` for it before the ne
 turn's `thinking`. Other client frames: `{"type":"flush"}` closes the current
 utterance now (talk key released), `{"type":"wake"}` skips the wake phrase for
 one utterance (talk key held).
+
+### Outputs — documents drafted on request (`orchestrator/outputs.py`)
+
+"Draft a brief on...", "put together a plan for...", "write up a summary of...":
+a making verb plus a named kind of document (brief, plan, proposal, report,
+summary, memo, agenda, checklist, email, guide, article, outline, document)
+opens the document pane beside the dashboard and writes a markdown note into
+`<vault>/13_Command Centre/Outputs/YYYY-MM-DD <Title>.md`, saved every 2 seconds
+while it drafts and again on each edit. Ordinary questions are unaffected.
+
+| Method | Path | What |
+|---|---|---|
+| POST | `/outputs/detect` | `{"text"}` -> `{"document": true, "kind", "title", "words"}` or `{"document": false}` |
+| POST | `/outputs/draft` | `{"request", "session_id"?, "source"?}` -> the `doc_start` event (admin) |
+| GET | `/outputs` | Recent outputs, newest first |
+| GET | `/outputs/{id}` | Body, record, vault path, `obsidian_uri` |
+| GET | `/outputs/{id}/stream` | SSE: `doc_start`, `doc_delta`..., then `doc_done` / `doc_stopped` / `doc_error` |
+| PUT | `/outputs/{id}` | `{"content"}`: save an edit (admin; 409 while drafting) |
+| POST | `/outputs/{id}/stop` | Stop a draft, keeping what was written (admin) |
+| GET | `/outputs/{id}/download` | The `.md` file |
+
+A draft is a background job: closing the pane, a dropped socket or the next
+thing said never loses it. Spoken requests get one line now ("On it. I'm
+drafting the brief now; it's opening beside me.") and one when done (the
+`spoken` field of `doc_done`), instead of the document read aloud. Settings:
+`OUTPUTS_MODEL_KEY` (pin a model), `OUTPUTS_RETRIEVAL_TIMEOUT_S`,
+`OUTPUTS_CONTEXT_CHUNKS`, `OUTPUTS_MAX_RUNNING`.
 
 ### Spoken-reply audio — `POST /voice/tts`, `GET /voice/tts/status`
 
