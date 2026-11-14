@@ -89,19 +89,50 @@ class ModelSpec:
 # Pricing source: each provider's public pricing page (as of mid-2025).
 # Prices are USD per 1M tokens. Update when providers change rates.
 #
+# The local model is configured, not hardcoded. The registry key stays
+# "ollama/llama3" because memory, the fallback chain and the cost ledger all
+# refer to it by that name; only the model behind it changes.
+#   OLLAMA_MODEL         model tag to run (must be pulled on that machine)
+#   OLLAMA_NUM_CTX       context window to request from Ollama
+#   OLLAMA_CAPABILITIES  comma list of task tags the local model may take
+#   LLM_LOCAL_ONLY       1 = never call a cloud provider (independent mode)
+_LOCAL_MODEL_ID = os.getenv("OLLAMA_MODEL", "llama3").strip() or "llama3"
+_DEFAULT_LOCAL_CAPS = {"classification", "retrieval", "summary", "fast"}
+
+
+def _local_ctx() -> int:
+    try:
+        return max(2048, int(os.getenv("OLLAMA_NUM_CTX", "8192")))
+    except ValueError:
+        return 8192
+
+
+def _local_caps() -> set[str]:
+    raw = os.getenv("OLLAMA_CAPABILITIES", "").strip()
+    if not raw:
+        return set(_DEFAULT_LOCAL_CAPS)
+    caps = {c.strip() for c in raw.split(",") if c.strip()} & ALL_TASK_TAGS
+    return caps or set(_DEFAULT_LOCAL_CAPS)
+
+
+def local_only() -> bool:
+    """True when the system must run without any cloud provider."""
+    return os.getenv("LLM_LOCAL_ONLY", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
 MODELS: dict[str, ModelSpec] = {
 
     # ── Tier 0 — Local / Free ─────────────────────────────────────────────
     "ollama/llama3": ModelSpec(
-        model_id          = "llama3",
+        model_id          = _LOCAL_MODEL_ID,
         provider          = "ollama",
         tier              = 0,
-        label             = "Llama 3 8B (local)",
+        label             = "Llama 3 8B (local)" if _LOCAL_MODEL_ID == "llama3" else f"{_LOCAL_MODEL_ID} (local)",
         cost_input_per_m  = 0.0,
         cost_output_per_m = 0.0,
-        context_window    = 8_192,
+        context_window    = _local_ctx(),
         max_output        = 2_048,
-        capabilities      = {"classification", "retrieval", "summary", "fast"},
+        capabilities      = _local_caps(),
     ),
     # NOTE: phi3 and llama3:70b were removed from the default catalog because
     # they are not pulled by setup.ps1 (only llama3 + nomic-embed-text are).
@@ -275,7 +306,13 @@ MODELS: dict[str, ModelSpec] = {
 
 
 def available_models() -> dict[str, ModelSpec]:
-    """Return only models whose required env var is set."""
+    """Return only models whose required env var is set.
+
+    In independent mode (LLM_LOCAL_ONLY=1) only local models are offered, so
+    nothing downstream can select a cloud provider.
+    """
+    if local_only():
+        return {k: v for k, v in MODELS.items() if v.provider == "ollama"}
     return {k: v for k, v in MODELS.items() if v.is_available()}
 
 

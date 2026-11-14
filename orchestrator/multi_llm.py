@@ -49,6 +49,23 @@ class LLMResponse:
 # Provider callers
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _ollama_options() -> dict:
+    """Options sent with every Ollama call. Without num_ctx Ollama uses its
+    small default and silently drops the start of a long prompt."""
+    try:
+        num_ctx = max(2048, int(os.getenv("OLLAMA_NUM_CTX", "8192")))
+    except ValueError:
+        num_ctx = 8192
+    return {"num_ctx": num_ctx}
+
+
+def _ollama_timeout() -> float:
+    try:
+        return float(os.getenv("OLLAMA_TIMEOUT_S", "120"))
+    except ValueError:
+        return 120.0
+
+
 async def _call_ollama(model_id: str, system: str, user: str, history: list[dict]) -> tuple[str, int, int]:
     base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     messages = []
@@ -60,8 +77,10 @@ async def _call_ollama(model_id: str, system: str, user: str, history: list[dict
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{base}/api/chat",
-            json={"model": model_id, "messages": messages, "stream": False},
-            timeout=120.0,
+            json={"model": model_id, "messages": messages, "stream": False,
+                  "options": _ollama_options(),
+                  "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m")},
+            timeout=_ollama_timeout(),
         )
         resp.raise_for_status()
         data = resp.json()
@@ -295,8 +314,10 @@ async def _stream_ollama(model_id: str, system: str, user: str, history: list[di
         async with client.stream(
             "POST",
             f"{base}/api/chat",
-            json={"model": model_id, "messages": messages, "stream": True},
-            timeout=120.0,
+            json={"model": model_id, "messages": messages, "stream": True,
+                  "options": _ollama_options(),
+                  "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m")},
+            timeout=_ollama_timeout(),
         ) as resp:
             resp.raise_for_status()
             async for line in resp.aiter_lines():
