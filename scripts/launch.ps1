@@ -43,8 +43,42 @@ function Get-EnvValue($key, $default) {
     return $default
 }
 
+# OLLAMA_NATIVE=1 in .env runs Ollama as a normal Windows program, not in Docker.
+# Docker's memory cap (about half the machine) made local models stall on 16 GB PCs.
+function Test-OllamaNative {
+    return (Get-EnvValue "OLLAMA_NATIVE" "0").ToLower() -in @("1", "true", "yes", "on")
+}
+
+function Get-OllamaBase {
+    if (Test-OllamaNative) { return (Get-EnvValue "OLLAMA_BASE_URL" "http://127.0.0.1:11434").TrimEnd('/') }
+    return "http://localhost:11434"
+}
+
+function Start-NativeOllama {
+    $base = Get-OllamaBase
+    try { Invoke-RestMethod "$base/api/version" -TimeoutSec 4 | Out-Null; Say "[ok]   native Ollama already running" "Green"; return } catch {}
+    $exe = (Get-Command ollama -ErrorAction SilentlyContinue).Source
+    if (-not $exe) { $exe = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe" }
+    if (-not (Test-Path $exe)) { Say "[warn] OLLAMA_NATIVE=1 but ollama.exe was not found - install Ollama for Windows" "Yellow"; return }
+    Say "[start] native Ollama" "Cyan"
+    Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList "serve"
+}
+
 function Ensure-OllamaModel($model) {
     if (-not $model) { return }
+    if (Test-OllamaNative) {
+        $base = Get-OllamaBase
+        try { $names = @((Invoke-RestMethod "$base/api/tags" -TimeoutSec 15).models | ForEach-Object { $_.name }) } catch { $names = @() }
+        $want = if ($model -match ':') { $model } else { "${model}:latest" }
+        if ($names -contains $want) { Say "[ok]   model present: $model" "Green"; return }
+        Say "[pull] model missing: $model - pulling now (first time only, may take a few minutes)..." "Yellow"
+        try {
+            $body = @{ model = $model; stream = $false } | ConvertTo-Json
+            $r = Invoke-RestMethod -Uri "$base/api/pull" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 3600
+            Say "[ok]   pulled: $model ($($r.status))" "Green"
+        } catch { Say "[warn] pull failed for $model - $($_.Exception.Message)" "Yellow" }
+        return
+    }
     $present = docker exec ollama ollama list 2>$null | Select-String -SimpleMatch $model -Quiet
     if ($present) {
         Say "[ok]   model present: $model" "Green"
@@ -126,16 +160,28 @@ else { Say "[fatal] Docker never became ready. Start Docker Desktop, then re-run
 # 2. Docker stack (Qdrant, Ollama, n8n, SearXNG)
 # ---------------------------------------------------------------------------
 Say "`n=== 2/4  Docker stack ===" "Cyan"
-Say "[start] docker compose up -d" "Cyan"
-docker compose up -d
-if ($LASTEXITCODE -ne 0) {
-    Say "[warn] 'docker compose' failed - trying legacy 'docker-compose'..." "Yellow"
-    docker-compose up -d
+if (Test-OllamaNative) {
+    Say "[start] docker compose up -d qdrant n8n searxng  (Ollama runs natively)" "Cyan"
+    docker compose up -d qdrant n8n searxng
+    # A Docker Ollama container would sit on port 11434 in front of the native one.
+    if (@(docker ps -a --format "{{.Names}}") -contains "ollama") {
+        docker stop ollama | Out-Null
+        docker rm ollama | Out-Null
+        Say "[ok]   removed the Docker Ollama container (its models volume is kept)" "Green"
+    }
+    Start-NativeOllama
+} else {
+    Say "[start] docker compose up -d" "Cyan"
+    docker compose up -d
+    if ($LASTEXITCODE -ne 0) {
+        Say "[warn] 'docker compose' failed - trying legacy 'docker-compose'..." "Yellow"
+        docker-compose up -d
+    }
 }
 
 # Wait for the services the Python agents depend on
 Wait-ForUrl "http://localhost:6333/healthz"      "Qdrant"  | Out-Null
-Wait-ForUrl "http://localhost:11434/api/tags"    "Ollama"  | Out-Null
+Wait-ForUrl "$(Get-OllamaBase)/api/tags"    "Ollama"  | Out-Null
 Wait-ForUrl "http://localhost:5678"              "n8n"     | Out-Null
 Wait-ForUrl "http://localhost:8080"              "SearXNG" | Out-Null
 
