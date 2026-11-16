@@ -66,6 +66,59 @@ def _ollama_timeout() -> float:
         return 120.0
 
 
+def _ollama_think() -> bool | None:
+    """Reasoning setting sent to Ollama.
+
+    OLLAMA_THINK=0 (default) sends think:false, so a model that can reason
+    (qwen3 and similar) answers directly instead of spending minutes on CPU
+    writing hidden reasoning. 1 sends think:true. "auto" sends nothing and
+    leaves it to the model. Models that cannot reason accept think:false.
+    """
+    raw = os.getenv("OLLAMA_THINK", "0").strip().lower()
+    if raw in ("auto", ""):
+        return None
+    return raw in ("1", "true", "yes", "on")
+
+
+def _ollama_payload(model_id: str, messages: list[dict], stream: bool, think: bool | None) -> dict:
+    payload = {
+        "model": model_id, "messages": messages, "stream": stream,
+        "options": _ollama_options(),
+        "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m"),
+    }
+    if think is not None:
+        payload["think"] = think
+    return payload
+
+
+def _rejects_think(resp: "httpx.Response") -> bool:
+    """True when Ollama refused the request because of the think field
+    (an older server, or a model that does not take it)."""
+    if resp.status_code != 400:
+        return False
+    try:
+        return "think" in resp.text.lower()
+    except Exception:
+        return False
+
+
+_THINK_CLOSE = "</think>"
+
+
+def _strip_reasoning(content: str) -> str:
+    """Remove reasoning a model wrote into its answer.
+
+    A reasoning-only model (for example qwen3:4b, which is
+    Qwen3-4B-Thinking-2507) ignores think:false and writes its reasoning into
+    the reply, ending it with </think>. Without this, that reasoning would be
+    stored as memory or shown as the answer. Keep only what follows the last
+    closing tag.
+    """
+    if not content or _THINK_CLOSE not in content:
+        return content
+    return content.rsplit(_THINK_CLOSE, 1)[1].strip()
+
+
 async def _call_ollama(model_id: str, system: str, user: str, history: list[dict]) -> tuple[str, int, int]:
     base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     messages = []
@@ -74,18 +127,23 @@ async def _call_ollama(model_id: str, system: str, user: str, history: list[dict
     messages.extend(history)
     messages.append({"role": "user", "content": user})
 
+    think = _ollama_think()
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{base}/api/chat",
-            json={"model": model_id, "messages": messages, "stream": False,
-                  "options": _ollama_options(),
-                  "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m")},
+            json=_ollama_payload(model_id, messages, False, think),
             timeout=_ollama_timeout(),
         )
+        if think is not None and _rejects_think(resp):
+            resp = await client.post(
+                f"{base}/api/chat",
+                json=_ollama_payload(model_id, messages, False, None),
+                timeout=_ollama_timeout(),
+            )
         resp.raise_for_status()
         data = resp.json()
 
-    content      = data["message"]["content"]
+    content      = _strip_reasoning(data["message"]["content"])
     input_tok    = data.get("prompt_eval_count", rough_token_count(user + system))
     output_tok   = data.get("eval_count", rough_token_count(content))
     return content, input_tok, output_tok
@@ -310,25 +368,58 @@ async def _stream_ollama(model_id: str, system: str, user: str, history: list[di
     messages.append({"role": "user", "content": user})
 
     import json
+    think = _ollama_think()
     async with httpx.AsyncClient() as client:
-        async with client.stream(
-            "POST",
-            f"{base}/api/chat",
-            json={"model": model_id, "messages": messages, "stream": True,
-                  "options": _ollama_options(),
-                  "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m")},
-            timeout=_ollama_timeout(),
-        ) as resp:
-            resp.raise_for_status()
-            async for line in resp.aiter_lines():
-                if not line:
-                    continue
-                data = json.loads(line)
-                chunk = data.get("message", {}).get("content", "")
-                if chunk:
-                    yield chunk
-                if data.get("done"):
-                    break
+        for attempt_think in ([think, None] if think is not None else [None]):
+            async with client.stream(
+                "POST",
+                f"{base}/api/chat",
+                json=_ollama_payload(model_id, messages, True, attempt_think),
+                timeout=_ollama_timeout(),
+            ) as resp:
+                if attempt_think is not None and resp.status_code == 400:
+                    await resp.aread()
+                    if _rejects_think(resp):
+                        continue          # retry once without the think field
+                resp.raise_for_status()
+                # Reasoning written inline as <think>...</think> is held back,
+                # so only the answer reaches the listener.
+                in_reasoning = None       # unknown until the first text arrives
+                held = ""
+                async for line in resp.aiter_lines():
+                    if not line:
+                        continue
+                    data = json.loads(line)
+                    chunk = data.get("message", {}).get("content", "")
+                    if chunk:
+                        if in_reasoning is None:
+                            held += chunk
+                            stripped = held.lstrip()
+                            if not stripped:
+                                pass
+                            elif stripped.startswith("<think>"):
+                                in_reasoning = True
+                            elif "<think>".startswith(stripped):
+                                pass      # could still become <think>; wait
+                            else:
+                                in_reasoning = False
+                                yield held
+                                held = ""
+                        elif in_reasoning:
+                            held += chunk
+                        else:
+                            yield chunk
+                        if in_reasoning and _THINK_CLOSE in held:
+                            rest = held.rsplit(_THINK_CLOSE, 1)[1].lstrip()
+                            in_reasoning = False
+                            held = ""
+                            if rest:
+                                yield rest
+                    if data.get("done"):
+                        break
+                if held and in_reasoning is None:
+                    yield held
+            return
 
 
 async def _stream_anthropic(model_id: str, system: str, user: str, history: list[dict], max_tokens: int) -> AsyncGenerator[str, None]:
