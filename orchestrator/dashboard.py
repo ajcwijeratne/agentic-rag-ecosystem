@@ -458,7 +458,7 @@ def _append_content_section(path: Path, section_title: str, result: str, item: d
 
 
 def _intel_items_for_ideas(limit: int = 8, query: str | None = None) -> list[dict[str, Any]]:
-    items = _load_items("Sector Intel") or SEED_INTEL
+    items = _load_items("Sector Intel") or []
     if query:
         q = query.lower()
         items = [
@@ -652,7 +652,8 @@ async def content_pipeline() -> Any:
 
     items = _load_items("Content Pipeline")
     if not items:
-        return SEED_CONTENT
+        # Empty board, not invented cards (seed data removed 21 Nov 2026).
+        return {label: [] for _, label in WRITING_STAGES}
     cols: dict[str, list] = {label: [] for _, label in WRITING_STAGES}
     legacy_map = {
         "Ideas": "Ideas",
@@ -877,12 +878,12 @@ async def content_assist(req: ContentAssistRequest) -> dict[str, Any]:
 
 @router.get("/engagements")
 async def engagements() -> dict[str, Any]:
-    return {"items": _load_items("Engagements") or SEED_ENG}
+    return {"items": _load_items("Engagements") or []}
 
 
 @router.get("/intel/feed")
 async def intel_feed() -> dict[str, Any]:
-    return {"items": _load_items("Sector Intel") or SEED_INTEL}
+    return {"items": _load_items("Sector Intel") or []}
 
 
 # ---------------------------------------------------------------------------
@@ -1298,7 +1299,7 @@ async def kb_misses(limit: int = 20) -> dict[str, Any]:
 async def memory_overview() -> dict[str, Any]:
     items = _load_items("Memory")
     if not items:
-        return {"groups": SEED_MEMORY_GROUPS}
+        return {"groups": []}
     order: list[str] = []
     groups: dict[str, list[str]] = {}
     for it in items:
@@ -1313,7 +1314,27 @@ async def memory_overview() -> dict[str, Any]:
 
 @router.get("/trace/recent")
 async def trace_recent(limit: int = 20) -> dict[str, Any]:
-    return {"items": (_load_items("Routing") or SEED_TRACE)[:limit]}
+    """Recent requests from the real trace store, newest first.
+
+    Until 21 Nov 2026 this read vault notes and fell back to SEED_TRACE, so
+    the Trace view showed invented requests on models the system never used
+    while the trace store held the real ones.
+    """
+    from .trace import read_traces
+    rows = []
+    for t in read_traces(max(1, min(limit, 200))):
+        conf = t.get("final_confidence")
+        rows.append({
+            "q": t.get("query", ""),
+            "dept": t.get("department") or t.get("task_type") or t.get("backend") or "",
+            "model": t.get("model_label") or t.get("model_key") or t.get("model_name") or "",
+            "conf": round(conf * 100) if isinstance(conf, (int, float)) else None,
+            "sources": t.get("source_count"),
+            "ms": round(t.get("total_latency_ms") or 0),
+            "cost": t.get("cost_usd"),
+            "ts": t.get("ts") or t.get("timestamp"),
+        })
+    return {"items": rows}
 
 
 # ===========================================================================
@@ -2365,8 +2386,8 @@ SEED_PRODUCTIVITY = {
 @router.get("/productivity/overview")
 async def productivity_overview() -> dict[str, Any]:
     prod = _collect_productivity()
-    if prod is None:                        # vault unreachable -> seed
-        return SEED_PRODUCTIVITY
+    if prod is None:                        # vault unreachable -> seed, flagged
+        return {**SEED_PRODUCTIVITY, "demo": True}
     recs = _daily_records()
     return {
         **prod,

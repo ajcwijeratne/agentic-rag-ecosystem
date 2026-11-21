@@ -491,6 +491,21 @@ const {useState,useEffect,useRef,useCallback} = React;
 const STATIC_PREVIEW_PORTS = new Set(["5179","5500","5501"]);
 const DEFAULT_API = (window.location.protocol === "file:" || STATIC_PREVIEW_PORTS.has(window.location.port)) ? "http://localhost:8000" : window.location.origin;
 const API = localStorage.getItem("cc_api_base") || DEFAULT_API;
+// Sample data is shown only when the server does not answer, and it is always
+// labelled. Until 21 Nov 2026 views fell back to invented rows silently.
+const CC_SAMPLE = new Set();
+function markSample(name){
+  try{
+    CC_SAMPLE.add(name);
+    let el=document.getElementById('cc-sample-banner');
+    if(!el){
+      el=document.createElement('div'); el.id='cc-sample-banner'; el.setAttribute('role','status');
+      el.style.cssText='position:fixed;left:50%;bottom:76px;transform:translateX(-50%);z-index:9999;background:#7a1f1f;color:#fff;padding:8px 14px;border-radius:8px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.35);max-width:92vw;cursor:pointer';
+      el.title='Click to hide'; el.onclick=()=>el.remove(); document.body.appendChild(el);
+    }
+    el.textContent='Sample data, not live: '+[...CC_SAMPLE].join(', ')+'. The server did not answer.';
+  }catch(e){}
+}
 // cc_key_from_url: one-time API key capture. Open .../command_centre.html?key=XXX
 // once on any device; the key is stored in localStorage and stripped from the URL.
 (() => {
@@ -2041,7 +2056,7 @@ function ContentPipeline(){
   const [intelMsg,setIntelMsg]=useState("");
   const loadContent=useCallback(()=>{
     setLoadState('loading');
-    return fetch(`${API}/content/pipeline`).then(r=>r.ok?r.json():Promise.reject()).then(d=>{setCols(d);setLoadState('ready');return d;}).catch(()=>{setCols(SEED_CONTENT);setLoadState('fallback');return SEED_CONTENT;});
+    return fetch(`${API}/content/pipeline`).then(r=>r.ok?r.json():Promise.reject()).then(d=>{setCols(d);setLoadState('ready');return d;}).catch(()=>{markSample('Content');setCols(SEED_CONTENT);setLoadState('fallback');return SEED_CONTENT;});
   },[]);
   useEffect(()=>{loadContent();},[loadContent]);
   const createIdea=async()=>{
@@ -2251,7 +2266,7 @@ function ProductionPipeline(){
   const [project,setProject]=useState("");
   const [format,setFormat]=useState("linkedin_short");
   const [moveTo,setMoveTo]=useState("draft");
-  const loadBoard=()=>fetch(`${API}/production/board`).then(r=>r.ok?r.json():Promise.reject()).then(setCols).catch(()=>setCols(SEED_PRODUCTION));
+  const loadBoard=()=>fetch(`${API}/production/board`).then(r=>r.ok?r.json():Promise.reject()).then(setCols).catch(()=>{markSample('Production');setCols(SEED_PRODUCTION);});
   const loadIntel=()=>fetch(`${API}/production/intelligence`).then(r=>r.ok?r.json():Promise.reject()).then(setIntelPanel).catch(()=>setIntelPanel(null));
   useEffect(()=>{loadBoard();loadIntel();},[]);
   const inspect=id=>{
@@ -2836,7 +2851,7 @@ const SEED_ENG = [
 ];
 function EngagementsView(){
   const [rows,setRows]=useState(null);
-  useEffect(()=>{fetch(`${API}/engagements`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setRows(d.items||d)).catch(()=>setRows(SEED_ENG));},[]);
+  useEffect(()=>{fetch(`${API}/engagements`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setRows(d.items||d)).catch(()=>{markSample('Engagements');setRows(SEED_ENG);});},[]);
   return (
     <div className="view-wrap"><div className="view-inner">
       <ViewHead eyebrow="Live work" title="Engagements in progress." lede="Every engagement shows the capability behind it, the lead, the next milestone, and where it sits today."/>
@@ -2880,10 +2895,10 @@ function KnowledgeBaseView(){
   const [err,setErr]=useState('');
   const [memGroups,setMemGroups]=useState(null);
   const load=()=>{
-    fetch(`${API}/kb/overview`).then(r=>r.ok?r.json():Promise.reject()).then(setD).catch(()=>setD(SEED_KB));
+    fetch(`${API}/kb/overview`).then(r=>r.ok?r.json():Promise.reject()).then(d=>{if(d&&d.demo)markSample('Knowledge base');setD(d);}).catch(()=>{markSample('Knowledge base');setD(SEED_KB);});
     fetch(`${API}/kb/quality`).then(r=>r.ok?r.json():null).then(x=>x&&setQ(x)).catch(()=>{});
     fetch(`${API}/kb/misses`).then(r=>r.ok?r.json():null).then(x=>x&&setMisses(x.items||[])).catch(()=>{});
-    fetch(`${API}/memory/overview`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setMemGroups(d.groups||d)).catch(()=>setMemGroups(SEED_MEMORY));
+    fetch(`${API}/memory/overview`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setMemGroups(d.groups||d)).catch(()=>{markSample('Memory');setMemGroups(SEED_MEMORY);});
   };
   useEffect(load,[]);
   const s=(d||{}).stats||{}; const cols=(d||{}).collections||[];
@@ -3072,6 +3087,7 @@ const SEED_SECTOR = {
 async function SIload(){
   try{ const r=await fetch(`${API}/sector/dataset`); if(r.ok){const j=await r.json(); if(j&&j.rows&&j.rows.length) return j;} }catch(e){}
   try{ const r=await fetch('./sector_intel.json'); if(r.ok){const j=await r.json(); if(j&&j.rows&&j.rows.length) return j;} }catch(e){}
+  markSample('Sector intel');
   return SEED_SECTOR;
 }
 function SIindex(data){
@@ -3440,7 +3456,7 @@ function SectorIntelView(){
       setInstId(d.institutions&&d.institutions[0]?d.institutions[0].institution_id:null);
       setCmp((d.institutions||[]).slice(0,3).map(i=>i.institution_id));
     });
-    fetch(`${API}/intel/feed`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setFeed(d.items||d)).catch(()=>setFeed(SEED_INTEL));
+    fetch(`${API}/intel/feed`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setFeed(d.items||d)).catch(()=>{markSample('Intel');setFeed(SEED_INTEL);});
   },[]);
   useEffect(()=>{ if(!toast) return; const t=setTimeout(()=>setToast(''),4200); return ()=>clearTimeout(t); },[toast]);
 
@@ -3488,16 +3504,17 @@ const SEED_TRACE = [
 ];
 function RoutingInspector(){
   const [rows,setRows]=useState(null);
-  useEffect(()=>{fetch(`${API}/trace/recent`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setRows(d.items||d)).catch(()=>setRows(SEED_TRACE));},[]);
+  useEffect(()=>{fetch(`${API}/trace/recent`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setRows(d.items||d)).catch(()=>{markSample('Routing inspector');setRows(SEED_TRACE);});},[]);
   return (
     <div className="view-wrap"><div className="view-inner">
       <ViewHead eyebrow="Observability" title="Routing inspector." lede="Why each query went where it did. The agent and model chosen, the confidence, and how much it drew on retrieval."/>
       <div style={{marginTop:24,display:'flex',flexDirection:'column',gap:10}}>
+        {rows&&rows.length===0&&<div className="mini" style={{opacity:.75}}>No requests traced yet.</div>}
         {(rows||[]).map((r,i)=>(
           <div key={i} className="card card-i">
             <div style={{fontSize:14,fontWeight:500,color:'var(--ink)'}}>{r.q}</div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10,alignItems:'center'}}>
-              <span className="stag st-good">{r.dept}</span>
+              {r.dept&&<span className="stag st-good">{r.dept}</span>}
               {r.model&&<span className="tagx">{r.model}</span>}
               {r.conf!=null&&<span className="tagx">{r.conf}% match</span>}
               {r.sources!=null&&<span className="tagx">{r.sources} sources</span>}
@@ -3528,7 +3545,7 @@ function QualityCockpit(){
   const [savingCase,setSavingCase]=useState("");
   const [err,setErr]=useState("");
   const [toast,setToast]=useState("");
-  const load=()=>fetch(`${API}/quality/overview`).then(r=>r.ok?r.json():Promise.reject()).then(d=>{setData(d);setErr("");}).catch(()=>{setData(SEED_QUALITY);setErr("Quality service unavailable; showing seed state.");});
+  const load=()=>fetch(`${API}/quality/overview`).then(r=>r.ok?r.json():Promise.reject()).then(d=>{setData(d);setErr("");}).catch(()=>{markSample('Quality');setData(SEED_QUALITY);setErr("Quality service unavailable; showing sample data.");});
   const loadQueue=()=>fetch(`${API}/evals/work-queue`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setQueue(d.items||[])).catch(()=>setQueue([]));
   useEffect(()=>{load();loadQueue();},[]);
 
@@ -4044,7 +4061,7 @@ function ProductivityView(){
   const [saving,setSaving]=useState(false);
   const [toast,setToast]=useState('');
   const load=useCallback(()=>{
-    fetch(`${API}/productivity/overview`).then(r=>r.ok?r.json():Promise.reject()).then(setD).catch(()=>setD(SEED_PROD));
+    fetch(`${API}/productivity/overview`).then(r=>r.ok?r.json():Promise.reject()).then(d=>{if(d&&d.demo)markSample('Productivity');setD(d);}).catch(()=>{markSample('Productivity');setD(SEED_PROD);});
   },[]);
   useEffect(()=>{load();},[load]);
 

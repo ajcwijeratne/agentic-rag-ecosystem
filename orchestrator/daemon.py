@@ -57,6 +57,12 @@ MAX_ATTEMPTS = int(os.getenv("DAEMON_MAX_ATTEMPTS", "2"))
 AGENT_MAX_TIER = int(os.getenv("DAEMON_AGENT_MAX_TIER", "2"))
 CONSOLIDATION_HOUR = int(os.getenv("CONSOLIDATION_HOUR", "2"))
 MEASURE_HOUR = int(os.getenv("MEASURE_HOUR", "3"))
+# Nightly knowledge-base reindex. Nothing reindexed the vault on a schedule
+# before 21 Nov 2026, so it went stale from 24 Sep. -1 turns it off.
+KB_REINDEX_HOUR = int(os.getenv("KB_REINDEX_HOUR", "1"))
+# Indexer paths to call. The WijerCo knowledge base (/index/wijerco) needs
+# WIJERCO_PATH on this machine, so it is opt-in: "/index,/index/wijerco".
+KB_REINDEX_TARGETS = tuple(p.strip() for p in os.getenv("KB_REINDEX_TARGETS", "/index").split(",") if p.strip())
 LEARN_DAY = int(os.getenv("LEARN_DAY", "1"))  # day of month for the learning pass
 REVIEW_DAY = int(os.getenv("REVIEW_DAY", "1"))  # day of month for the monthly review
 INITIATIVE_WEEKDAY = int(os.getenv("INITIATIVE_WEEKDAY", "0"))  # Monday=0
@@ -450,6 +456,36 @@ async def _maybe_consolidate(state: dict[str, Any]) -> None:
     save_state(state)
 
 
+async def _maybe_reindex(state: dict[str, Any]) -> None:
+    """Reindex the vault and the WijerCo knowledge base once a day at
+    KB_REINDEX_HOUR, through the indexer service. A failed target is logged
+    and does not stop the other one or the rest of the cycle."""
+    if KB_REINDEX_HOUR < 0:
+        return
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    if state.get("reindexed_date") == today or now.hour < KB_REINDEX_HOUR:
+        return
+    import httpx
+    base = os.getenv("INDEXER_URL", "http://localhost:8005").rstrip("/")
+    results: dict[str, Any] = {}
+    for path in KB_REINDEX_TARGETS:
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(f"{base}{path}", json={}, timeout=1800.0)
+            resp.raise_for_status()
+            body = resp.json()
+            results[path] = {k: body.get(k) for k in ("status", "notes_indexed", "chunks_total", "collection") if k in body} or body
+        except Exception as exc:
+            results[path] = {"status": "error", "error": str(exc)[:300]}
+    failed = [p for p, r in results.items() if (r or {}).get("status") == "error"]
+    _log_decision("kb_reindex_error" if failed else "kb_reindex", results)
+    if failed:
+        await _notify("Knowledge base reindex failed", f"Targets failed: {', '.join(failed)}. See daemon.jsonl.")
+    state["reindexed_date"] = today
+    save_state(state)
+
+
 async def _maybe_measure(state: dict[str, Any]) -> None:
     """Run the measure sweep once a day at MEASURE_HOUR. Pulls or requests
     outcomes for published work and closes productions past their window."""
@@ -556,6 +592,7 @@ async def main() -> None:
             summary = {"action": "cycle_error", "error": str(exc)}
             _log_decision("cycle_error", {"error": str(exc)})
         state = load_state()  # re-read in case pause happened mid-cycle
+        await _maybe_reindex(state)
         await _maybe_consolidate(state)
         await _maybe_measure(state)
         await _maybe_learn(state)

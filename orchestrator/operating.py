@@ -343,6 +343,30 @@ def activate_plan(plan_id: str, actor: str = "operator") -> dict[str, Any]:
     return {"plan_id": plan_id, "status": "active", "released_tasks": released, "actor": actor}
 
 
+_OPEN_TASK_STATUSES = ("todo", "doing", "blocked", "waiting_approval")
+
+
+def cancel_plan(plan_id: str, actor: str = "operator", reason: str = "") -> dict[str, Any]:
+    """Retire a plan: archive it and cancel every task still open.
+
+    Done and already-cancelled tasks are left as they are, so the record of
+    what was completed survives. Before this existed a stale plan could only
+    be paused, and its open tasks stayed in front of real work (Sep-Nov 2026).
+    """
+    plan = get_plan(plan_id)
+    if not plan:
+        raise KeyError("plan not found")
+    cancelled = 0
+    for task in plan.get("tasks", []):
+        if task.get("status") in _OPEN_TASK_STATUSES:
+            update_task(task["task_id"], status="cancelled")
+            cancelled += 1
+    meta = dict(plan.get("meta") or {})
+    meta["cancelled"] = {"at": _now(), "by": actor, "reason": reason, "tasks_cancelled": cancelled}
+    update_plan(plan_id, status="archived", meta=meta)
+    return {"plan_id": plan_id, "status": "archived", "cancelled_tasks": cancelled, "actor": actor}
+
+
 def infer_workflow(goal: str, workflow: str | None = None) -> dict[str, Any]:
     """Classify a goal into a planner workflow using transparent heuristics."""
     requested = (workflow or "").strip().lower()

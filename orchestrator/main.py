@@ -1147,6 +1147,19 @@ async def operating_activate_plan(plan_id: str):
         raise HTTPException(status_code=404, detail="plan not found")
 
 
+class PlanCancelRequest(BaseModel):
+    reason: str = Field(default="", max_length=500)
+
+
+@app.post("/operating/plans/{plan_id}/cancel", dependencies=[Depends(require_admin)])
+async def operating_cancel_plan(plan_id: str, req: PlanCancelRequest | None = None):
+    """Retire a plan: archive it and cancel its open tasks. Completed tasks stay."""
+    try:
+        return operating_store.cancel_plan(plan_id, actor="cockpit", reason=(req.reason if req else ""))
+    except KeyError:
+        raise HTTPException(status_code=404, detail="plan not found")
+
+
 @app.get("/operating/daily-brief")
 async def operating_daily_brief():
     return operating_store.daily_brief()

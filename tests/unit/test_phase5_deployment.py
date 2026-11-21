@@ -175,3 +175,26 @@ def test_rbac_admin_key_works_for_legacy_admin_routes(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["title"] == "RBAC admin route"
+
+
+def test_api_key_keeps_operator_role_when_role_keys_are_set(tmp_path, monkeypatch):
+    """wijerco has RBAC_ROLE_KEYS plus a separate API_KEY used by every remote
+    client. That key must not fall to anonymous (21 Nov 2026)."""
+    client, _ = _client(tmp_path, monkeypatch)
+    monkeypatch.setenv("API_KEY", "remote-client-key")
+    monkeypatch.setenv("ADMIN_API_KEY", "")
+    assert client.get("/ops/me", headers={"x-api-key": "remote-client-key"}).json()["role"] == "operator"
+    assert client.get("/ops/me", headers={"x-api-key": "viewer-key"}).json()["role"] == "viewer"
+    assert client.get("/ops/me", headers={"x-api-key": "admin-key"}).json()["role"] == "admin"
+    assert client.get("/ops/me", headers={"x-api-key": "wrong"}).status_code in (401, 200)
+    if client.get("/ops/me", headers={"x-api-key": "wrong"}).status_code == 200:
+        assert client.get("/ops/me", headers={"x-api-key": "wrong"}).json()["role"] == "anonymous"
+
+
+def test_role_key_wins_over_legacy_mapping(monkeypatch):
+    import json as _json
+    import common.rbac as rbac
+    monkeypatch.setenv("RBAC_ROLE_KEYS", _json.dumps({"viewer": "shared-key"}))
+    monkeypatch.setenv("API_KEY", "shared-key")
+    monkeypatch.delenv("ADMIN_API_KEY", raising=False)
+    assert rbac._role_keys() == [("viewer", "shared-key")]
