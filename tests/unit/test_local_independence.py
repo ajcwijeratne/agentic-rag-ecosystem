@@ -178,3 +178,16 @@ async def test_stream_ollama_retries_without_think_when_refused(monkeypatch):
     out = [c async for c in ml._stream_ollama("m", "", "hi", [])]
     assert "".join(out) == "ok"
     assert "think" not in _json.loads(route.calls[1].request.content)
+
+
+def test_health_probes_the_ollama_address_the_models_use(monkeypatch):
+    import importlib
+    import common.health as health
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/")
+    assert importlib.reload(health).ollama_check()["url"] == "http://127.0.0.1:11434/api/tags"
+    monkeypatch.setenv("OLLAMA_URL", "http://ollama.test:11434")
+    assert importlib.reload(health).ollama_check()["url"] == "http://ollama.test:11434/api/tags"
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    assert importlib.reload(health).ollama_check()["url"] == "http://localhost:11434/api/tags"

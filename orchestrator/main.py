@@ -346,7 +346,10 @@ async def run_query(req: QueryRequest):
         "query": req.query,
         "routing": None,
         "context_chunks": [],
-        "output_payload": {},
+        # graph.py reads _force_model_key from here; without it the request's
+        # force_model_key was accepted and silently ignored.
+        "output_payload": ({"_force_model_key": req.force_model_key}
+                           if req.force_model_key else {}),
         "agents_used": [],
         "errors": [],
         "finished": False,

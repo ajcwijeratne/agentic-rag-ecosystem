@@ -18,7 +18,12 @@ import httpx
 
 # Standard probe endpoints per dependency kind.
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+# OLLAMA_BASE_URL is the address the model calls use, so the health check
+# must probe the same one. With native Ollama on 127.0.0.1, "localhost" can
+# resolve to ::1, where Docker's relay may be listening, and the check fails
+# while every model call works.
+OLLAMA_URL = (os.getenv("OLLAMA_URL") or os.getenv("OLLAMA_BASE_URL")
+              or "http://localhost:11434").rstrip("/")
 
 
 async def check_http(name: str, url: str, expect_status: int = 200,

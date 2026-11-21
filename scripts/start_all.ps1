@@ -41,16 +41,31 @@ New-Item -ItemType Directory -Force -Path "logs" | Out-Null
 # ---------------------------------------------------------------------------
 $ports = 8000,8001,8002,8003,8004,8005,8006,8009
 foreach ($p in $ports) {
-    try {
-        $owners = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue |
-                  Select-Object -ExpandProperty OwningProcess -Unique
-        foreach ($procId in $owners) {
-            if ($procId) {
-                Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
-                Write-Host "[clean] Freed port $p (PID $procId)" -ForegroundColor DarkYellow
-            }
+    $owners = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty OwningProcess -Unique
+    foreach ($procId in $owners) {
+        if (-not $procId) { continue }
+        try {
+            Stop-Process -Id $procId -Force -ErrorAction Stop
+            Write-Host "[clean] Freed port $p (PID $procId)" -ForegroundColor DarkYellow
+        } catch {
+            Write-Host "[clean] COULD NOT stop PID $procId on port ${p}: $($_.Exception.Message)" -ForegroundColor Red
         }
-    } catch {}
+    }
+}
+# A copy that could not be stopped (15 Nov 2026: copies started with
+# administrator rights, "Access is denied") keeps its port, so the new copy
+# would fail to bind and the OLD code would go on serving with no sign of it.
+# Stop here and say so instead.
+Start-Sleep 2
+$held = @($ports | Where-Object { Get-NetTCPConnection -LocalPort $_ -State Listen -ErrorAction SilentlyContinue })
+if ($held.Count -gt 0) {
+    Write-Host ""
+    Write-Host "[fatal] Ports still held by old copies: $($held -join ', ')." -ForegroundColor Red
+    Write-Host "        They were probably started with administrator rights." -ForegroundColor Red
+    Write-Host "        Restart Windows (Start > Power > Restart), then run Start again." -ForegroundColor Red
+    Write-Host "        Nothing new was started; the old copies are still serving." -ForegroundColor Red
+    exit 1
 }
 # Clear only PID files owned by this launcher. The daemon and channel workers
 # are separate long-lived services and must retain their tracking files.
