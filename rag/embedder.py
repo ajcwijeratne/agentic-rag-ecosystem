@@ -28,16 +28,45 @@ async def embed_text(text: str) -> list[float]:
         return resp.json()["embedding"]
 
 
+def _batch_url() -> str:
+    """Ollama's batch endpoint (/api/embed, list input) beside EMBED_URL."""
+    url = EMBED_URL.rstrip("/")
+    if url.endswith("/api/embeddings"):
+        return url[: -len("/api/embeddings")] + "/api/embed"
+    return url.rsplit("/api/", 1)[0] + "/api/embed" if "/api/" in url else url + "/api/embed"
+
+
 async def embed_batch(texts: list[str], batch_size: int = 32) -> list[list[float]]:
     """
-    Embed a list of texts, processing in batches to avoid overloading Ollama.
-    Returns a list of vectors in the same order as the input.
+    Embed a list of texts in batches. Returns vectors in input order.
+
+    Each batch is one call to Ollama's /api/embed. Until 21 Nov 2026 every
+    text was its own HTTP request on a new connection, and a full vault took
+    more than 15 minutes on a CPU-only machine. /api/embed returns unit-length
+    vectors; the collections use cosine distance, so they rank the same as the
+    single-text endpoint's. An Ollama without /api/embed falls back to one
+    text per request.
     """
     vectors: list[list[float]] = []
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i : i + batch_size]
-        for text in batch:
-            vec = await embed_text(text)
-            vectors.append(vec)
-        print(f"[embedder] Embedded {min(i + batch_size, len(texts))}/{len(texts)}")
+    batch_ok = True
+    url = _batch_url()
+    async with httpx.AsyncClient() as client:
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            if batch_ok:
+                try:
+                    resp = await client.post(url, json={"model": EMBED_MODEL, "input": batch}, timeout=300.0)
+                    resp.raise_for_status()
+                    got = resp.json().get("embeddings") or []
+                    if len(got) != len(batch):
+                        raise ValueError(f"expected {len(batch)} embeddings, got {len(got)}")
+                    vectors.extend(got)
+                    print(f"[embedder] Embedded {min(i + batch_size, len(texts))}/{len(texts)}")
+                    continue
+                except Exception as exc:
+                    print(f"[embedder] batch endpoint failed ({exc}); falling back to one text per call")
+                    batch_ok = False
+            for text in batch:
+                vectors.append(await embed_text(text))
+            print(f"[embedder] Embedded {min(i + batch_size, len(texts))}/{len(texts)}")
     return vectors

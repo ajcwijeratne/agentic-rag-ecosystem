@@ -122,6 +122,41 @@ async def upsert_points(points: list[dict[str, Any]]) -> None:
         resp.raise_for_status()
 
 
+async def existing_texts(collection: str = QDRANT_COLLECTION) -> dict[str, str]:
+    """Return {point_id: chunk text} for every point already in the collection.
+    Empty if the collection cannot be read, which makes the next run a full one."""
+    out: dict[str, str] = {}
+    offset: Any = None
+    try:
+        async with httpx.AsyncClient() as client:
+            while True:
+                body: dict[str, Any] = {"limit": 1000, "with_payload": ["text"], "with_vector": False}
+                if offset is not None:
+                    body["offset"] = offset
+                resp = await client.post(f"{QDRANT_URL}/collections/{collection}/points/scroll", json=body, timeout=60.0)
+                resp.raise_for_status()
+                result = resp.json().get("result") or {}
+                for pt in result.get("points") or []:
+                    out[str(pt.get("id"))] = (pt.get("payload") or {}).get("text", "")
+                offset = result.get("next_page_offset")
+                if offset is None:
+                    break
+    except Exception as exc:
+        print(f"[indexer] Could not read existing points ({exc}); embedding everything.")
+        return {}
+    return out
+
+
+@async_retry()
+async def delete_points(ids: list[str], collection: str = QDRANT_COLLECTION) -> None:
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{QDRANT_URL}/collections/{collection}/points/delete",
+            json={"points": ids}, timeout=60.0,
+        )
+        resp.raise_for_status()
+
+
 # ---------------------------------------------------------------------------
 # Chunking
 # ---------------------------------------------------------------------------
@@ -246,8 +281,13 @@ def load_vault(vault: Path) -> list[tuple[str, str, str]]:
 # Main indexing routine
 # ---------------------------------------------------------------------------
 
-async def index_vault(vault: Path = VAULT_PATH) -> dict[str, Any]:
+async def index_vault(vault: Path = VAULT_PATH, full: bool = False) -> dict[str, Any]:
+    """Index the vault. Only new or changed chunks are embedded, and chunks of
+    deleted or shortened notes are removed; full=True (or INDEX_FULL=1)
+    re-embeds everything. Until 21 Nov 2026 every run embedded every chunk,
+    which on a CPU-only machine took longer than the 15-minute gateway limit."""
     t0 = time.monotonic()
+    full = full or os.getenv("INDEX_FULL", "0").strip().lower() in ("1", "true", "yes", "on")
     await ensure_collection()
 
     notes = load_vault(vault)
@@ -271,17 +311,34 @@ async def index_vault(vault: Path = VAULT_PATH) -> dict[str, Any]:
                 "source":      "vault",
             })
 
-    print(f"[indexer] Embedding {len(all_chunks)} chunks from {len(notes)} notes...")
-    vectors = await embed_batch(all_chunks)
+    existing = {} if full else await existing_texts(QDRANT_COLLECTION)
+    todo = [i for i, meta in enumerate(all_metadata) if existing.get(meta["chunk_id"]) != all_chunks[i]]
+    print(f"[indexer] {len(all_chunks)} chunks from {len(notes)} notes; "
+          f"{len(todo)} new or changed, {len(all_chunks) - len(todo)} unchanged")
+    vectors = await embed_batch([all_chunks[i] for i in todo]) if todo else []
 
     points = [
         {
-            "id":      meta["chunk_id"],
+            "id":      all_metadata[i]["chunk_id"],
             "vector":  vec,
-            "payload": meta,
+            "payload": all_metadata[i],
         }
-        for vec, meta in zip(vectors, all_metadata)
+        for i, vec in zip(todo, vectors)
     ]
+
+    # Remove chunks that no longer exist (deleted notes, shortened notes).
+    # Guard: a half-synced vault must not wipe the index, so skip removal when
+    # this run produces fewer than half as many chunks as are already indexed.
+    removed = 0
+    if existing:
+        current_ids = {meta["chunk_id"] for meta in all_metadata}
+        stale = [pid for pid in existing if pid not in current_ids]
+        if stale and len(current_ids) >= 0.5 * len(existing):
+            for i in range(0, len(stale), 500):
+                await delete_points(stale[i : i + 500], QDRANT_COLLECTION)
+            removed = len(stale)
+        elif stale:
+            print(f"[indexer] Not removing {len(stale)} stale chunks: this run saw too few files.")
 
     # Upsert in batches of 256
     batch_size = 256
@@ -297,13 +354,16 @@ async def index_vault(vault: Path = VAULT_PATH) -> dict[str, Any]:
     except Exception as exc:
         print(f"[indexer] Warning: could not update BM25 corpus: {exc}")
 
-    _record_run(QDRANT_COLLECTION, len(notes), len(points), time.monotonic() - t0)
+    _record_run(QDRANT_COLLECTION, len(notes), len(all_chunks), time.monotonic() - t0)
 
     return {
-        "status":        "ok",
-        "notes_indexed": len(notes),
-        "chunks_total":  len(points),
-        "collection":    QDRANT_COLLECTION,
+        "status":         "ok",
+        "notes_indexed":  len(notes),
+        "chunks_total":   len(all_chunks),
+        "chunks_embedded": len(points),
+        "chunks_removed": removed,
+        "full":           full,
+        "collection":     QDRANT_COLLECTION,
     }
 
 
@@ -449,6 +509,7 @@ app.add_middleware(CORSMiddleware, **cors_kwargs())
 
 class IndexRequest(BaseModel):
     vault_path: str = str(VAULT_PATH)
+    full: bool = False
 
 
 class WijerCoIndexRequest(BaseModel):
@@ -457,7 +518,7 @@ class WijerCoIndexRequest(BaseModel):
 
 @app.post("/index")
 async def trigger_index(req: IndexRequest):
-    result = await index_vault(Path(req.vault_path))
+    result = await index_vault(Path(req.vault_path), full=req.full)
     return result
 
 
