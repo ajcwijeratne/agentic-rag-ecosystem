@@ -85,7 +85,16 @@ def load_labels() -> list[dict[str, str]]:
             if not line.strip():
                 continue
             item = json.loads(line)
-            query, label = str(item.get("query") or ""), str(item.get("label") or "").strip()
+            query = str(item.get("query") or "")
+            if "label" in item:
+                # Template row: only a human-filled label counts. Its
+                # "suggested" field is the classifier's own guess.
+                label = str(item.get("label") or "").strip()
+            else:
+                # The labelled set (as scripts/tune_router reads it) keeps the
+                # gold answer in "gold", "task_type" or "suggested". Until
+                # 22 Nov 2026 only "label" was read, so this panel found none.
+                label = str(item.get("gold") or item.get("task_type") or item.get("suggested") or "").strip()
             if query and label:
                 rows.append({"query": query, "label": label})
     except Exception:

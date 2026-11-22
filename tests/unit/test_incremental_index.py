@@ -101,3 +101,14 @@ async def test_index_vault_full_reembeds_everything(env):
     result = await idx.index_vault(vault, full=True)
     assert result["chunks_embedded"] == result["chunks_total"] == 2
     assert scroll.call_count == 0
+
+
+def test_load_vault_skips_archive_and_tool_folders(env):
+    idx, _, vault = env
+    (vault / "13_Command Centre" / "_archive" / "Engagements").mkdir(parents=True)
+    (vault / "13_Command Centre" / "_archive" / "Engagements" / "old.md").write_text("retired", encoding="utf-8")
+    (vault / ".stversions").mkdir()
+    (vault / ".stversions" / "x.md").write_text("old version", encoding="utf-8")
+    (vault / "13_Command Centre" / "live.md").write_text("live", encoding="utf-8")
+    (vault / "_archive.md").write_text("a note named like the folder is kept", encoding="utf-8")
+    assert sorted(r for r, _, _ in idx.load_vault(vault)) == ["13_Command Centre/live.md", "_archive.md"]

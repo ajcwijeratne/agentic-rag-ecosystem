@@ -264,13 +264,22 @@ def _mtime_iso(path: Path) -> str:
         return ""
 
 
+# Folders never indexed: retired content (_archive), Obsidian's own state,
+# its trash, and Syncthing's file versions.
+_SKIP_DIRS = {"_archive", ".obsidian", ".trash", ".stversions"}
+
+
 def load_vault(vault: Path) -> list[tuple[str, str, str]]:
-    """Returns list of (relative_path, text, modified_at_iso) for all .md files."""
+    """Returns list of (relative_path, text, modified_at_iso) for all .md files,
+    skipping _SKIP_DIRS at any depth. Archived notes stayed searchable until
+    22 Nov 2026, so retired placeholder content could reach answers."""
     results = []
     for md_file in vault.rglob("*.md"):
         try:
-            text = md_file.read_text(encoding="utf-8", errors="replace")
             rel = md_file.relative_to(vault).as_posix()
+            if any(part in _SKIP_DIRS for part in rel.split("/")[:-1]):
+                continue
+            text = md_file.read_text(encoding="utf-8", errors="replace")
             results.append((rel, text, _mtime_iso(md_file)))
         except Exception as exc:
             print(f"[indexer] Could not read {md_file}: {exc}")
