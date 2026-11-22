@@ -2947,7 +2947,7 @@ function KnowledgeBaseView(){
         <div className="card stat"><div className="k">Documents</div><div className="v">{s.docs!=null?s.docs:"—"}</div><div className="s">Distinct files in the index</div></div>
         <div className="card stat"><div className="k">Chunks</div><div className="v">{s.chunks!=null?s.chunks:"—"}</div><div className="s">Across all collections</div></div>
         <div className="card stat"><div className="k">Last indexed</div><div className="v" style={{fontSize:19}}>{s.updated||"—"}</div><div className="s">Most recent index run</div></div>
-        <div className="card stat"><div className="k">Recall@5</div><div className="v">{recall}</div><div className="s">{q&&q.ts_label?`Checked ${q.ts_label}`:"Never run"}</div></div>
+        <div className="card stat"><div className="k">Recall@5</div><div className="v">{recall}</div><div className="s">{q&&q.ts_label?`Checked ${q.ts_label}`+(q.cases_evaluated!=null?` · ${q.cases_passed} of ${q.cases_evaluated}`+(q.cases_skipped?`, ${q.cases_skipped} skipped`:''):''):"Never run"}</div></div>
       </div>
       {cols.length>0 && <React.Fragment>
         <div className="row-head"><h3>Collections</h3><span className="mini">{cols.length} in Qdrant</span></div>
@@ -3020,7 +3020,9 @@ function KnowledgeBaseView(){
             <span className="mini" style={{color:'var(--ink)'}}>{c.query}</span>
             <span style={{display:'flex',gap:12,alignItems:'center'}}>
               <span className="mini">{(c.expected||[]).join(', ')}</span>
-              <span className={"stag "+(c.pass?'st-good':'st-fail')}>{c.pass?'found':'missed'}</span>
+              {c.skipped
+                ? <span className="stag st-warn" title={c.reason||''}>skipped</span>
+                : <span className={"stag "+(c.pass?'st-good':'st-fail')}>{c.pass?'found':'missed'}</span>}
             </span>
           </div>
         ))}

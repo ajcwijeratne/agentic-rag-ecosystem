@@ -16,6 +16,10 @@ from dataclasses import dataclass, field
 class RecallCase:
     query:         str
     expected_files: list[str] = field(default_factory=list)
+    # Which index the expected file lives in: "knowledge" (wijerco_knowledge)
+    # or "agents" (wijerco_agents, the role definitions kept out of client
+    # retrieval by rag/indexer.py).
+    collection:    str = "knowledge"
 
 
 RECALL_CASES: list[RecallCase] = [
@@ -33,18 +37,18 @@ RECALL_CASES: list[RecallCase] = [
                ["KNOWLEDGE BASE/wijerco-services.md"]),
     # AGENTS/departments — one case per department definition
     RecallCase("learning design department curriculum framework course production arm",
-               ["AGENTS/departments/learning-design.md"]),
+               ["AGENTS/departments/learning-design.md"], collection="agents"),
     RecallCase("support department client communication incoming requests scheduling inbox",
-               ["AGENTS/departments/support.md"]),
+               ["AGENTS/departments/support.md"], collection="agents"),
     RecallCase("operations department project management reporting finance recruitment planning",
-               ["AGENTS/departments/operations.md"]),
+               ["AGENTS/departments/operations.md"], collection="agents"),
     # AGENTS/subagents — representative roles
     RecallCase("sales manager business development pipeline prospective clients outreach proposals",
-               ["AGENTS/subagents/sales-manager.md"]),
+               ["AGENTS/subagents/sales-manager.md"], collection="agents"),
     RecallCase("instructional designer learning outcomes assessment design pedagogical framework architect",
-               ["AGENTS/subagents/instructional-designer.md"]),
+               ["AGENTS/subagents/instructional-designer.md"], collection="agents"),
     RecallCase("research analyst literature review published research sector sources",
-               ["AGENTS/subagents/research-analyst.md"]),
+               ["AGENTS/subagents/research-analyst.md"], collection="agents"),
     # ABOUT ME — voice and context files
     RecallCase("Aaron academic director OES PhD organisational behaviour Melbourne",
                ["ABOUT ME/about-me.md"]),

@@ -1239,16 +1239,45 @@ async def kb_quality() -> dict[str, Any]:
         return {"status": "never_run", "recall_at_5": None, "cases": []}
 
 
+async def _kb_collection_exists(name: str) -> bool:
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(f"{KB_QDRANT_URL}/collections/{name}", timeout=5.0)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+# Indexes a recall case may name. Only "agents" is optional: nothing reads
+# wijerco_agents yet, so when it is not built its cases are reported as skipped
+# rather than as misses. A missing knowledge index still counts as misses.
+_KB_RECALL_OPTIONAL = {"agents"}
+
+
 @router.post("/kb/quality/run", dependencies=[Depends(require_admin)])
 async def kb_quality_run() -> dict[str, Any]:
     from harness.recall_set import RECALL_CASES
     from rag.retriever import search as rag_search
-    coll = os.getenv("WIJERCO_COLLECTION", "wijerco_knowledge")
+    colls = {
+        "knowledge": os.getenv("WIJERCO_COLLECTION", "wijerco_knowledge"),
+        "agents": os.getenv("WIJERCO_AGENTS_COLLECTION", "wijerco_agents"),
+    }
+    present = {k: await _kb_collection_exists(v) for k, v in colls.items() if k in _KB_RECALL_OPTIONAL}
+    coll = colls["knowledge"]
     cases: list[dict[str, Any]] = []
     hits = 0
+    skipped = 0
     for case in RECALL_CASES:
+        kind = getattr(case, "collection", "knowledge") or "knowledge"
+        case_coll = colls.get(kind, coll)
+        if kind in _KB_RECALL_OPTIONAL and not present.get(kind):
+            skipped += 1
+            cases.append({"query": case.query, "expected": case.expected_files, "collection": case_coll,
+                          "pass": None, "skipped": True,
+                          "reason": f"{case_coll} is not built; nothing reads it yet", "retrieved": []})
+            continue
         try:
-            results = await rag_search(case.query, top_k=5, collection=coll)
+            results = await rag_search(case.query, top_k=5, collection=case_coll)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Retrieval failed: {exc}")
         got: list[str] = []
@@ -1258,14 +1287,18 @@ async def kb_quality_run() -> dict[str, Any]:
                 got.append(f)
         ok = any(f in got for f in case.expected_files)
         hits += 1 if ok else 0
-        cases.append({"query": case.query, "expected": case.expected_files, "pass": ok, "retrieved": got})
+        cases.append({"query": case.query, "expected": case.expected_files, "collection": case_coll,
+                      "pass": ok, "retrieved": got})
+    evaluated = len(RECALL_CASES) - skipped
     out = {
         "status": "ok",
         "ts": datetime.now().astimezone().isoformat(),
         "ts_label": datetime.now().astimezone().strftime("%d %b %Y, %H:%M"),
         "collection": coll,
-        "recall_at_5": round(hits / len(RECALL_CASES), 2) if RECALL_CASES else None,
+        "recall_at_5": round(hits / evaluated, 2) if evaluated else None,
         "cases_total": len(RECALL_CASES),
+        "cases_evaluated": evaluated,
+        "cases_skipped": skipped,
         "cases_passed": hits,
         "cases": cases,
     }
