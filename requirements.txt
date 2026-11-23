@@ -94,6 +94,14 @@ google-cloud-storage~=2.16.0
 # boto3~=1.34.0
 
 # ---------------------------------------------------------------------------
+# Google link: Gmail, Calendar, Drive (orchestrator/google_link.py). Imported
+# lazily, so the orchestrator still starts where these are not installed.
+# ---------------------------------------------------------------------------
+google-api-python-client>=2.150
+google-auth-oauthlib>=1.2
+google-auth-httplib2>=0.2
+
+# ---------------------------------------------------------------------------
 # Multi-LLM providers
 # ---------------------------------------------------------------------------
 anthropic~=0.28.0          # Claude (Haiku, Sonnet, Opus, Fable)

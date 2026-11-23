@@ -67,6 +67,9 @@ LEARN_DAY = int(os.getenv("LEARN_DAY", "1"))  # day of month for the learning pa
 REVIEW_DAY = int(os.getenv("REVIEW_DAY", "1"))  # day of month for the monthly review
 INITIATIVE_WEEKDAY = int(os.getenv("INITIATIVE_WEEKDAY", "0"))  # Monday=0
 INITIATIVE_HOUR = int(os.getenv("INITIATIVE_HOUR", "6"))
+# Google sync (Phase 2, 23 Nov 2026): Calendar and Gmail into the records
+# store every GOOGLE_SYNC_MINUTES once the Google link is connected. 0 turns it off.
+GOOGLE_SYNC_MINUTES = float(os.getenv("GOOGLE_SYNC_MINUTES", "15"))
 
 # Task types the daemon may execute without a human. `approval` and `manual`
 # always stop at notification. This is the "auto-run internal, gate external"
@@ -486,6 +489,48 @@ async def _maybe_reindex(state: dict[str, Any]) -> None:
     save_state(state)
 
 
+async def _maybe_google_sync(state: dict[str, Any]) -> None:
+    """Pull Calendar and Gmail into the records store every GOOGLE_SYNC_MINUTES.
+
+    Does nothing until data/google_token.json exists. Logs only runs that
+    found something or failed, so daemon.jsonl does not fill with no-ops.
+    A sign-in that stops working is notified once, not every run."""
+    if GOOGLE_SYNC_MINUTES <= 0:
+        return
+    from . import google_link
+    if not google_link.TOKEN_PATH.exists():
+        return
+    last = state.get("google_sync_at")
+    if last:
+        try:
+            age = (datetime.now(timezone.utc) - datetime.fromisoformat(last)).total_seconds()
+            if age < GOOGLE_SYNC_MINUTES * 60:
+                return
+        except Exception:
+            pass
+    from . import google_sync
+    # Extraction may use a cloud model; respect the budget breaker.
+    extract = budget_status().get("level") != "stop"
+    try:
+        summary = await google_sync.run_once(extract=extract)
+    except Exception as exc:  # noqa: BLE001
+        summary = {"error": str(exc)[:300]}
+    errors = [k for k, v in summary.items() if isinstance(v, dict) and v.get("error")] + (
+        ["run"] if summary.get("error") else [])
+    found = any((summary.get(k) or {}).get(f) for k, f in (
+        ("calendar", "new"), ("calendar", "changed"), ("gmail", "new"),
+        ("extract", "commitments"), ("extract", "decisions")))
+    if errors or found:
+        _log_decision("google_sync_error" if errors else "google_sync", summary)
+    if errors and not state.get("google_sync_alerted"):
+        await _notify("Google sync failing", f"Failed: {', '.join(errors)}. If the sign-in expired, run google-connect on wijerco.")
+        state["google_sync_alerted"] = True
+    elif not errors:
+        state["google_sync_alerted"] = False
+    state["google_sync_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    save_state(state)
+
+
 async def _maybe_measure(state: dict[str, Any]) -> None:
     """Run the measure sweep once a day at MEASURE_HOUR. Pulls or requests
     outcomes for published work and closes productions past their window."""
@@ -593,6 +638,7 @@ async def main() -> None:
             _log_decision("cycle_error", {"error": str(exc)})
         state = load_state()  # re-read in case pause happened mid-cycle
         await _maybe_reindex(state)
+        await _maybe_google_sync(state)
         await _maybe_consolidate(state)
         await _maybe_measure(state)
         await _maybe_learn(state)

@@ -102,6 +102,11 @@ app.include_router(voice_tts_router)   # POST /voice/tts: spoken-reply audio
 from .screen import router as screen_router
 app.include_router(screen_router)
 
+# Records (meetings, commitments, people, decisions), the Google link, and
+# Gmail drafts / calendar holds behind approval. Phase 2, 23 Nov 2026.
+from .records_api import router as records_router
+app.include_router(records_router)
+
 # ---------------------------------------------------------------------------
 # Command Centre UI (installable PWA)
 # Served same-origin as the API so the installed app and its fetch() calls both

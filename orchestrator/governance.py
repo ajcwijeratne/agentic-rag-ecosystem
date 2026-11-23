@@ -28,6 +28,9 @@ GATES = (
     "paid_job",
     "external_publish",
     "clone_output",
+    # Gmail drafts and tentative calendar holds (orchestrator/google_actions.py).
+    # Approval creates the draft or hold; nothing is ever sent.
+    "google_action",
 )
 
 _DB_PATH = Path(os.getenv("MEDIA_DB_PATH", "data/media.db"))
@@ -112,6 +115,13 @@ def approve(gate: str, target_id: str, actor: str = "operator", note: str = "", 
     if gate == "generated_image" and status == "approved":
         _mark_generated_assets_reviewed(target_id, actor, note)
     audit_log("governance.approve", row)
+    if gate == "google_action":
+        try:
+            from orchestrator import google_actions
+
+            google_actions.on_gate_decision(row)
+        except Exception as exc:  # noqa: BLE001 - approval is recorded regardless
+            audit_log("google_actions.hook_error", {"target_id": target_id, "error": str(exc)[:300]})
     if gate == "client_sensitive":
         # A document's approval finalises it (final render, PDF, Client-ready).
         # Whichever path approved it, drawer, Operating or Telegram, lands here.
@@ -297,4 +307,10 @@ def pending() -> dict[str, list]:
                     "url": f"/productions/{prod['production_id']}/preview",
                 }
             items.append(item)
+    try:
+        from orchestrator import google_actions
+
+        items.extend(google_actions.pending())
+    except Exception as exc:  # noqa: BLE001 - production approvals still list
+        audit_log("google_actions.pending_error", {"error": str(exc)[:300]})
     return {"items": items}

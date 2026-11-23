@@ -2512,6 +2512,53 @@ function ProductionPipeline(){
   );
 }
 
+/* ---- Today: meetings, follow-ups, what others owe, recent decisions (records store, Phase 2) ---- */
+function TodayCard({ today, onChange }){
+  const [gs,setGs]=useState(null);
+  const [busy,setBusy]=useState('');
+  useEffect(()=>{ fetch(`${API}/google/status`).then(r=>r.ok?r.json():null).then(setGs).catch(()=>setGs(null)); },[]);
+  const t=today||{};
+  const fmtTime=v=>{ if(!v) return ''; if(v.length===10) return 'All day';
+    try{ return new Date(v).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}); }catch(e){ return v; } };
+  const fmtDay=v=>{ if(!v) return ''; try{ return new Date(v.length===10?v+'T00:00':v).toLocaleDateString([], {weekday:'short', day:'numeric', month:'short'}); }catch(e){ return v; } };
+  const setStatus=async(r,status)=>{
+    setBusy(r.record_id);
+    try{ await fetch(`${API}/records/${r.record_id}/status`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}); }catch(e){}
+    setBusy(''); onChange&&onChange();
+  };
+  const row=(r,right,actions)=>(
+    <div key={r.record_id} className="kv" style={{alignItems:'center'}}>
+      <span style={{minWidth:0}}>
+        <span style={{fontWeight:600,color:'var(--ink)'}}>{r.title}</span>
+        {(r.counterparty||r.detail) && <div className="mini" style={{marginTop:2}}>{[r.counterparty, r.detail].filter(Boolean).join(' · ')}</div>}
+      </span>
+      <span style={{display:'flex',gap:8,alignItems:'center',flexShrink:0}}>
+        <span className="mini">{right}</span>
+        {actions && <>
+          <button className="icon-btn" style={{width:'auto',padding:'3px 10px',fontSize:12}} disabled={busy===r.record_id} onClick={()=>setStatus(r,'done')}>Done</button>
+          <button className="icon-btn" style={{width:'auto',padding:'3px 10px',fontSize:12}} disabled={busy===r.record_id} onClick={()=>setStatus(r,'dismissed')}>Dismiss</button>
+        </>}
+      </span>
+    </div>);
+  const section=(label,items,render)=> items&&items.length>0 && <>
+    <div className="mini" style={{marginTop:12,marginBottom:2,fontWeight:600,textTransform:'uppercase',letterSpacing:'.06em'}}>{label} · {items.length}</div>
+    {items.map(render)}
+  </>;
+  const empty=!(t.meetings||[]).length && !(t.due||[]).length && !(t.upcoming||[]).length && !(t.waiting_on||[]).length && !(t.decisions||[]).length;
+  return (
+    <div className="card" style={{marginTop:16}}>
+      <div className="sec-h"><span className="t">Today</span>
+        <span className="x">{gs===null?'':gs.connected?`Google: ${gs.account||'connected'}`:'Google not connected'}</span></div>
+      {gs && !gs.connected && <div className="mini">Google Calendar and Gmail are not linked on this machine yet{gs.error?` (${gs.error})`:''}. Run google-connect on wijerco.</div>}
+      {gs && gs.connected && empty && <div className="mini">Nothing scheduled or due today.</div>}
+      {section('Meetings', t.meetings, r=>row(r, `${fmtTime(r.start_at)}${r.location?' · '+r.location:''}`, false))}
+      {section('Due or overdue', t.due, r=>row(r, fmtDay(r.due_at), true))}
+      {section('Next 7 days', t.upcoming, r=>row(r, fmtDay(r.due_at), true))}
+      {section('Waiting on others', t.waiting_on, r=>row(r, r.due_at?fmtDay(r.due_at):'', true))}
+      {section('Recent decisions', t.decisions, r=>row(r, '', false))}
+    </div>);
+}
+
 function OperatingView(){
   const [overview,setOverview]=useState(null);
   const [brief,setBrief]=useState(null);
@@ -2582,6 +2629,7 @@ function OperatingView(){
         <div className="sec-h"><span className="t">Daily brief</span><span className="x">{brief?.date||'today'}</span></div>
         <div style={{fontSize:15,fontWeight:650,color:'var(--ink)',lineHeight:1.45}}>{brief?.summary||'No daily brief loaded.'}</div>
       </div>
+      <TodayCard today={brief?.today} onChange={load}/>
       <div className="grid-2" style={{marginTop:16,alignItems:'start'}}>
         <div className="card">
           <div className="sec-h"><span className="t">Operating plans</span><span className="x">{(overview?.plans||[]).length}</span></div>
@@ -5232,7 +5280,7 @@ function PhoneMore({ NAV, setView }){
 }
 
 const GATE_LABELS = {client_sensitive:'Client document', clone_output:'Cloned voice or video', generated_image:'Generated image',
-  publish:'Publish', spend:'Spend', external_send:'Send outside'};
+  publish:'Publish', spend:'Spend', external_send:'Send outside', google_action:'Gmail draft or calendar hold'};
 const gateLabel=g=>GATE_LABELS[g] || String(g||'gate').replace(/_/g,' ');
 
 /* ---- Approvals and status: one screen for "what needs me, and is it all running?" ---- */

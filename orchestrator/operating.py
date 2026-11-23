@@ -956,6 +956,23 @@ def daily_brief() -> dict[str, Any]:
     review = [p for p in productions if p.get("state") == "review"]
     if review:
         lines.append(f"{len(review)} production(s) are waiting in review.")
+    # Today, from the records store (Google Calendar and Gmail, Phase 2).
+    # Empty until the Google link is connected; never blocks the brief.
+    today: dict[str, Any] = {}
+    try:
+        from . import records
+        today = records.today()
+        bits = []
+        if today.get("meetings"):
+            bits.append(f"{len(today['meetings'])} meeting(s) today")
+        if today.get("due"):
+            bits.append(f"{len(today['due'])} follow-up(s) due or overdue")
+        if today.get("upcoming"):
+            bits.append(f"{len(today['upcoming'])} due in the next 7 days")
+        if bits:
+            lines.insert(0, "; ".join(bits).capitalize() + ".")
+    except Exception:
+        today = {}
     if not lines:
         lines.append("No urgent operating blockers recorded.")
     performance = {}
@@ -969,6 +986,7 @@ def daily_brief() -> dict[str, Any]:
     return {
         "date": _now()[:10],
         "summary": " ".join(lines),
+        "today": today,
         "priorities": active_tasks[:8],
         "pending_approvals": pending,
         "productions": productions[:8],

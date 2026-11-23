@@ -271,6 +271,44 @@ _LOCAL_TOOLS = [
         },
     },
     {
+        "name": "propose_gmail_draft",
+        "description": (
+            "Propose a Gmail draft in Aaron's personal Gmail. This does NOT send or even create it: "
+            "it queues the draft for Aaron's approval, and only an approved draft is written to Gmail "
+            "Drafts, still unsent. Use for replies and follow-ups he would send himself."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "Recipient address(es), comma separated."},
+                "subject": {"type": "string"},
+                "body": {"type": "string", "description": "Plain-text body in Aaron's voice."},
+                "cc": {"type": "string"},
+                "reply_to_item": {"type": "string", "description": "Optional gmail:<id> source item to reply in thread."},
+                "reason": {"type": "string", "description": "One line for the approval card: why this draft."},
+            },
+            "required": ["to", "subject", "body"],
+        },
+    },
+    {
+        "name": "propose_calendar_hold",
+        "description": (
+            "Propose a private, tentative block in Aaron's Google Calendar (focus time, prep, travel). "
+            "Queued for his approval; nothing is created until he approves. Holds never invite anyone."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "start": {"type": "string", "description": "ISO date-time; Melbourne time if no offset."},
+                "end": {"type": "string", "description": "ISO date-time; Melbourne time if no offset."},
+                "note": {"type": "string"},
+                "reason": {"type": "string"},
+            },
+            "required": ["title", "start", "end"],
+        },
+    },
+    {
         "name": "get_operating_daily_brief",
         "description": "Return the current daily operating brief: priorities, pending approvals, productions, and project memory.",
         "input_schema": {"type": "object", "properties": {}},
@@ -561,6 +599,25 @@ async def _execute_local_tool(func_name: str, args: dict) -> str:
 
     if func_name == "get_operating_daily_brief":
         return json.dumps(operating_store.daily_brief(), ensure_ascii=False)
+
+    if func_name in ("propose_gmail_draft", "propose_calendar_hold"):
+        from . import google_actions
+        try:
+            if func_name == "propose_gmail_draft":
+                action = google_actions.propose_draft(
+                    to=str(args.get("to") or ""), subject=str(args.get("subject") or ""),
+                    body=str(args.get("body") or ""), cc=args.get("cc") or None,
+                    reply_to_item=args.get("reply_to_item") or None, proposed_by="agent",
+                    reason=str(args.get("reason") or ""))
+            else:
+                action = google_actions.propose_hold(
+                    title=str(args.get("title") or ""), start=str(args.get("start") or ""),
+                    end=str(args.get("end") or ""), note=str(args.get("note") or ""),
+                    proposed_by="agent", reason=str(args.get("reason") or ""))
+        except ValueError as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+        return json.dumps({"action_id": action["action_id"], "status": "waiting for Aaron's approval",
+                           "title": action["title"]}, ensure_ascii=False)
 
     if func_name == "remember_project_fact":
         memory_id = operating_store.add_project_memory(
