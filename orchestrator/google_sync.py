@@ -335,15 +335,66 @@ def _bump_failures(item: dict, fails: int) -> None:
 # One run, as the daemon calls it
 # ---------------------------------------------------------------------------
 
-async def run_once(*, extract: bool = True) -> dict[str, Any]:
+DRIVE_MINUTES = float(os.getenv("GOOGLE_DRIVE_MINUTES", "60"))
+
+
+def _drive_due() -> bool:
+    if DRIVE_MINUTES <= 0:
+        return False
+    last = records.get_kv("drive_last_sync")
+    if not last:
+        return True
+    try:
+        return (datetime.now(timezone.utc) - datetime.fromisoformat(last)).total_seconds() >= DRIVE_MINUTES * 60
+    except Exception:
+        return True
+
+
+async def _reindex_vault() -> dict[str, Any]:
+    """Incremental vault index, which includes the Drive copy under drive/."""
+    import httpx
+
+    base = os.getenv("INDEXER_URL", "http://localhost:8005").rstrip("/")
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(f"{base}/index", json={}, timeout=1800.0)
+        resp.raise_for_status()
+        body = resp.json()
+    return {k: body.get(k) for k in ("status", "chunks_total", "chunks_embedded", "chunks_removed", "extra_dirs")}
+
+
+async def run_once(*, extract: bool = True, drive: bool | None = None) -> dict[str, Any]:
+    """One sync. drive=None syncs Drive when GOOGLE_DRIVE_MINUTES have passed;
+    when the Drive copy changed, the vault index is refreshed straight away."""
     import asyncio
 
+    from . import google_drive
+
+    # The daemon and POST /google/sync must not run at the same time: on
+    # 24 Nov 2026 the first manual sync and the daemon's first run overlapped.
+    if not records.try_lock("google_sync"):
+        return {"skipped": "another Google sync is running"}
+    try:
+        return await _run(extract=extract, drive=drive, google_drive=google_drive, asyncio=asyncio)
+    finally:
+        records.release_lock("google_sync")
+
+
+async def _run(*, extract: bool, drive: bool | None, google_drive: Any, asyncio: Any) -> dict[str, Any]:
     summary: dict[str, Any] = {}
-    for name, fn in (("calendar", sync_calendar), ("gmail", sync_gmail)):
+    sources: list[tuple[str, Any]] = [("calendar", sync_calendar), ("gmail", sync_gmail)]
+    if drive if drive is not None else _drive_due():
+        sources.append(("drive", google_drive.sync_drive))
+    for name, fn in sources:
         try:
             summary[name] = await asyncio.to_thread(fn)
-        except Exception as exc:  # noqa: BLE001 - one source failing must not stop the other
+        except Exception as exc:  # noqa: BLE001 - one source failing must not stop the others
             summary[name] = {"error": str(exc)[:300]}
+    d = summary.get("drive") or {}
+    if d.get("written") or d.get("removed"):
+        try:
+            summary["reindex"] = await _reindex_vault()
+        except Exception as exc:  # noqa: BLE001 - the 1am reindex catches up
+            summary["reindex"] = {"error": str(exc)[:300]}
     if extract:
         try:
             summary["extract"] = await extract_pending()

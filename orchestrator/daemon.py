@@ -519,7 +519,8 @@ async def _maybe_google_sync(state: dict[str, Any]) -> None:
         ["run"] if summary.get("error") else [])
     found = any((summary.get(k) or {}).get(f) for k, f in (
         ("calendar", "new"), ("calendar", "changed"), ("gmail", "new"),
-        ("extract", "commitments"), ("extract", "decisions")))
+        ("extract", "commitments"), ("extract", "decisions"),
+        ("drive", "written"), ("drive", "removed")))
     if errors or found:
         _log_decision("google_sync_error" if errors else "google_sync", summary)
     if errors and not state.get("google_sync_alerted"):

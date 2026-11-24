@@ -290,6 +290,24 @@ def load_vault(vault: Path) -> list[tuple[str, str, str]]:
 # Main indexing routine
 # ---------------------------------------------------------------------------
 
+def extra_dirs() -> list[tuple[str, Path]]:
+    """Folders indexed into the vault collection alongside the vault, as
+    (label, path). Their files appear as "<label>/<relative path>", so answers
+    show where a chunk came from. KB_EXTRA_DIRS="label=path;label=path";
+    the default adds the Google Drive copy (orchestrator/google_drive.py)
+    when it exists. Folders that do not exist are skipped."""
+    default_drive = os.getenv("GOOGLE_DRIVE_MIRROR", "").strip() or str(
+        Path(__file__).resolve().parent.parent.parent / "drive-mirror")
+    raw = os.getenv("KB_EXTRA_DIRS", f"drive={default_drive}")
+    out: list[tuple[str, Path]] = []
+    for part in raw.split(";"):
+        label, _, path = part.partition("=")
+        label, path = label.strip(), path.strip()
+        if label and path and Path(path).is_dir():
+            out.append((label, Path(path)))
+    return out
+
+
 async def index_vault(vault: Path = VAULT_PATH, full: bool = False) -> dict[str, Any]:
     """Index the vault. Only new or changed chunks are embedded, and chunks of
     deleted or shortened notes are removed; full=True (or INDEX_FULL=1)
@@ -299,14 +317,19 @@ async def index_vault(vault: Path = VAULT_PATH, full: bool = False) -> dict[str,
     full = full or os.getenv("INDEX_FULL", "0").strip().lower() in ("1", "true", "yes", "on")
     await ensure_collection()
 
-    notes = load_vault(vault)
+    notes = [(rel, text, mod, "vault") for rel, text, mod in load_vault(vault)]
     if not notes:
         return {"status": "error", "message": f"No .md files found in {vault}"}
+    extras: dict[str, int] = {}
+    for label, path in extra_dirs():
+        found = load_vault(path)
+        extras[label] = len(found)
+        notes += [(f"{label}/{rel}", text, mod, label) for rel, text, mod in found]
 
     all_chunks: list[str]             = []
     all_metadata: list[dict[str, Any]] = []
 
-    for rel_path, text, modified_at in notes:
+    for rel_path, text, modified_at, source in notes:
         for j, (chunk, section) in enumerate(chunk_with_sections(text)):
             chunk_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{rel_path}::{j}"))
             all_chunks.append(chunk)
@@ -317,7 +340,7 @@ async def index_vault(vault: Path = VAULT_PATH, full: bool = False) -> dict[str,
                 "modified_at": modified_at,
                 "chunk_id":    chunk_id,
                 "collection":  QDRANT_COLLECTION,
-                "source":      "vault",
+                "source":      source,
             })
 
     existing = {} if full else await existing_texts(QDRANT_COLLECTION)
@@ -368,6 +391,7 @@ async def index_vault(vault: Path = VAULT_PATH, full: bool = False) -> dict[str,
     return {
         "status":         "ok",
         "notes_indexed":  len(notes),
+        "extra_dirs":     extras,
         "chunks_total":   len(all_chunks),
         "chunks_embedded": len(points),
         "chunks_removed": removed,

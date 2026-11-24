@@ -18,6 +18,7 @@ def env(monkeypatch, tmp_path):
     monkeypatch.setenv("QDRANT_URL", QD)
     monkeypatch.setenv("EMBED_URL", f"{OLL}/api/embeddings")
     monkeypatch.delenv("INDEX_FULL", raising=False)
+    monkeypatch.setenv("KB_EXTRA_DIRS", "")  # hermetic: no Drive copy from the machine running tests
     import rag.embedder as emb
     import rag.indexer as idx
     emb = importlib.reload(emb)
@@ -112,3 +113,23 @@ def test_load_vault_skips_archive_and_tool_folders(env):
     (vault / "13_Command Centre" / "live.md").write_text("live", encoding="utf-8")
     (vault / "_archive.md").write_text("a note named like the folder is kept", encoding="utf-8")
     assert sorted(r for r, _, _ in idx.load_vault(vault)) == ["13_Command Centre/live.md", "_archive.md"]
+
+
+@respx.mock
+async def test_index_vault_includes_extra_dirs_under_their_label(env, monkeypatch, tmp_path):
+    idx, _, vault = env
+    (vault / "note.md").write_text("A vault note.", encoding="utf-8")
+    drive = tmp_path / "drive-mirror" / "WijerCo"
+    (drive / "Clients").mkdir(parents=True)
+    (drive / "Clients" / "Brief.md").write_text("A Drive document.", encoding="utf-8")
+    monkeypatch.setenv("KB_EXTRA_DIRS", f"drive={tmp_path / 'drive-mirror'};missing={tmp_path / 'nope'}")
+    assert [label for label, _ in idx.extra_dirs()] == ["drive"]
+    respx.get(f"{QD}/collections/{idx.QDRANT_COLLECTION}").mock(return_value=httpx.Response(200, json={"result": {}}))
+    respx.post(f"{QD}/collections/{idx.QDRANT_COLLECTION}/points/scroll").mock(
+        return_value=httpx.Response(200, json={"result": {"points": [], "next_page_offset": None}}))
+    upsert = respx.put(f"{QD}/collections/{idx.QDRANT_COLLECTION}/points").mock(return_value=httpx.Response(200, json={}))
+    _embed_route()
+    result = await idx.index_vault(vault)
+    assert result["extra_dirs"] == {"drive": 1}
+    payloads = {p["payload"]["file"]: p["payload"]["source"] for p in json.loads(upsert.calls[0].request.content)["points"]}
+    assert payloads == {"note.md": "vault", "drive/WijerCo/Clients/Brief.md": "drive"}

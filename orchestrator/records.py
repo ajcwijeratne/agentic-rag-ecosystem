@@ -49,7 +49,9 @@ def _now() -> str:
 @contextmanager
 def _db() -> Generator[sqlite3.Connection, None, None]:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    # The daemon and the API run in separate processes and can write at the
+    # same time; wait for the other writer rather than failing at once.
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""
@@ -132,6 +134,30 @@ def get_kv(key: str, default: Any = None) -> Any:
         return default
 
 
+def try_lock(name: str, ttl_seconds: int = 1800) -> bool:
+    """Take a named lock shared by every process using this database. A lock
+    older than ttl_seconds is treated as left behind by a crashed run."""
+    now = datetime.now(timezone.utc)
+    with _db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT value FROM kv WHERE key=?", (f"lock:{name}",)).fetchone()
+        if row:
+            try:
+                held = datetime.fromisoformat(json.loads(row["value"]))
+                if (now - held).total_seconds() < ttl_seconds:
+                    return False
+            except Exception:
+                pass
+        conn.execute("INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                     (f"lock:{name}", json.dumps(now.isoformat())))
+        return True
+
+
+def release_lock(name: str) -> None:
+    with _db() as conn:
+        conn.execute("DELETE FROM kv WHERE key=?", (f"lock:{name}",))
+
+
 def set_kv(key: str, value: Any) -> None:
     with _db() as conn:
         conn.execute("INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -156,6 +182,7 @@ def upsert_item(*, source: str, source_id: str, kind: str, data_class: str, titl
     item_id = f"{source}:{source_id}"
     h = _hash(title, body, start_at, end_at, json.dumps(people or [], sort_keys=True))
     with _db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         old = conn.execute("SELECT content_hash FROM source_items WHERE item_id=?", (item_id,)).fetchone()
         if old and old["content_hash"] == h:
             return "same"
@@ -221,6 +248,7 @@ def upsert_record(kind: str, dedupe_key: str, *, title: str, data_class: str, de
         raise ValueError(f"unknown status: {status}")
     now = _now()
     with _db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         old = conn.execute("SELECT record_id, status, meta FROM records WHERE dedupe_key=?", (dedupe_key,)).fetchone()
         if old:
             merged = {**(json.loads(old["meta"]) if old["meta"] else {}), **(meta or {})}

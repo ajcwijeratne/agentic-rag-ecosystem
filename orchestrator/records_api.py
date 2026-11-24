@@ -41,7 +41,7 @@ async def google_sync_now() -> dict[str, Any]:
     from . import google_sync
     if not google_link.TOKEN_PATH.exists():
         raise HTTPException(status_code=409, detail="Google is not connected on this machine")
-    return await google_sync.run_once()
+    return await google_sync.run_once(drive=True)
 
 
 @router.get("/records", dependencies=_operator)

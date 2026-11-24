@@ -321,3 +321,43 @@ def test_daemon_google_sync_is_off_without_token(tmp_path, monkeypatch):
     state: dict = {}
     asyncio.run(daemon._maybe_google_sync(state))
     assert called == [] and "google_sync_at" not in state
+
+
+def test_sync_lock_blocks_a_second_run_and_expires(rec, monkeypatch):
+    assert rec.try_lock("google_sync") is True
+    assert rec.try_lock("google_sync") is False
+    rec.release_lock("google_sync")
+    assert rec.try_lock("google_sync") is True
+    assert rec.try_lock("google_sync", ttl_seconds=0) is True   # a stale lock is taken over
+
+
+def test_run_once_skips_while_another_sync_runs(rec, monkeypatch):
+    from orchestrator import google_sync
+    ran = []
+    monkeypatch.setattr(google_sync, "sync_calendar", lambda: ran.append("cal") or {"events": 0})
+    monkeypatch.setattr(google_sync, "sync_gmail", lambda: ran.append("gmail") or {"listed": 0})
+    assert rec.try_lock("google_sync")
+    out = asyncio.run(google_sync.run_once(extract=False, drive=False))
+    assert out == {"skipped": "another Google sync is running"} and ran == []
+    rec.release_lock("google_sync")
+    out = asyncio.run(google_sync.run_once(extract=False, drive=False))
+    assert ran == ["cal", "gmail"] and rec.try_lock("google_sync")   # released after the run
+
+
+def test_parallel_writers_do_not_collide(rec):
+    import threading
+    errors = []
+
+    def writer():
+        try:
+            for i in range(30):
+                rec.upsert_item(source="gcal", source_id=f"e{i}", kind="event", data_class="personal", title=f"E{i}")
+                rec.upsert_record("meeting", f"gcal:e{i}", title=f"E{i}", data_class="personal")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=writer) for _ in range(4)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert errors == []
+    assert rec.counts()["items"]["event"] == 30 and rec.counts()["records"]["meeting"] == 30
