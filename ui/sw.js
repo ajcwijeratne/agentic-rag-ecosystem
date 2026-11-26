@@ -3,7 +3,7 @@
    cache only when offline. Shell requests bypass the browser HTTP cache so a
    new deploy can never be masked by a stale cached page. Bump CACHE to force
    every client to update on its next navigation. */
-const CACHE = "cc-shell-v11";
+const CACHE = "cc-shell-v12";
 const SHELL = ["/app/command_centre.html", "/app/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -39,3 +39,36 @@ self.addEventListener("fetch", (event) => {
       .catch(() => caches.match(req).then((m) => m || caches.match("/app/command_centre.html")))
   );
 });
+
+/* Phone notifications (Phase 3, 26 Nov 2026): approvals waiting, failures,
+   commitments due today. The server sends {title, body, url, tag, kind};
+   tapping the notification opens or focuses the Command Centre at url. */
+self.addEventListener("push", (event) => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch (e) { d = { body: event.data ? event.data.text() : "" }; }
+  const title = d.title || "Command Centre";
+  event.waitUntil(self.registration.showNotification(title, {
+    body: d.body || "",
+    tag: d.tag || d.kind || "cc",
+    renotify: true,
+    icon: "/app/icons/icon-192.png",
+    badge: "/app/icons/icon-192.png",
+    data: { url: d.url || "/app/command_centre.html" },
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL((event.notification.data && event.notification.data.url) || "/app/command_centre.html", self.location.origin);
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if (w.url.startsWith(self.location.origin + "/app/")) {
+          return w.navigate(target.href).then((n) => (n || w).focus()).catch(() => w.focus());
+        }
+      }
+      return self.clients.openWindow(target.href);
+    })
+  );
+});
+

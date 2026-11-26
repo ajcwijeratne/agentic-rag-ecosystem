@@ -343,6 +343,46 @@
     .apx-stage.engaged{grid-template-columns:minmax(0,1fr) 0px}
     .apx-stage.engaged .apx-rail-r{opacity:0;pointer-events:none;padding:0;border:0}
     .apx-stage.engaged .apx-kpis{max-height:0;opacity:0;border-top-width:0;overflow:hidden}
+    /* Phase 3: five jobs, Today cards, Advanced, stamps */
+    .apx-rail-r.today-rail{overflow-y:auto}
+    .today-stack{display:none;padding:12px 14px 18px;flex-direction:column;gap:12px}
+    @media(max-width:900px){.today-stack{display:flex}}
+    .cc-phone .today-stack{display:flex}
+    .apx-stage.engaged .today-stack{display:none}
+    .td-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+    .td-card.gold{border-color:rgba(244,178,63,.38)}
+    .td-h{display:flex;align-items:baseline;gap:8px;margin:0 0 8px;font-size:13.5px;font-weight:600;color:var(--ink)}
+    .td-h .n{font-size:12px;color:var(--muted);font-weight:500}
+    .td-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;color:var(--ink);border-top:1px solid var(--line-soft)}
+    .td-row:first-of-type{border-top:0}
+    .td-row .tm{font-family:'IBM Plex Mono',monospace;color:var(--accent);min-width:46px;font-size:12px}
+    .td-row .sub{font-size:11.5px;color:var(--muted)}
+    .td-row .od{color:var(--amber)}
+    .td-row button{min-height:30px;padding:3px 9px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--ink);font-size:11.5px;cursor:pointer}
+    .td-empty{font-size:12.5px;color:var(--muted)}
+    .td-adv{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted)}
+    .cc-stamp{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:400;color:var(--muted);white-space:nowrap}
+    .td-cap{display:flex;gap:8px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px 8px 6px 12px}
+    .td-cap input{flex:1 1 auto;min-width:0;min-height:36px;border:0;background:transparent;color:var(--ink);font-size:14px;outline:none}
+    .td-cap button{min-height:36px;padding:6px 12px;border-radius:9px;border:0;background:var(--accent);color:#03140f;font-weight:600;font-size:12.5px;cursor:pointer}
+    .td-capnote{font-size:11.5px;color:var(--muted);margin-top:-4px}
+    .job-tabs{display:flex;gap:6px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--bg);flex-shrink:0;overflow-x:auto;scrollbar-width:none}
+    .job-tabs::-webkit-scrollbar{display:none}
+    .job-tab{flex:none;padding:6px 13px;border-radius:999px;border:1px solid var(--border);background:transparent;color:#c9d6ea;font-size:12.5px;cursor:pointer;font-family:inherit}
+    .job-tab.on{border-color:rgba(52,224,200,.45);background:rgba(52,224,200,.10);color:var(--ink)}
+    .cc-phone .job-tabs{padding:7px 10px}
+    .nav-item .nav-badge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--gold);color:#030711;font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+    .adv-toggle{display:flex;align-items:center;gap:6px;border:1px solid var(--border);background:transparent;color:#c9d6ea;border-radius:999px;padding:4px 10px 4px 6px;font:500 11.5px 'IBM Plex Sans',sans-serif;cursor:pointer}
+    .adv-toggle .sw{width:26px;height:14px;border-radius:7px;background:#27354d;position:relative;transition:background .2s}
+    .adv-toggle .sw::after{content:'';position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:#c9d6ea;transition:left .2s}
+    .adv-toggle.on{border-color:rgba(52,224,200,.45);color:var(--ink)}
+    .adv-toggle.on .sw{background:var(--accent)}
+    .adv-toggle.on .sw::after{left:14px;background:#03140f}
+    .pa-adv{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);margin-top:4px;word-break:break-all}
+    .conn-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+    .conn-kv{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-top:1px solid var(--line-soft);font-size:13px}
+    .conn-kv:first-of-type{border-top:0}
+    .conn-kv .k{color:var(--muted)}
     .apxo-dock-host{position:absolute;inset:0;pointer-events:none;z-index:6}
     .cc-doc-open .apx-stage{grid-template-columns:minmax(0,1fr) 0px}
     .cc-doc-open .apx-rail-r{display:none}
@@ -455,6 +495,9 @@
       border:1px solid var(--line);color:var(--ink);padding:10px 16px;border-radius:10px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
     /* Apex tab */
     .cc-phone .apx-stage{grid-template-columns:minmax(0,1fr)}
+    /* Phase 3 (26 Nov 2026): Today cards below the Radial on a phone */
+    .cc-phone .apx-field{overflow-y:auto}
+    .cc-phone .apx-field .apxo-wrap{flex:0 0 240px}
     .cc-phone .apx-console{padding:8px 12px 10px}
     .cc-phone .apx-chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-bottom:6px}
     .cc-phone .apx-chips::-webkit-scrollbar{display:none}
@@ -488,6 +531,47 @@
 <script src="apex_outputs.js?v=1.0.0"></script>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback} = React;
+// Phase 3 (26 Nov 2026): one Advanced switch in the top bar shows model,
+// routing, sources, cost and trace detail everywhere. Plain by default,
+// remembered per device.
+const AdvancedCtx = React.createContext(false);
+const useAdvanced = () => React.useContext(AdvancedCtx);
+function agoText(at){
+  if(!at) return '';
+  const s=Math.max(0,Math.round((Date.now()-at)/1000));
+  return s<45?'just now':s<3600?`${Math.round(s/60)} min ago`:s<86400?`${Math.round(s/3600)} h ago`:`${Math.round(s/86400)} d ago`;
+}
+// "updated N min ago" on a card; ticks every 30 s.
+function Stamp({at, label}){
+  const [,tick]=useState(0);
+  useEffect(()=>{ const iv=setInterval(()=>tick(x=>x+1),30000); return ()=>clearInterval(iv); },[]);
+  if(!at) return null;
+  return <span className="cc-stamp">{(label||'updated')+' '+agoText(at)}</span>;
+}
+// The five jobs. Every earlier view is a tab under one of them; none removed.
+const JOB_ICONS = {
+  today: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/></svg>,
+  ask: <svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-4 4V5z" strokeLinejoin="round"/></svg>,
+  approve: <svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  work: <svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M16 4v3h3"/></svg>,
+  system: <svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 16v-4M12 16V8M16 16v-2" strokeLinecap="round"/></svg>,
+};
+const JOBS = [
+  {key:'today',   label:'Today',   tabs:[['overview','Overview'],['productivity','Schedule'],['brief','Daily brief']]},
+  {key:'ask',     label:'Ask',     tabs:[['chat','Chat'],['departments','Dispatch']]},
+  {key:'approve', label:'Approve', tabs:[['approvals','Queue'],['harness-proposals','Self-improve']]},
+  {key:'work',    label:'Work',    tabs:[['library','Documents'],['content','Content'],['production','Production'],['media','Media'],['engagements','Engagements'],['intel','Sector intel'],['operating','Plans'],['outputs','Outputs']]},
+  {key:'system',  label:'System',  tabs:[['admin','Health and cost'],['quality','Quality'],['kb','Knowledge'],['trace','Routing'],['schedule','Schedules'],['n8n','Automations'],['harness','Self-improve'],['connections','Connections']]},
+];
+const JOB_VIEWS = new Set(JOBS.flatMap(j=>j.tabs.map(([v])=>v)));
+const jobOf = v => (JOBS.find(j=>j.tabs.some(([t])=>t===v)) || JOBS[0]);
+function initialView(){
+  try{
+    const v=new URLSearchParams(window.location.search).get('view');
+    if(v && JOB_VIEWS.has(v) && v!=='outputs') return v;
+  }catch(e){}
+  return 'overview';
+}
 const STATIC_PREVIEW_PORTS = new Set(["5179","5500","5501"]);
 const DEFAULT_API = (window.location.protocol === "file:" || STATIC_PREVIEW_PORTS.has(window.location.port)) ? "http://localhost:8000" : window.location.origin;
 const API = localStorage.getItem("cc_api_base") || DEFAULT_API;
@@ -748,10 +832,11 @@ function SessionSidebar({currentId, onSelect, onNew, tick}) {
 // ── Message bubble ─────────────────────────────────────────────────────────
 function Bubble({msg}) {
   const isUser = msg.role==='user';
+  const advanced = useAdvanced();
   const pColor = PROVIDER_COLORS[msg.provider]||'#aaa';
   return (
     <div style={{display:'flex',flexDirection:'column',alignItems:isUser?'flex-end':'flex-start',marginBottom:18}}>
-      {!isUser&&(
+      {!isUser&&advanced&&(
         <div style={{display:'flex',gap:7,marginBottom:6,alignItems:'center',flexWrap:'wrap'}}>
           {msg.dept&&<span>{DEPT_EMOJI[msg.dept]||'🤖'}</span>}
           {msg.provider&&(
@@ -4898,7 +4983,7 @@ function ApexMini(){
 }
 
 /* ---- Command bar meters (live, best-effort) ---- */
-function ApxBar({ view, setView, VIEW_LABELS, sessionCost, voice }){
+function ApxBar({ view, setView, VIEW_LABELS, sessionCost, voice, advanced, setAdvanced }){
   const [queue,setQueue]=useState(null);
   const [spend,setSpend]=useState(null);
   const [clock,setClock]=useState('--:--');
@@ -4920,8 +5005,14 @@ function ApxBar({ view, setView, VIEW_LABELS, sessionCost, voice }){
       <div className="apx-brand" onClick={()=>setView('overview')} style={{cursor:'pointer'}}>
         <span className="w">WijerCo HQ</span><span className="slash">/</span><span className="a">Apex</span>
       </div>
-      <span className="apx-crumb">{view!=='overview'?('/ '+(VIEW_LABELS[view]||view)):''}</span>
+      <span className="apx-crumb">{'/ '+jobOf(view).label+(view!=='overview'?' / '+(VIEW_LABELS[view]||view):'')}</span>
       <div className="apx-meters">
+        {setAdvanced && (
+          <button className={"adv-toggle"+(advanced?' on':'')} role="switch" aria-checked={advanced}
+            onClick={()=>setAdvanced(!advanced)} title="Show model, routing, sources, cost and trace detail on every item">
+            <span className="sw" aria-hidden="true"/>Advanced
+          </button>
+        )}
         {view!=='overview' && <ApexMini/>}
         {/* Voice is global, so its state belongs in the chrome rather than on
             one page. Click to start or stop from anywhere. */}
@@ -4958,8 +5049,230 @@ function ApxBar({ view, setView, VIEW_LABELS, sessionCost, voice }){
   );
 }
 
+/* ---- Today data (Phase 3): records, approvals waiting, Google link; every 60 s ---- */
+function useToday(){
+  const [d,setD]=useState({records:null,approvals:null,google:null,at:0,err:false});
+  const load=useCallback(async()=>{
+    const get=async u=>{ try{ const r=await fetch(`${API}${u}`); return r.ok?await r.json():null; }catch(e){ return null; } };
+    const [rec,gov,props,g]=await Promise.all([get('/records/today'),get('/governance/pending'),get('/harness/proposals?status=pending'),get('/google/status')]);
+    const gi=gov?(Array.isArray(gov)?gov:(gov.items||[])):[];
+    const pi=props?(Array.isArray(props)?props:(props.items||[])):[];
+    setD({records:rec, approvals:[...gi.map(x=>x.title||x.target_id), ...pi.map(x=>x.failure_pattern||'Self-improve rule')], google:g, at:Date.now(), err:!rec});
+  },[]);
+  useEffect(()=>{ load(); const iv=setInterval(()=>{ if(!document.hidden) load(); },60000); return ()=>clearInterval(iv); },[load]);
+  return {...d, reload:load};
+}
+
+function TodayBlocks({ t, setView }){
+  const advanced = useAdvanced();
+  const [busy,setBusy]=useState('');
+  const r=t.records||{};
+  const fmtTime=v=>{ if(!v) return ''; if(v.length===10) return 'all day';
+    try{ return new Date(v).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); }catch(e){ return v; } };
+  const fmtDay=v=>{ if(!v) return ''; try{ return new Date(v.length===10?v+'T00:00':v).toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'}); }catch(e){ return v; } };
+  const done=async(rec,status)=>{
+    setBusy(rec.record_id);
+    try{ await fetch(`${API}/records/${rec.record_id}/status`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}); }catch(e){}
+    setBusy(''); t.reload();
+  };
+  const adv=rec=> advanced && (rec.source_item_id||rec.link) ? <div className="td-adv">{rec.source_item_id}{rec.link?<> · <a href={rec.link} target="_blank" rel="noreferrer">open</a></>:null}</div> : null;
+  const acts=rec=>(<>
+    <button disabled={busy===rec.record_id} onClick={()=>done(rec,'done')}>Done</button>
+    {advanced && <button disabled={busy===rec.record_id} onClick={()=>done(rec,'dismissed')}>Dismiss</button>}
+  </>);
+  const card=(title,items,render,empty,extra)=>(
+    <section className="td-card">
+      <h2 className="td-h">{title}{items&&items.length>0?<span className="n">{items.length}</span>:null}<Stamp at={t.at}/></h2>
+      {t.records===null && !t.err ? <div className="td-empty">Loading…</div>
+        : !items||items.length===0 ? <div className="td-empty">{empty}</div>
+        : items.slice(0,6).map(render)}
+      {extra}
+    </section>);
+  const g=t.google;
+  const ap=t.approvals||[];
+  return (<>
+    {t.err && <div className="td-card"><div className="td-empty">Could not reach the records store. The brain may be restarting.</div></div>}
+    {g && !g.connected && <div className="td-card"><div className="td-empty">Google is not connected, so meetings and mail are missing. See System, Connections.</div></div>}
+    {card('Meetings today', r.meetings, m=>(
+      <div key={m.record_id} className="td-row"><span className="tm">{fmtTime(m.start_at)}</span>
+        <div style={{minWidth:0}}><div>{m.title}</div>{advanced && m.location && <div className="sub">{m.location}</div>}{adv(m)}</div></div>),
+      'Nothing in your calendar today.')}
+    {card('Due and overdue', r.due, c=>(
+      <div key={c.record_id} className="td-row"><div style={{flex:'1 1 auto',minWidth:0}}><div>{c.title}</div>
+        <div className="sub"><span className="od">{c.due_at?('due '+fmtDay(c.due_at)):''}</span>{c.counterparty?' · '+c.counterparty:''}</div>{adv(c)}</div>{acts(c)}</div>),
+      'Nothing due today.')}
+    {r.upcoming && r.upcoming.length>0 && card('Next 7 days', r.upcoming, c=>(
+      <div key={c.record_id} className="td-row"><div style={{flex:'1 1 auto',minWidth:0}}><div>{c.title}</div>
+        <div className="sub">{fmtDay(c.due_at)}{c.counterparty?' · '+c.counterparty:''}</div>{adv(c)}</div>{acts(c)}</div>), '')}
+    {card('Waiting on others', r.waiting_on, c=>(
+      <div key={c.record_id} className="td-row"><div style={{flex:'1 1 auto',minWidth:0}}><div>{c.title}</div>
+        <div className="sub">{c.counterparty||''}{c.due_at?' · due '+fmtDay(c.due_at):''}</div>{adv(c)}</div>{acts(c)}</div>),
+      'Nobody owes you anything right now.')}
+    <section className="td-card gold">
+      <h2 className="td-h">Waiting for your approval{ap.length>0?<span className="n">{ap.length}</span>:null}<Stamp at={t.at}/></h2>
+      {ap.length===0 ? <div className="td-empty">Nothing is waiting.</div> : ap.slice(0,3).map((x,i)=><div key={i} className="td-row">{x}</div>)}
+      {ap.length>0 && <button className="dp-btn" style={{marginTop:8}} onClick={()=>setView('approvals')}>Open Approve</button>}
+    </section>
+    <CaptureBox/>
+  </>);
+}
+
+/* ---- Capture with an offline queue (Phase 3). A capture made with no
+   connection is kept on this device and sent when the connection returns. ---- */
+const CAP_QUEUE='cc_capture_queue';
+function capQueue(){ try{ return JSON.parse(localStorage.getItem(CAP_QUEUE)||'[]'); }catch(e){ return []; } }
+function setCapQueue(q){ try{ localStorage.setItem(CAP_QUEUE, JSON.stringify(q)); }catch(e){} }
+async function sendCapture(item){
+  const r=await fetch(`${API}/productivity/capture`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:item.type||'task',text:item.text})});
+  if(!r.ok) throw new Error('HTTP '+r.status);
+}
+async function flushCaptures(){
+  let q=capQueue(), sent=0;
+  while(q.length){
+    try{ await sendCapture(q[0]); sent++; q=q.slice(1); setCapQueue(q); }catch(e){ break; }
+  }
+  return {sent, left:q.length};
+}
+function CaptureBox(){
+  const inputId = 'td-cap-' + React.useId().replace(/:/g,'');
+  const [text,setText]=useState('');
+  const [left,setLeft]=useState(capQueue().length);
+  const [note,setNote]=useState('');
+  useEffect(()=>{
+    const go=async()=>{ if(!capQueue().length) return; const r=await flushCaptures(); setLeft(r.left); if(r.sent) setNote(`${r.sent} saved capture${r.sent>1?'s':''} sent.`); };
+    go(); window.addEventListener('online',go);
+    return ()=>window.removeEventListener('online',go);
+  },[]);
+  const submit=async e=>{
+    e.preventDefault();
+    const t=text.trim(); if(!t) return;
+    const item={type:'task',text:t,at:Date.now()};
+    setText('');
+    try{
+      if(navigator.onLine===false) throw new Error('offline');
+      await sendCapture(item); setNote('Captured.');
+    }catch(err){
+      const q=[...capQueue(),item]; setCapQueue(q); setLeft(q.length);
+      setNote('No connection. Saved on this device; it sends when you are back online.');
+    }
+  };
+  return (<>
+    <form className="td-cap" onSubmit={submit}>
+      <label htmlFor={inputId} style={{position:'absolute',left:-9999}}>Capture</label>
+      <input id={inputId} value={text} onChange={e=>setText(e.target.value)} placeholder="Capture a task, note or idea"/>
+      <button type="submit">Capture</button>
+    </form>
+    {(note||left>0) && <div className="td-capnote" role="status">{note}{left>0?` ${left} waiting to send.`:''}</div>}
+  </>);
+}
+
+/* ---- Today, Daily brief tab: the operating brief plus the Today records ---- */
+function BriefView(){
+  const [brief,setBrief]=useState(null);
+  const [at,setAt]=useState(0);
+  const load=useCallback(()=>{
+    fetch(`${API}/operating/daily-brief`).then(r=>r.ok?r.json():Promise.reject()).then(b=>{ setBrief(b); setAt(Date.now()); }).catch(()=>{ setBrief(false); setAt(Date.now()); });
+  },[]);
+  useEffect(()=>{ load(); },[load]);
+  return (
+    <div style={{flex:1,overflow:'auto',padding:'20px 24px'}}>
+      <div className="card">
+        <div className="sec-h"><span className="t">Daily brief</span><Stamp at={at}/></div>
+        <div style={{fontSize:15,fontWeight:600,color:'var(--ink)',lineHeight:1.45}}>{brief===null?'Loading…':brief===false?'Could not load the brief.':(brief.summary||'No brief yet.')}</div>
+        {brief && (brief.priorities||[]).length>0 && <div style={{marginTop:14}}>
+          <div className="mini" style={{fontWeight:600,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>Priorities</div>
+          {brief.priorities.slice(0,8).map((p,i)=><div key={i} className="kv"><span>{p.title||p.name||String(p)}</span><span className="mini">{p.status||''}</span></div>)}
+        </div>}
+      </div>
+      {brief && <TodayCard today={brief.today} onChange={load}/>}
+    </div>
+  );
+}
+
+/* ---- System, Connections tab: the Google link and phone alerts ---- */
+function b64ToBytes(b64){
+  const pad='='.repeat((4-b64.length%4)%4);
+  const raw=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+function ConnectionsView(){
+  const advanced = useAdvanced();
+  const [g,setG]=useState(null);
+  const [ps,setPs]=useState(null);
+  const [mine,setMine]=useState(null);       // this device's subscription, if any
+  const [msg,setMsg]=useState('');
+  const [at,setAt]=useState(0);
+  const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const load=useCallback(async()=>{
+    const get=async u=>{ try{ const r=await fetch(`${API}${u}`); return r.ok?await r.json():null; }catch(e){ return null; } };
+    const [gs,pst]=await Promise.all([get('/google/status'),get('/push/status')]);
+    setG(gs||false); setPs(pst||false); setAt(Date.now());
+    if(supported){ try{ const reg=await navigator.serviceWorker.getRegistration('/app/'); setMine(reg?await reg.pushManager.getSubscription():null); }catch(e){ setMine(null); } }
+  },[supported]);
+  useEffect(()=>{ load(); },[load]);
+  const post=async(u,body)=>{ const r=await fetch(`${API}${u}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+    if(!r.ok){ let d=''; try{ d=(await r.json()).detail||''; }catch(e){} throw new Error(d||('HTTP '+r.status)); } return r.json(); };
+  const turnOn=async()=>{
+    setMsg('');
+    try{
+      if(!window.isSecureContext) throw new Error('alerts need the secure address (https://...ts.net)');
+      if(!ps || !ps.public_key) throw new Error('the server cannot send alerts yet (pywebpush not installed)');
+      const perm=await Notification.requestPermission();
+      if(perm!=='granted') throw new Error('notifications are blocked for this site in the browser settings');
+      const reg=await navigator.serviceWorker.ready;
+      const sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64ToBytes(ps.public_key)});
+      await post('/push/subscribe',{subscription:sub.toJSON(), label:/Android/i.test(navigator.userAgent)?'Android phone':'browser'});
+      setMsg('Alerts are on for this device.');
+    }catch(e){ setMsg('Could not turn alerts on: '+e.message); }
+    load();
+  };
+  const turnOff=async()=>{
+    try{ if(mine){ await post('/push/unsubscribe',{endpoint:mine.endpoint}); await mine.unsubscribe(); } setMsg('Alerts are off for this device.'); }
+    catch(e){ setMsg('Could not turn alerts off: '+e.message); }
+    load();
+  };
+  const test=async()=>{ try{ const r=await post('/push/test'); setMsg(r.sent?`Test sent to ${r.sent} device${r.sent>1?'s':''}.`:'No device is subscribed yet.'); }catch(e){ setMsg('Test failed: '+e.message); } };
+  const lr=g&&g.last_run;
+  const src=(k,label)=>{ const v=lr&&lr[k]; if(!v) return null;
+    const txt=v.error?('failed: '+v.error):k==='calendar'?`${v.events} events`:k==='gmail'?`${v.listed} listed, ${v.new} new`:k==='drive'?`${v.files} files, ${v.written} updated`:k==='extract'?`${v.read} read, ${v.skipped} skipped`:'ok';
+    return <div className="conn-kv" key={k}><span className="k">{label}</span><span>{txt}</span></div>; };
+  return (
+    <div style={{flex:1,overflow:'auto',padding:'20px 24px'}}>
+      <div className="conn-grid">
+        <div className="card">
+          <div className="sec-h"><span className="t">Google</span><Stamp at={at}/></div>
+          {g===null ? <div className="mini">Checking…</div> : g===false ? <div className="mini">Could not reach the brain.</div> : <>
+            <div className="conn-kv"><span className="k">Status</span><span style={{color:g.connected?'var(--accent)':'var(--amber)'}}>{g.connected?'connected':'not connected'}</span></div>
+            {advanced && g.account && <div className="conn-kv"><span className="k">Account</span><span>{g.account}</span></div>}
+            {lr && <div className="conn-kv"><span className="k">Last sync</span><span>{agoText(Date.parse(lr.at))}</span></div>}
+            {src('calendar','Calendar')}{src('gmail','Gmail')}{src('drive','Drive')}{advanced && src('extract','Read by model')}
+            {!g.connected && <div className="mini" style={{marginTop:8}}>{g.error?g.error+'. ':''}Run wijerco-google-connect.bat on wijerco to sign in again.</div>}
+          </>}
+        </div>
+        <div className="card">
+          <div className="sec-h"><span className="t">Phone alerts</span><Stamp at={at}/></div>
+          <div className="mini" style={{marginBottom:8}}>For approvals waiting, anything that fails, and commitments due today. Telegram alerts carry on as well.</div>
+          {!supported ? <div className="mini">This browser cannot receive alerts.</div> : ps===null ? <div className="mini">Checking…</div> : <>
+            <div className="conn-kv"><span className="k">This device</span><span style={{color:mine?'var(--accent)':'var(--muted)'}}>{mine?'on':'off'}</span></div>
+            {ps && <div className="conn-kv"><span className="k">Devices with alerts</span><span>{ps.devices}</span></div>}
+            {ps && !ps.library && <div className="mini" style={{marginTop:6,color:'var(--amber)'}}>The server cannot send alerts yet: pywebpush is not installed on wijerco.</div>}
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}>
+              {!mine ? <button className="dp-btn go" onClick={turnOn}>Turn on alerts on this device</button>
+                     : <button className="dp-btn" onClick={turnOff}>Turn off on this device</button>}
+              {ps && ps.devices>0 && <button className="dp-btn" onClick={test}>Send a test</button>}
+            </div>
+          </>}
+          {msg && <div className="mini" role="status" style={{marginTop:8}}>{msg}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---- Overview: the Apex landing (orbital + KPIs + console + activity) ---- */
 function OverviewApex({ setView, onDispatch, voice }){
+  const advanced = useAdvanced();
+  const today = useToday();
   const [statuses,setStatuses]=useState({});
   const [hoverName,setHoverName]=useState(null);
   // A conversation grows the Radial in place: the KPI strip and the activity
@@ -4987,10 +5300,11 @@ function OverviewApex({ setView, onDispatch, voice }){
     <div className={"apx-stage"+(engaged?" engaged":"")}>
       <div className="apx-field">
         <ApxOrbital setView={setView} statuses={statuses} hoverName={hoverName} setHoverName={setHoverName}/>
-        <ApxKpis/>
+        {advanced && <ApxKpis/>}
         <ApxConsole onDispatch={onDispatch} voice={voice}/>
+        <div className="today-stack"><TodayBlocks t={today} setView={setView}/></div>
       </div>
-      <ApxActivity/>
+      <aside className="apx-rail-r today-rail"><TodayBlocks t={today} setView={setView}/></aside>
     </div>
   );
 }
@@ -5240,23 +5554,31 @@ const PHONE_ICONS = {
   more: <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>,
 };
 
-function PhoneTabs({ view, setView, docOpen, setDocOpen, badge }){
-  const main=['overview','chat','approvals'];
-  const active = docOpen ? 'outputs' : main.includes(view) ? view : 'more';
-  const go=v=>{ setDocOpen(false); setView(v); };
-  const tab=(key,label,icon,onClick,extra)=>(
-    <button key={key} className={"phone-tab"+(active===key?' on':'')} onClick={onClick} aria-current={active===key?'page':undefined}>
-      {icon}<span>{label}</span>{extra}
-    </button>
-  );
+function PhoneTabs({ view, setView, docOpen, setDocOpen, badge, goJob }){
+  // Phase 3 (26 Nov 2026): the same five jobs as the desktop rail.
+  const active = docOpen ? 'work' : jobOf(view).key;
   return (
     <nav className="phone-tabs" aria-label="Main">
-      {tab('overview','Apex',PHONE_ICONS.apex,()=>go('overview'))}
-      {tab('chat','Chat',PHONE_ICONS.chat,()=>go('chat'))}
-      {tab('outputs','Outputs',PHONE_ICONS.outputs,()=>setDocOpen(o=>!o))}
-      {tab('approvals','Approvals',PHONE_ICONS.approvals,()=>go('approvals'), badge>0 ? <span className="badge">{badge>99?'99+':badge}</span> : null)}
-      {tab('more','More',PHONE_ICONS.more,()=>go('more'))}
+      {JOBS.map(j=>(
+        <button key={j.key} className={"phone-tab"+(active===j.key?' on':'')} onClick={()=>{ setDocOpen(false); goJob(j.key); }} aria-current={active===j.key?'page':undefined}>
+          {JOB_ICONS[j.key]}<span>{j.label}</span>
+          {j.key==='approve' && badge>0 ? <span className="badge">{badge>99?'99+':badge}</span> : null}
+        </button>
+      ))}
     </nav>
+  );
+}
+
+function JobTabs({ view, setView, docOpen, setDocOpen }){
+  const job=jobOf(view);
+  return (
+    <div className="job-tabs" role="tablist" aria-label={job.label}>
+      {job.tabs.map(([v,l])=>{
+        const on = v==='outputs' ? docOpen : (view===v && !(docOpen && job.key==='work'));
+        return <button key={v} role="tab" aria-selected={on} className={"job-tab"+(on?' on':'')}
+          onClick={()=>{ if(v==='outputs'){ setDocOpen(o=>!o); return; } setDocOpen(false); setView(v); }}>{l}</button>;
+      })}
+    </div>
   );
 }
 
@@ -5285,6 +5607,8 @@ const gateLabel=g=>GATE_LABELS[g] || String(g||'gate').replace(/_/g,' ');
 
 /* ---- Approvals and status: one screen for "what needs me, and is it all running?" ---- */
 function PhoneApprovals({ setView, onCount }){
+  const advanced = useAdvanced();
+  const [loadedAt,setLoadedAt]=useState(0);
   const [sum,setSum]=useState(null);
   const [gates,setGates]=useState(null);
   const [props,setProps]=useState(null);
@@ -5300,7 +5624,7 @@ function PhoneApprovals({ setView, onCount }){
     setSum(s);
     const gi=g ? (Array.isArray(g)?g:(g.items||[])) : [];
     const pi=p ? (Array.isArray(p)?p:(p.items||[])) : [];
-    setGates(gi); setProps(pi);
+    setGates(gi); setProps(pi); setLoadedAt(Date.now());
     if(onCount) onCount(gi.length+pi.length);
   },[onCount]);
   useEffect(()=>{
@@ -5347,7 +5671,7 @@ function PhoneApprovals({ setView, onCount }){
   return (
     <div className="phone-page">
       <div className="pa-head">
-        <div><div className="k">Approvals</div><div className="t">{gates===null?'Checking…':n===0?'Nothing is waiting for you':`${n} waiting for you`}</div></div>
+        <div><div className="k">Approvals <Stamp at={loadedAt}/></div><div className="t">{gates===null?'Checking…':n===0?'Nothing is waiting for you':`${n} waiting for you`}</div></div>
         <button className="dp-btn" onClick={load}>Refresh</button>
       </div>
 
@@ -5360,6 +5684,7 @@ function PhoneApprovals({ setView, onCount }){
             <div className="pa-tag">{gateLabel(g.gate)}{g.state?` · ${g.state}`:''}</div>
             <div className="pa-title">{g.title||g.target_id}</div>
             {g.reason && <div className="pa-why">{g.reason}</div>}
+            {advanced && <div className="pa-adv">{g.gate} · {g.target_id||g.production_id}{g.kind?' · '+g.kind:''}{g.state?' · '+g.state:''}</div>}
             <div className="pa-acts">
               {g.gate==='client_sensitive' && <button className="dp-btn" onClick={()=>setView('library')}>Read first</button>}
               <button className={"dp-btn warn"+(armed===key+':r'?' armed':'')} disabled={busy===key}
@@ -5380,6 +5705,7 @@ function PhoneApprovals({ setView, onCount }){
             <div className="pa-title">{p.failure_pattern||'Proposed rule'}</div>
             <div className={"pa-rule"+(openRule===p.id?' open':'')} onClick={()=>setOpenRule(openRule===p.id?'':p.id)}>{p.rule}</div>
             {delta && <div className="pa-why">{delta}</div>}
+            {advanced && <div className="pa-adv">rule {p.id}{p.target_file?' · '+p.target_file:''}{p.department?' · '+p.department:''}</div>}
             <div className="pa-acts">
               <button className={"dp-btn warn"+(armed===key+':r'?' armed':'')} disabled={busy===key}
                 onClick={()=>confirmThen(key+':r',decideRule(p,'reject'))}>{armed===key+':r'?'Tap to reject':'Reject'}</button>
@@ -5546,7 +5872,17 @@ function App() {
   const [pinnedModel,setPinnedModel] = useState('');
   const [models,setModels]         = useState({});
   const [sidebarTick,setSidebarTick] = useState(0);
-  const [view,setView]             = useState('overview');   // 'chat' | 'admin'
+  const [view,setViewRaw]          = useState(initialView);   // a tab of one of the five jobs
+  const [advanced,setAdvancedRaw]  = useState(()=>{ try{ return localStorage.getItem('cc_advanced')==='1'; }catch(e){ return false; } });
+  const setAdvanced = v => { setAdvancedRaw(v); try{ localStorage.setItem('cc_advanced', v?'1':'0'); }catch(e){} };
+  const [jobTabs,setJobTabs]       = useState(()=>{ try{ return JSON.parse(localStorage.getItem('cc_job_tabs')||'{}'); }catch(e){ return {}; } });
+  // Old view names (the phone's More page) land on Today.
+  const setView = v => setViewRaw(JOB_VIEWS.has(v) && v!=='outputs' ? v : 'overview');
+  useEffect(()=>{
+    const k=jobOf(view).key;
+    setJobTabs(m=>{ if(m[k]===view) return m; const n={...m,[k]:view}; try{ localStorage.setItem('cc_job_tabs',JSON.stringify(n)); }catch(e){} return n; });
+  },[view]);
+  const goJob = k => { const j=JOBS.find(x=>x.key===k)||JOBS[0]; const last=jobTabs[k]; setView(last && j.tabs.some(([t])=>t===last) ? last : j.tabs[0][0]); };
   const [attached,setAttached]     = useState([]);        // chat-mode filenames
   const [uploadMode,setUploadMode] = useState('chat');    // 'chat' | 'kb'
   const [uploading,setUploading]   = useState(false);
@@ -5576,7 +5912,7 @@ function App() {
   const [phoneQueue,setPhoneQueue] = useState(0);
   useEffect(()=>{ if(isPhone) setShowSidebar(false); },[isPhone]);
   useEffect(()=>{
-    if(!isPhone) return;
+    // The Approve badge on the rail and the phone tabs (Phase 3: desktop too).
     let live=true;
     const poll=async()=>{
       if(document.hidden) return;
@@ -5584,7 +5920,7 @@ function App() {
     };
     poll(); const t=setInterval(poll,60000);
     return ()=>{ live=false; clearInterval(t); };
-  },[isPhone]);
+  },[]);
 
   // ---- Outputs: documents Apex drafts on request ("draft a brief on...") ----
   // Spoken or typed, a document request opens the pane beside the dashboard and
@@ -6139,7 +6475,7 @@ function App() {
 
   const avail = Object.entries(models).filter(([,v])=>v.available);
 
-  const VIEW_LABELS = {overview:'Overview',chat:'Chat',approvals:'Approvals',more:'More',departments:'Departments',admin:'Usage',quality:'Quality',productivity:'Productivity',harness:'Self-Improve',n8n:'Automations',operating:'Operating',library:'Deliverables',content:'Content pipeline',production:'Production',media:'Media library',engagements:'Engagements',kb:'Knowledge base',intel:'Sector intel',trace:'Routing',schedule:'Scheduled runs'};
+  const VIEW_LABELS = {brief:'Daily brief','harness-proposals':'Self-improve proposals',connections:'Connections',overview:'Overview',chat:'Chat',approvals:'Approvals',more:'More',departments:'Departments',admin:'Usage',quality:'Quality',productivity:'Productivity',harness:'Self-Improve',n8n:'Automations',operating:'Operating',library:'Deliverables',content:'Content pipeline',production:'Production',media:'Media library',engagements:'Engagements',kb:'Knowledge base',intel:'Sector intel',trace:'Routing',schedule:'Scheduled runs'};
   const NAV = [
     {label:'Workspace', items:[
       ['overview','Overview',<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/></svg>],
@@ -6170,8 +6506,9 @@ function App() {
   ];
 
   return (
+    <AdvancedCtx.Provider value={advanced}>
     <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden'}}>
-      <ApxBar view={view} setView={setView} VIEW_LABELS={VIEW_LABELS} sessionCost={sessionCost} voice={voiceApi}/>
+      <ApxBar view={view} setView={setView} VIEW_LABELS={VIEW_LABELS} sessionCost={sessionCost} voice={voiceApi} advanced={advanced} setAdvanced={setAdvanced}/>
       <div style={{display:'flex',flex:'1 1 auto',minHeight:0,overflow:'hidden'}}>
       {/* ── Left rail ── */}
       <div className="rail">
@@ -6180,16 +6517,12 @@ function App() {
           <span className="rail-tag">Command Centre</span>
         </div>
         <div className="rail-divider"/>
-        <nav className="rail-nav">
-          {NAV.map((sec,si)=>(
-            <div key={sec.label}>
-              <div className="nav-label" style={{paddingTop:si?16:0}}>{sec.label}</div>
-              {sec.items.map(([v,l,ic])=>(
-                <button key={v} className={`nav-item${view===v?' active':''}`} onClick={()=>setView(v)}>
-                  {ic}<span>{l}</span>
-                </button>
-              ))}
-            </div>
+        <nav className="rail-nav" aria-label="Main">
+          {JOBS.map(j=>(
+            <button key={j.key} className={`nav-item${jobOf(view).key===j.key?' active':''}`} onClick={()=>goJob(j.key)}>
+              {JOB_ICONS[j.key]}<span>{j.label}</span>
+              {j.key==='approve' && phoneQueue>0 && <span className="nav-badge">{phoneQueue>99?'99+':phoneQueue}</span>}
+            </button>
           ))}
         </nav>
         <div className="rail-foot">
@@ -6213,20 +6546,19 @@ function App() {
 
       <div className="cc-main" style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
         {/* Phone: a slim header with the way back on pages reached from More */}
-        {isPhone && !['overview','chat','approvals','more'].includes(view) && (
-          <div className="phone-head"><button onClick={()=>setView('more')}>‹ More</button><span>{VIEW_LABELS[view]||view}</span></div>
-        )}
+        {/* Phase 3: the tabs of the current job (desktop and phone) */}
+        <JobTabs view={view} setView={setView} docOpen={docOpen} setDocOpen={setDocOpen}/>
         {/* Topbar */}
         <div className="topbar">
           {view==='chat'&&<button className="icon-btn" onClick={()=>setShowSidebar(v=>!v)} title="Toggle conversations">☰</button>}
-          <div className="crumb">Workspace / <b>{VIEW_LABELS[view]}</b></div>
+          <div className="crumb">{jobOf(view).label} / <b>{VIEW_LABELS[view]}</b></div>
           <div style={{flex:1}}/>
-          <div style={{display:'flex',gap:10}}>
+          {advanced && <div style={{display:'flex',gap:10}}>
             {[[8000,'API'],[8001,'Data'],[8002,'Search'],[8003,'Cloud'],[8006,'RAG']].map(([p,l])=>(
               <ServiceDot key={p} port={p} label={l}/>
             ))}
             <ServiceDot key="qdrant" label="Qdrant" url={`${API}/health/qdrant`}/>
-          </div>
+          </div>}
           <button className={"dp-btn"+(docOpen?' on':'')} onClick={()=>setDocOpen(o=>!o)} title="Documents Apex has drafted">Outputs</button>
           <button onClick={()=>setShowCost(true)} style={{background:'var(--pine-tint)',border:'1px solid #cdddd2',color:'var(--pine)',borderRadius:999,padding:'5px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>
             {fmtCost(sessionCost)}
@@ -6243,10 +6575,10 @@ function App() {
               </button>
             ))}
           </div>
-          <select className="chat-desktop-only" value={pinnedModel} onChange={e=>setPinnedModel(e.target.value)} style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:8,padding:'4px 10px',fontSize:12,cursor:'pointer'}}>
+          {advanced && <select className="chat-desktop-only" value={pinnedModel} onChange={e=>setPinnedModel(e.target.value)} style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:8,padding:'4px 10px',fontSize:12,cursor:'pointer'}}>
             <option value="">🤖 Auto model</option>
             {avail.map(([key,spec])=><option key={key} value={key}>{spec.label}</option>)}
-          </select>
+          </select>}
           <button className="chat-desktop-only" onClick={()=>setUseTools(v=>!v)} title="Let agents run Command Centre actions and n8n workflows"
             style={{background:useTools?'var(--gold-tint)':'var(--bg3)',border:'1px solid '+(useTools?'#e2cf8f':'var(--border)'),color:useTools?'#8a630f':'var(--muted)',borderRadius:8,padding:'4px 11px',fontSize:12,fontWeight:600,cursor:'pointer'}}>
             🔧 Actions {useTools?'on':'off'}
@@ -6258,7 +6590,9 @@ function App() {
         {view==='overview' && <OverviewApex setView={setView} voice={voiceApi}
           onDispatch={async t=>{ if(await runDocument(t,'overview')) return; setInput(t); setView('chat'); }}/>}
         {view==='approvals' && <PhoneApprovals setView={setView} onCount={setPhoneQueue}/>}
-        {view==='more' && <PhoneMore NAV={NAV} setView={setView}/>}
+        {view==='brief' && <BriefView/>}
+        {view==='connections' && <ConnectionsView/>}
+        {view==='harness-proposals' && <HarnessView/>}
         {view==='departments' && <DepartmentsView/>}
         {view==='admin' && <AdminView/>}
         {view==='quality' && <QualityCockpit/>}
@@ -6462,9 +6796,10 @@ function App() {
       {/* ── Document pane: outputs written live beside the dashboard ── */}
       {docOpen && <DocPane doc={doc} setDoc={setDoc} onClose={()=>setDocOpen(false)} openOutput={openOutput}/>}
       </div>
-      {isPhone && <PhoneTabs view={view} setView={setView} docOpen={docOpen} setDocOpen={setDocOpen} badge={phoneQueue}/>}
+      {isPhone && <PhoneTabs view={view} setView={setView} docOpen={docOpen} setDocOpen={setDocOpen} badge={phoneQueue} goJob={goJob}/>}
       {showCost&&<CostModal onClose={()=>setShowCost(false)}/>}
     </div>
+    </AdvancedCtx.Provider>
   );
 }
 

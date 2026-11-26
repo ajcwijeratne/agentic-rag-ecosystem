@@ -101,6 +101,9 @@ google-api-python-client>=2.150
 google-auth-oauthlib>=1.2
 google-auth-httplib2>=0.2
 
+# Phone notifications (orchestrator/push.py, Phase 3). Imported lazily.
+pywebpush>=2.0
+
 # ---------------------------------------------------------------------------
 # Multi-LLM providers
 # ---------------------------------------------------------------------------

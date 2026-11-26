@@ -6,10 +6,14 @@ HTTP surface for the records store, the Google link and Google actions.
   GET  /records                  ?kind=&status=&limit= (operator)
   GET  /records/today            the Today view's data (operator)
   GET  /records/counts           (operator)
-  POST /records/{id}/status      {"status": "done"|"dismissed"|"open"} (admin)
+  POST /records/{id}/status      {"status": "done"|"dismissed"|"open"} (operator)
   GET  /google/actions           ?status= (operator)
   POST /google/actions/draft     propose a Gmail draft (admin); approval creates it
   POST /google/actions/hold      propose a tentative hold (admin); approval creates it
+  GET  /push/status              phone notifications: library, devices, VAPID key (operator)
+  POST /push/subscribe           store this device's push subscription (operator)
+  POST /push/unsubscribe         (operator)
+  POST /push/test                send a test notification to subscribed devices (operator)
 """
 
 from __future__ import annotations
@@ -65,7 +69,9 @@ class StatusIn(BaseModel):
     status: str
 
 
-@router.post("/records/{record_id}/status", dependencies=[Depends(require_admin)])
+# Operator, not admin (26 Nov 2026): Done and Dismiss on the Today card come
+# from the phone, and marking a commitment done changes nothing outside.
+@router.post("/records/{record_id}/status", dependencies=_operator)
 async def record_status(record_id: str, req: StatusIn) -> dict[str, Any]:
     try:
         ok = records.set_status(record_id, req.status)
@@ -115,3 +121,48 @@ async def propose_hold(req: HoldIn) -> dict[str, Any]:
                                            proposed_by="command-centre", reason=req.reason)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Phone notifications (orchestrator/push.py). Operator: the phone subscribes
+# itself, and a test push only reaches devices already subscribed.
+# ---------------------------------------------------------------------------
+
+@router.get("/push/status", dependencies=_operator)
+async def push_status() -> dict[str, Any]:
+    from . import push
+    return await asyncio.to_thread(push.status)
+
+
+class PushSubIn(BaseModel):
+    subscription: dict[str, Any]
+    label: str = ""
+
+
+@router.post("/push/subscribe", dependencies=_operator)
+async def push_subscribe(req: PushSubIn) -> dict[str, Any]:
+    from . import push
+    try:
+        return push.subscribe(req.subscription, label=req.label)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+class PushUnsubIn(BaseModel):
+    endpoint: str
+
+
+@router.post("/push/unsubscribe", dependencies=_operator)
+async def push_unsubscribe(req: PushUnsubIn) -> dict[str, Any]:
+    from . import push
+    return {"removed": push.unsubscribe(req.endpoint)}
+
+
+@router.post("/push/test", dependencies=_operator)
+async def push_test() -> dict[str, Any]:
+    from . import push
+    if not push.library_installed():
+        raise HTTPException(status_code=409, detail="pywebpush is not installed on this machine")
+    return await asyncio.to_thread(push.send, "approval", "Test from the Command Centre",
+                                   "Phone alerts are working.", url=push.app_url("connections"), tag="test")
+

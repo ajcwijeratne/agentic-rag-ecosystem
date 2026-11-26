@@ -70,6 +70,9 @@ INITIATIVE_HOUR = int(os.getenv("INITIATIVE_HOUR", "6"))
 # Google sync (Phase 2, 23 Nov 2026): Calendar and Gmail into the records
 # store every GOOGLE_SYNC_MINUTES once the Google link is connected. 0 turns it off.
 GOOGLE_SYNC_MINUTES = float(os.getenv("GOOGLE_SYNC_MINUTES", "15"))
+# Morning phone notice of commitments due today (Phase 3, 26 Nov 2026), at
+# this local hour, once a day, only when something is due. -1 turns it off.
+PUSH_DUE_HOUR = int(os.getenv("PUSH_DUE_HOUR", "7"))
 
 # Task types the daemon may execute without a human. `approval` and `manual`
 # always stop at notification. This is the "auto-run internal, gate external"
@@ -150,12 +153,20 @@ def _log_decision(action: str, detail: dict[str, Any]) -> None:
         logger.exception("failed to write daemon.jsonl")
 
 
-async def _notify(title: str, body: str) -> None:
+async def _notify(title: str, body: str, kind: str | None = None, view: str = "overview") -> None:
+    """Telegram (and any other notifier channel) always; a phone push as well
+    when kind is one Aaron chose on 26 Nov 2026: approval, failure, due."""
     try:
         from notifications.notifier import notify
         await notify(title=title, body=body)
     except Exception:
         logger.warning("notification failed: %s", title)
+    if kind:
+        try:
+            from . import push
+            await asyncio.to_thread(push.send, kind, title, body, url=push.app_url(view))
+        except Exception:
+            logger.warning("push failed: %s", title)
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +358,7 @@ async def run_cycle(state: dict[str, Any]) -> dict[str, Any]:
                             body += f"\nPreview: {base}/productions/{target}/preview"
                     except Exception:
                         pass
-                await _notify("Waiting on you", body)
+                await _notify("Waiting on you", body, kind="approval", view="approvals")
                 notified.append(c_id)
                 state["notified_tasks"] = notified[-200:]
                 # Persist immediately. The main loop re-reads state after each
@@ -432,7 +443,8 @@ async def run_cycle(state: dict[str, Any]) -> dict[str, Any]:
             note=((task.get("note") or "") + f"\n\n---\ndaemon blocked after {attempts} attempts: {error}").strip(),
             meta=_set_daemon_meta(task, attempts=attempts, blocked_at=_now_iso(), error=error),
         )
-        await _notify("Task blocked", f"{task['title']}\n{error}\nTask {task_id} needs you.")
+        await _notify("Task blocked", f"{task['title']}\n{error}\nTask {task_id} needs you.",
+                      kind="failure", view="operating")
         _log_decision("task_blocked", {"task_id": task_id, "error": error, "attempts": attempts})
         return {"picked": task_id, "action": "blocked", "error": error}
 
@@ -484,7 +496,8 @@ async def _maybe_reindex(state: dict[str, Any]) -> None:
     failed = [p for p, r in results.items() if (r or {}).get("status") == "error"]
     _log_decision("kb_reindex_error" if failed else "kb_reindex", results)
     if failed:
-        await _notify("Knowledge base reindex failed", f"Targets failed: {', '.join(failed)}. See daemon.jsonl.")
+        await _notify("Knowledge base reindex failed", f"Targets failed: {', '.join(failed)}. See daemon.jsonl.",
+                      kind="failure", view="kb")
     state["reindexed_date"] = today
     save_state(state)
 
@@ -524,12 +537,35 @@ async def _maybe_google_sync(state: dict[str, Any]) -> None:
     if errors or found:
         _log_decision("google_sync_error" if errors else "google_sync", summary)
     if errors and not state.get("google_sync_alerted"):
-        await _notify("Google sync failing", f"Failed: {', '.join(errors)}. If the sign-in expired, run google-connect on wijerco.")
+        await _notify("Google sync failing", f"Failed: {', '.join(errors)}. If the sign-in expired, run google-connect on wijerco.",
+                      kind="failure", view="connections")
         state["google_sync_alerted"] = True
     elif not errors:
         state["google_sync_alerted"] = False
     state["google_sync_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     save_state(state)
+
+
+async def _maybe_due_push(state: dict[str, Any]) -> None:
+    """Once a day after PUSH_DUE_HOUR: push what Aaron owes today, if anything."""
+    if PUSH_DUE_HOUR < 0:
+        return
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    if state.get("due_push_date") == today or now.hour < PUSH_DUE_HOUR:
+        return
+    state["due_push_date"] = today
+    save_state(state)
+    try:
+        from . import records
+        due = records.today().get("due") or []
+    except Exception:
+        return
+    if not due:
+        return
+    lines = [f"- {d.get('title')}" for d in due[:4]] + ([f"and {len(due) - 4} more"] if len(due) > 4 else [])
+    await _notify(f"{len(due)} due today", "\n".join(lines), kind="due", view="overview")
+    _log_decision("due_push", {"due": len(due)})
 
 
 async def _maybe_measure(state: dict[str, Any]) -> None:
@@ -640,6 +676,7 @@ async def main() -> None:
         state = load_state()  # re-read in case pause happened mid-cycle
         await _maybe_reindex(state)
         await _maybe_google_sync(state)
+        await _maybe_due_push(state)
         await _maybe_consolidate(state)
         await _maybe_measure(state)
         await _maybe_learn(state)

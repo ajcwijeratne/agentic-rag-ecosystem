@@ -27,6 +27,8 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
+import time
 import uuid
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -46,59 +48,94 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS source_items (
+        item_id      TEXT PRIMARY KEY,
+        source       TEXT NOT NULL,
+        source_id    TEXT NOT NULL,
+        kind         TEXT NOT NULL,
+        title        TEXT,
+        body         TEXT,
+        sender       TEXT,
+        people       TEXT,
+        start_at     TEXT,
+        end_at       TEXT,
+        url          TEXT,
+        data_class   TEXT NOT NULL,
+        meta         TEXT,
+        content_hash TEXT,
+        fetched_at   TEXT NOT NULL,
+        processed_at TEXT,
+        skip_reason  TEXT
+    );
+    CREATE TABLE IF NOT EXISTS records (
+        record_id      TEXT PRIMARY KEY,
+        kind           TEXT NOT NULL,
+        dedupe_key     TEXT NOT NULL UNIQUE,
+        title          TEXT NOT NULL,
+        detail         TEXT,
+        owner          TEXT,
+        counterparty   TEXT,
+        due_at         TEXT,
+        start_at       TEXT,
+        end_at         TEXT,
+        status         TEXT NOT NULL,
+        source_item_id TEXT,
+        data_class     TEXT NOT NULL,
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL,
+        meta           TEXT
+    );
+    CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
+    CREATE INDEX IF NOT EXISTS ix_items_pending ON source_items(kind, processed_at);
+    CREATE INDEX IF NOT EXISTS ix_records_kind ON records(kind, status);
+"""
+
+_SETUP_LOCK = threading.Lock()
+_READY: set[str] = set()
+
+
+def _setup(path: Path) -> None:
+    """Create the database, switch it to WAL and create the tables, once per
+    file per process.
+
+    Switching to WAL needs the file to itself. Two first connections racing
+    (threads here, or the daemon and the API starting together) can get
+    "database is locked" at once, without the 30 s wait: SQLite refuses rather
+    than risk a deadlock. Threads take turns on a lock; another process is
+    retried for up to about 30 s. WAL is stored in the file, so later
+    connections need none of this."""
+    key = str(path)
+    if key in _READY and path.exists():
+        return
+    with _SETUP_LOCK:
+        if key in _READY and path.exists():
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for attempt in range(60):
+            try:
+                conn = sqlite3.connect(key, timeout=30.0)
+                try:
+                    conn.execute("PRAGMA journal_mode=WAL")
+                    conn.executescript(_SCHEMA)
+                finally:
+                    conn.close()
+                break
+            except sqlite3.OperationalError as exc:
+                busy = "locked" in str(exc) or "busy" in str(exc)
+                if not busy or attempt == 59:
+                    raise
+                time.sleep(min(1.0, 0.05 * (attempt + 1)))
+        _READY.add(key)
+
+
 @contextmanager
 def _db() -> Generator[sqlite3.Connection, None, None]:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _setup(DB_PATH)
     # The daemon and the API run in separate processes and can write at the
     # same time; wait for the other writer rather than failing at once.
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS source_items (
-            item_id      TEXT PRIMARY KEY,
-            source       TEXT NOT NULL,
-            source_id    TEXT NOT NULL,
-            kind         TEXT NOT NULL,
-            title        TEXT,
-            body         TEXT,
-            sender       TEXT,
-            people       TEXT,
-            start_at     TEXT,
-            end_at       TEXT,
-            url          TEXT,
-            data_class   TEXT NOT NULL,
-            meta         TEXT,
-            content_hash TEXT,
-            fetched_at   TEXT NOT NULL,
-            processed_at TEXT,
-            skip_reason  TEXT
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS records (
-            record_id      TEXT PRIMARY KEY,
-            kind           TEXT NOT NULL,
-            dedupe_key     TEXT NOT NULL UNIQUE,
-            title          TEXT NOT NULL,
-            detail         TEXT,
-            owner          TEXT,
-            counterparty   TEXT,
-            due_at         TEXT,
-            start_at       TEXT,
-            end_at         TEXT,
-            status         TEXT NOT NULL,
-            source_item_id TEXT,
-            data_class     TEXT NOT NULL,
-            created_at     TEXT NOT NULL,
-            updated_at     TEXT NOT NULL,
-            meta           TEXT
-        )
-    """)
-    conn.execute("CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)")
-    conn.execute("CREATE INDEX IF NOT EXISTS ix_items_pending ON source_items(kind, processed_at)")
-    conn.execute("CREATE INDEX IF NOT EXISTS ix_records_kind ON records(kind, status)")
-    conn.commit()
     try:
         yield conn
         conn.commit()

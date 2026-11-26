@@ -344,20 +344,50 @@ def test_run_once_skips_while_another_sync_runs(rec, monkeypatch):
     assert ran == ["cal", "gmail"] and rec.try_lock("google_sync")   # released after the run
 
 
-def test_parallel_writers_do_not_collide(rec):
+def test_parallel_writers_do_not_collide(rec, tmp_path, monkeypatch):
+    """Four writers start at the same moment on a database that does not exist
+    yet, several times over. Before 27 Nov 2026 the first connections raced to
+    switch the new file to WAL and one got "database is locked" about 1 run in
+    20; on wijwork that failed the Phase 3 push."""
     import threading
-    errors = []
+    for round_ in range(8):
+        monkeypatch.setattr(rec, "DB_PATH", tmp_path / f"r{round_}" / "records.db")
+        errors = []
+        start = threading.Barrier(4)
 
-    def writer():
-        try:
-            for i in range(30):
-                rec.upsert_item(source="gcal", source_id=f"e{i}", kind="event", data_class="personal", title=f"E{i}")
-                rec.upsert_record("meeting", f"gcal:e{i}", title=f"E{i}", data_class="personal")
-        except Exception as exc:  # noqa: BLE001
-            errors.append(exc)
+        def writer():
+            start.wait()
+            try:
+                for i in range(15):
+                    rec.upsert_item(source="gcal", source_id=f"e{i}", kind="event", data_class="personal", title=f"E{i}")
+                    rec.upsert_record("meeting", f"gcal:e{i}", title=f"E{i}", data_class="personal")
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
 
-    threads = [threading.Thread(target=writer) for _ in range(4)]
-    [t.start() for t in threads]
-    [t.join() for t in threads]
-    assert errors == []
-    assert rec.counts()["items"]["event"] == 30 and rec.counts()["records"]["meeting"] == 30
+        threads = [threading.Thread(target=writer) for _ in range(4)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        assert errors == [], f"round {round_}: {errors}"
+        c = rec.counts()
+        assert c["items"]["event"] == 15 and c["records"]["meeting"] == 15
+
+
+def test_setup_retries_while_another_process_holds_the_new_file(rec, tmp_path, monkeypatch):
+    """Another process switching the same new file to WAL makes ours fail at
+    once with "database is locked"; setup waits and tries again."""
+    import sqlite3
+    monkeypatch.setattr(rec, "DB_PATH", tmp_path / "records.db")
+    monkeypatch.setattr(rec.time, "sleep", lambda s: None)
+    real = sqlite3.connect
+    calls = {"n": 0}
+
+    def flaky(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise sqlite3.OperationalError("database is locked")
+        return real(*a, **kw)
+
+    monkeypatch.setattr(rec.sqlite3, "connect", flaky)
+    rec.upsert_record("meeting", "gcal:x", title="X", data_class="personal")
+    assert calls["n"] >= 3
+    assert rec.counts()["records"]["meeting"] == 1

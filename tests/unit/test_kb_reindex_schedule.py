@@ -14,7 +14,7 @@ def daemon(monkeypatch):
     monkeypatch.setattr(d, "save_state", lambda state: None)
     monkeypatch.setattr(d, "_log_decision", lambda action, detail: logged.append((action, detail)))
 
-    async def _notify(title, body):
+    async def _notify(title, body, **kw):  # kind/view since 26 Nov 2026 (phone push)
         notes.append(title)
     monkeypatch.setattr(d, "_notify", _notify)
     monkeypatch.setattr(d, "KB_REINDEX_HOUR", 0)

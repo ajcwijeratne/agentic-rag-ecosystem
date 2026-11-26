@@ -139,7 +139,7 @@ def test_cycle_never_executes_approval_tasks(iso_env, monkeypatch):
 
     notifications = []
 
-    async def fake_notify(title, body):
+    async def fake_notify(title, body, **kw):  # kind/view since 26 Nov 2026 (phone push)
         notifications.append(title)
 
     monkeypatch.setattr(daemon, "run_task", fake_run_task)
@@ -162,7 +162,7 @@ def test_cycle_persists_notify_once_marker(iso_env, monkeypatch):
 
     notifications = []
 
-    async def fake_notify(title, body):
+    async def fake_notify(title, body, **kw):  # kind/view since 26 Nov 2026 (phone push)
         notifications.append(title)
 
     monkeypatch.setattr(daemon, "_notify", fake_notify)
@@ -192,7 +192,7 @@ def test_cycle_executes_agent_task_and_marks_done(iso_env, monkeypatch):
     async def fake_run_task(task):
         return {"ok": True, "output": "the work"}
 
-    async def fake_notify(title, body):
+    async def fake_notify(title, body, **kw):  # kind/view since 26 Nov 2026 (phone push)
         pass
 
     monkeypatch.setattr(daemon, "run_task", fake_run_task)
@@ -217,7 +217,7 @@ def test_cycle_blocks_after_two_failures(iso_env, monkeypatch):
 
     notifications = []
 
-    async def fake_notify(title, body):
+    async def fake_notify(title, body, **kw):  # kind/view since 26 Nov 2026 (phone push)
         notifications.append(title)
 
     monkeypatch.setattr(daemon, "run_task", failing_run_task)
